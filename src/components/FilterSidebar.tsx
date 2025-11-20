@@ -59,7 +59,7 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
   };
 
   return (
-    <aside className="w-80 border-r bg-card p-6 space-y-6 overflow-y-auto">
+    <aside className="w-[336px] border-l bg-card p-6 space-y-6 overflow-y-auto">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Filter Results</h2>
         {onClose && (
