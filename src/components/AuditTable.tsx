@@ -252,7 +252,7 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                   {isExpanded && (
                     <TableRow className="animate-accordion-down">
                       <TableCell colSpan={4} className="bg-muted/10 p-0">
-                        <div className="p-4 transition-all duration-300">
+                        <div className="p-4 transition-all duration-600">
                           {/* Header with title and actions */}
                           <div className="flex items-center justify-between mb-4">
                             <h3 className="text-sm font-semibold">Interview Details</h3>
