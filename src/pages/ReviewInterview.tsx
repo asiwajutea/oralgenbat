@@ -6,6 +6,7 @@ import { MetadataPanel } from "@/components/review/MetadataPanel";
 import { PhotosPanel } from "@/components/review/PhotosPanel";
 import { AudioAnalysisPanel } from "@/components/review/AudioAnalysisPanel";
 import { PDFViewer } from "@/components/review/PDFViewer";
+import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 
 const ReviewInterview = () => {
   const { auditId } = useParams<{ auditId: string }>();
@@ -55,6 +56,24 @@ const ReviewInterview = () => {
     enabled: !!auditId,
   });
 
+  const { data: nextAudit } = useQuery({
+    queryKey: ["next-unreviewed-audit", auditId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("audits")
+        .select("id")
+        .or('status.in.(Pending,Awaiting Review),reviewed_by.is.null')
+        .neq("id", auditId)
+        .order("uploaded_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!auditId,
+  });
+
   const isLoading = auditLoading || metadataLoading || photosLoading;
 
   if (isLoading) {
@@ -81,6 +100,8 @@ const ReviewInterview = () => {
       {/* Left Panel - Metadata & Media */}
       <div className="w-1/2 border-r border-border overflow-y-auto bg-background">
         <div className="p-6 space-y-6">
+          <ReviewNavigation nextAuditId={nextAudit?.id} />
+          
           <div className="border-b border-border pb-4">
             <h1 className="text-2xl font-bold">Interview Review</h1>
             <p className="text-sm text-muted-foreground mt-1">
