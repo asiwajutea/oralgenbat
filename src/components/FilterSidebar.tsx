@@ -18,6 +18,7 @@ export interface FilterState {
 }
 
 const statusOptions = [
+  { value: "Awaiting Review", label: "Awaiting Review" },
   { value: "Pending", label: "Pending" },
   { value: "Audit Passed", label: "Audit Passed" },
   { value: "Audit Failed", label: "Audit Failed" },

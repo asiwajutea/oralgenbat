@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,17 +18,28 @@ interface Audit {
   id: string;
   file_name: string;
   file_url: string;
-  status: "Pending" | "Audit Passed" | "Audit Failed";
+  status: "Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review";
   uploaded_at: string;
   last_modified: string;
+  mobile_zip_url: string | null;
+  mobile_zip_uploaded_at: string | null;
+  reviewed_by: string | null;
 }
 
 interface AuditTableProps {
   audits: Audit[];
+  onRefresh: () => void;
 }
 
 const getStatusBadge = (status: Audit["status"]) => {
   switch (status) {
+    case "Awaiting Review":
+      return (
+        <Badge className="flex items-center gap-1 bg-orange-100 text-orange-700 hover:bg-orange-100/90">
+          <Clock className="h-3 w-3" />
+          Awaiting Review
+        </Badge>
+      );
     case "Audit Failed":
       return (
         <Badge variant="destructive" className="flex items-center gap-1">
@@ -51,7 +64,7 @@ const getStatusBadge = (status: Audit["status"]) => {
   }
 };
 
-export const AuditTable = ({ audits }: AuditTableProps) => {
+export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const toggleRow = (id: string) => {
@@ -62,6 +75,125 @@ export const AuditTable = ({ audits }: AuditTableProps) => {
       newExpanded.add(id);
     }
     setExpandedRows(newExpanded);
+  };
+
+  const handleMobileZipUpload = async (auditId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.zip';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${auditId}/${Date.now()}.${fileExt}`;
+        
+        const { data, error } = await supabase.storage
+          .from('mobile-zips')
+          .upload(filePath, file);
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('mobile-zips')
+          .getPublicUrl(filePath);
+
+        await supabase
+          .from('audits')
+          .update({
+            mobile_zip_url: publicUrl,
+            mobile_zip_uploaded_at: new Date().toISOString(),
+          })
+          .eq('id', auditId);
+
+        onRefresh();
+        toast({
+          title: "Success",
+          description: "Mobile materials uploaded successfully",
+        });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to upload mobile materials",
+          variant: "destructive",
+        });
+      }
+    };
+    input.click();
+  };
+
+  const handlePdfReplace = async (auditId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${Date.now()}.${fileExt}`;
+        
+        const { data, error } = await supabase.storage
+          .from('audit-pdfs')
+          .upload(filePath, file);
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('audit-pdfs')
+          .getPublicUrl(filePath);
+
+        await supabase
+          .from('audits')
+          .update({
+            file_url: publicUrl,
+            file_name: file.name,
+          })
+          .eq('id', auditId);
+
+        onRefresh();
+        toast({
+          title: "Success",
+          description: "PDF replaced successfully",
+        });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to replace PDF",
+          variant: "destructive",
+        });
+      }
+    };
+    input.click();
+  };
+
+  const handleDelete = async (auditId: string) => {
+    if (!confirm("Are you sure you want to delete this interview? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('audits')
+        .delete()
+        .eq('id', auditId);
+
+      if (error) throw error;
+
+      onRefresh();
+      toast({
+        title: "Success",
+        description: "Interview deleted successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete interview",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -112,26 +244,105 @@ export const AuditTable = ({ audits }: AuditTableProps) => {
                   </TableRow>
                   {isExpanded && (
                     <TableRow>
-                      <TableCell colSpan={4} className="bg-muted/20 p-6">
-                        <div className="space-y-2">
-                          <div>
-                            <span className="font-medium">File Name:</span>{" "}
-                            <span className="font-mono text-sm">{audit.file_name}</span>
+                      <TableCell colSpan={4} className="bg-muted/20 p-0">
+                        <div className="p-6">
+                          {/* Header: Interview Details + Action Buttons */}
+                          <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-lg font-semibold">Interview Details</h3>
+                            <div className="flex items-center gap-2">
+                              <Button className="bg-cyan-600 hover:bg-cyan-700 h-11">
+                                REVIEW INTERVIEW
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleDelete(audit.id)}
+                              >
+                                <Trash2 className="h-5 w-5 text-muted-foreground" />
+                              </Button>
+                            </div>
                           </div>
-                          <div>
-                            <span className="font-medium">Uploaded:</span>{" "}
-                            {format(new Date(audit.uploaded_at), "PPpp")}
-                          </div>
-                          <div>
-                            <span className="font-medium">File URL:</span>{" "}
-                            <a
-                              href={audit.file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline text-sm"
-                            >
-                              View PDF
-                            </a>
+
+                          {/* Details Grid */}
+                          <div className="space-y-4">
+                            {/* Mobile Zip File Row */}
+                            <div className="flex items-center justify-between py-3 border-b">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">Mobile Zip File</span>
+                                <Info className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {audit.mobile_zip_url ? (
+                                  <>
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                      <span>Uploaded</span>
+                                    </div>
+                                    <Button variant="ghost" size="icon" asChild>
+                                      <a href={audit.mobile_zip_url} target="_blank" rel="noopener noreferrer">
+                                        <Eye className="h-4 w-4" />
+                                      </a>
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-9"
+                                      onClick={() => handleMobileZipUpload(audit.id)}
+                                    >
+                                      <Upload className="h-4 w-4 mr-2" />
+                                      REPLACE MAT
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9"
+                                    onClick={() => handleMobileZipUpload(audit.id)}
+                                  >
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    ATTACH MAT
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* PDF Scan Row */}
+                            <div className="flex items-center justify-between py-3 border-b">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">PDF Scan</span>
+                                <Info className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="text-sm text-muted-foreground">
+                                  {format(new Date(audit.uploaded_at), "dd MMM yyyy")}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-9"
+                                  onClick={() => handlePdfReplace(audit.id)}
+                                >
+                                  <Upload className="h-4 w-4 mr-2" />
+                                  REPLACE PDF
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Reviewed By Row */}
+                            <div className="flex items-center justify-between py-3">
+                              <span className="text-sm font-medium">Reviewed By</span>
+                              <div className="flex items-center gap-2">
+                                {audit.reviewed_by ? (
+                                  <>
+                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    <span className="text-sm">{audit.reviewed_by}</span>
+                                  </>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">-</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </TableCell>
