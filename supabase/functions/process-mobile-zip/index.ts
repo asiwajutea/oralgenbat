@@ -272,29 +272,10 @@ async function analyzeAudioFromZip(zipFile: any): Promise<AudioAnalysis> {
     } catch (parseError) {
       console.error("Music-metadata parsing failed:", parseError);
       
-      // Method 2: Detect MP3 frames and calculate duration
-      try {
-        console.log("Attempting MP3 frame detection...");
-        duration = estimateDurationFromFrames(audioData);
-        if (duration > 0) {
-          console.log(`✓ Calculated duration from MP3 frames: ${duration} seconds`);
-        } else {
-          throw new Error("Frame detection returned 0");
-        }
-      } catch (frameError) {
-        console.error("Frame detection failed:", frameError);
-        
-        // Method 3: Use file size with common bitrates
-        console.log("Using file size estimation with common bitrates...");
-        // Try multiple common bitrates and pick the middle estimate
-        const estimates = [
-          audioData.length / 16000,  // 128 kbps
-          audioData.length / 24000,  // 192 kbps
-          audioData.length / 12000,  // 96 kbps
-        ];
-        duration = Math.round(estimates[0]); // Default to 128kbps estimate
-        console.log(`✓ Fallback duration estimation: ${duration} seconds (file size / 128kbps)`);
-      }
+      // Fallback: Parse AAC/ADTS frames manually
+      console.log("Attempting AAC/ADTS frame detection...");
+      duration = estimateAACDurationFromFrames(audioData);
+      console.log(`✓ Calculated AAC duration: ${duration} seconds`);
     }
     
     console.log(`Final calculated duration: ${duration} seconds`);
@@ -317,36 +298,47 @@ async function analyzeAudioFromZip(zipFile: any): Promise<AudioAnalysis> {
   }
 }
 
-// Helper function to estimate duration from MP3 frames
-function estimateDurationFromFrames(audioData: Uint8Array): number {
+// Helper function to estimate duration from AAC/ADTS frames
+function estimateAACDurationFromFrames(audioData: Uint8Array): number {
   let frameCount = 0;
-  let sampleRate = 44100; // Default sample rate
-  const samplesPerFrame = 1152; // Standard for MPEG1 Layer 3
+  let sampleRate = 44100; // Default
+  let offset = 0;
   
-  // Scan for MP3 sync bytes (0xFF 0xFB or 0xFF 0xFA)
-  for (let i = 0; i < audioData.length - 1; i++) {
-    if (audioData[i] === 0xFF && (audioData[i + 1] & 0xE0) === 0xE0) {
-      frameCount++;
-      
-      // Try to extract sample rate from frame header (if at start of frame)
-      if (frameCount === 1 && i + 3 < audioData.length) {
-        const byte2 = audioData[i + 2];
-        const sampleRateIndex = (byte2 >> 2) & 0x03;
-        const sampleRates = [44100, 48000, 32000];
-        if (sampleRateIndex < 3) {
-          sampleRate = sampleRates[sampleRateIndex];
-        }
+  // AAC frame = 1024 samples
+  const SAMPLES_PER_AAC_FRAME = 1024;
+  
+  // Sample rate lookup table for AAC/ADTS
+  const sampleRates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+  
+  while (offset < audioData.length - 7) {
+    // Check for ADTS sync word (0xFFF)
+    if (audioData[offset] === 0xFF && (audioData[offset + 1] & 0xF0) === 0xF0) {
+      // Extract sample rate index from header
+      const sampleRateIndex = (audioData[offset + 2] >> 2) & 0x0F;
+      if (sampleRateIndex < sampleRates.length && frameCount === 0) {
+        sampleRate = sampleRates[sampleRateIndex];
       }
       
-      // Skip ahead to avoid counting same frame multiple times
-      i += 100;
+      // Extract frame length from ADTS header
+      const frameLength = ((audioData[offset + 3] & 0x03) << 11) |
+                         (audioData[offset + 4] << 3) |
+                         ((audioData[offset + 5] >> 5) & 0x07);
+      
+      if (frameLength > 0 && frameLength < 8192) {
+        frameCount++;
+        offset += frameLength;
+      } else {
+        offset++;
+      }
+    } else {
+      offset++;
     }
   }
   
-  console.log(`Detected ${frameCount} MP3 frames, sample rate: ${sampleRate} Hz`);
+  console.log(`Detected ${frameCount} AAC frames, sample rate: ${sampleRate} Hz`);
   
   if (frameCount > 0) {
-    const duration = Math.round((frameCount * samplesPerFrame) / sampleRate);
+    const duration = Math.round((frameCount * SAMPLES_PER_AAC_FRAME) / sampleRate);
     return duration;
   }
   
