@@ -98,19 +98,23 @@ const ReviewInterview = () => {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen flex">
       {/* Left Panel - Metadata & Media */}
-      <div className="w-1/2 border-r border-border overflow-y-auto bg-background">
-        <div className="p-6 space-y-6">
+      <div className="w-1/2 border-r border-border bg-background h-screen flex flex-col">
+        {/* Sticky Header Section */}
+        <div className="flex-shrink-0 p-6 pb-0 border-b border-border">
           <ReviewNavigation nextAuditId={nextAudit?.id} />
           
-          <div className="border-b border-border pb-4">
+          <div className="pb-4 mt-6">
             <h1 className="text-2xl font-bold">Interview Review</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Interview ID: {audit.file_name}
             </p>
           </div>
+        </div>
 
+        {/* Scrollable Content Section */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {metadata ? (
             <>
               <MetadataPanel metadata={metadata} />
@@ -131,7 +135,7 @@ const ReviewInterview = () => {
       </div>
 
       {/* Right Panel - PDF Viewer */}
-      <div className="w-1/2 overflow-hidden bg-muted/5">
+      <div className="w-1/2 h-screen overflow-hidden bg-muted/5">
         <PDFViewer pdfUrl={audit.file_url} />
       </div>
     </div>
