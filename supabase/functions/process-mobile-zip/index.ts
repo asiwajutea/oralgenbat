@@ -149,6 +149,27 @@ serve(async (req) => {
       pedigreeSegmentAnalysis
     );
 
+    // Helper function to format full name
+    const formatFullName = (person: any) => {
+      if (!person) return null;
+      const parts = [person.title, person.firstName, person.lastName].filter(Boolean);
+      return parts.length > 0 ? parts.join(" ").trim() : null;
+    };
+
+    // Helper function to format location
+    const formatLocation = (place: any) => {
+      if (!place) return null;
+      const parts = [place.town, place.district, place.region, place.country].filter(Boolean);
+      return parts.length > 0 ? parts.join(", ") : null;
+    };
+
+    // Calculate birth year from age if available
+    const calculateBirthYear = (age: number | null) => {
+      if (!age) return null;
+      const currentYear = new Date().getFullYear();
+      return currentYear - age;
+    };
+
     // Insert metadata into database
     const { error: metadataError } = await supabase
       .from("interview_metadata")
@@ -160,28 +181,28 @@ serve(async (req) => {
         interview_time: interviewTime,
         
         // Interviewee details
-        interviewee_title: metadata.interviewee_title,
-        interviewee_name: metadata.interviewee_name,
-        interviewee_age: metadata.interviewee_age,
-        interviewee_birth_year: metadata.interviewee_birth_year,
-        interviewee_tribe: metadata.interviewee_tribe,
-        interviewee_clan: metadata.interviewee_clan,
-        interviewee_birth_location: metadata.interviewee_birth_location,
-        interviewee_phone: metadata.interviewee_phone,
+        interviewee_title: metadata.interviewee?.title || null,
+        interviewee_name: formatFullName(metadata.interviewee),
+        interviewee_age: metadata.interviewee?.age || null,
+        interviewee_birth_year: calculateBirthYear(metadata.interviewee?.age),
+        interviewee_tribe: metadata.interviewee?.tribe || null,
+        interviewee_clan: metadata.interviewee?.clan || null,
+        interviewee_birth_location: formatLocation(metadata.interviewee?.birthPlace),
+        interviewee_phone: metadata.interviewee?.phone || null,
         
         // Interview details
-        interview_language: metadata.interview_language,
-        first_ancestor: metadata.first_ancestor,
-        total_names: metadata.total_names,
-        interview_location: metadata.interview_location,
+        interview_language: metadata.interview?.language || null,
+        first_ancestor: formatFullName(metadata.firstAncestor),
+        total_names: metadata.interview?.namesCapturedCount || null,
+        interview_location: formatLocation(metadata.interview?.place),
         
         // Interviewer details
-        interviewer_id: metadata.interviewer_id,
-        interviewer_name: metadata.interviewer_name,
-        field_manager: metadata.field_manager,
+        interviewer_id: metadata.interviewer?.id || null,
+        interviewer_name: formatFullName(metadata.interviewer),
+        field_manager: metadata.fieldManager?.name || null,
         
         // Contractor details
-        contractor_business_name: metadata.contractor_business_name,
+        contractor_business_name: metadata.contractor?.businessName || null,
         
         // Audio analysis
         family_story_duration: familyStoryAnalysis.duration,
