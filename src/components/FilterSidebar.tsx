@@ -13,13 +13,14 @@ interface FilterSidebarProps {
 export interface FilterState {
   statuses: string[];
   interviewId: string;
+  reviewer: string;
+  interviewerId: string;
   startDate: string;
   endDate: string;
 }
 
 const statusOptions = [
-  { value: "Awaiting Review", label: "Awaiting Review" },
-  { value: "Pending", label: "Pending" },
+  { value: "Pending", label: "Awaiting Review" },
   { value: "Audit Passed", label: "Audit Passed" },
   { value: "Audit Failed", label: "Audit Failed" },
 ];
@@ -28,6 +29,8 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
     interviewId: "",
+    reviewer: "",
+    interviewerId: "",
     startDate: "",
     endDate: "",
   });
@@ -52,6 +55,8 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
     const resetFilters: FilterState = {
       statuses: [],
       interviewId: "",
+      reviewer: "",
+      interviewerId: "",
       startDate: "",
       endDate: "",
     };
@@ -103,6 +108,30 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
             placeholder="Search by ID..."
             value={filters.interviewId}
             onChange={(e) => handleInputChange("interviewId", e.target.value)}
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="reviewer" className="text-sm font-medium mb-2 block">
+            Reviewer
+          </Label>
+          <Input
+            id="reviewer"
+            placeholder="Search by reviewer..."
+            value={filters.reviewer}
+            onChange={(e) => handleInputChange("reviewer", e.target.value)}
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="interviewerId" className="text-sm font-medium mb-2 block">
+            Interviewer ID
+          </Label>
+          <Input
+            id="interviewerId"
+            placeholder="Search by interviewer ID..."
+            value={filters.interviewerId}
+            onChange={(e) => handleInputChange("interviewerId", e.target.value)}
           />
         </div>
 
