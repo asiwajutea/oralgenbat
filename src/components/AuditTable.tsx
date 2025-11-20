@@ -88,8 +88,11 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
       if (!file) return;
 
       try {
-        const fileExt = file.name.split('.').pop();
-        const filePath = `${auditId}/${Date.now()}.${fileExt}`;
+        console.log('=== AUDIT TABLE UPLOAD DEBUG ===');
+        console.log('Original filename:', file.name);
+        console.log('Upload path:', `${auditId}/${file.name}`);
+        
+        const filePath = `${auditId}/${file.name}`;
         
         const { data, error } = await supabase.storage
           .from('mobile-zips')
