@@ -84,16 +84,11 @@ const Index = () => {
 
   return (
     <div className="flex min-h-screen w-full bg-background">
-      {/* Desktop Filter Sidebar */}
-      <div className="hidden lg:block">
-        <FilterSidebar onFilterChange={setFilters} />
-      </div>
-
       {/* Mobile Filter Sidebar */}
       {isFilterOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setIsFilterOpen(false)} />
-          <div className="fixed left-0 top-0 h-full w-80 shadow-lg z-50">
+          <div className="fixed right-0 top-0 h-full w-[336px] shadow-lg z-50">
             <FilterSidebar onFilterChange={setFilters} onClose={() => setIsFilterOpen(false)} />
           </div>
         </div>
@@ -134,6 +129,11 @@ const Index = () => {
             <AuditTable audits={filteredAudits} />
           )}
         </main>
+      </div>
+
+      {/* Desktop Filter Sidebar */}
+      <div className="hidden lg:block">
+        <FilterSidebar onFilterChange={setFilters} />
       </div>
     </div>
   );
