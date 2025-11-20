@@ -280,11 +280,24 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                           {/* Grid layout for details */}
                           <div className="space-y-3">
                             {/* Row 1: Mobile Zip File */}
-                            <div className="grid grid-cols-[180px_auto_auto_140px_120px_auto] gap-3 items-center py-2 border-b">
+                            <div className="grid grid-cols-[180px_140px_auto_auto_120px_auto] gap-3 items-center py-2 border-b">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">Mobile Zip File</span>
                                 <Info className="h-3.5 w-3.5 text-muted-foreground" />
                               </div>
+                              
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 justify-start"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMobileZipUpload(audit.id);
+                                }}
+                              >
+                                <Upload className="h-3.5 w-3.5 mr-2" />
+                                {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
+                              </Button>
                               
                               {audit.mobile_zip_url ? (
                                 <>
@@ -311,19 +324,6 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                                 </>
                               )}
                               
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 justify-start"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMobileZipUpload(audit.id);
-                                }}
-                              >
-                                <Upload className="h-3.5 w-3.5 mr-2" />
-                                {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
-                              </Button>
-                              
                               <span className="text-sm font-medium">Reviewed By</span>
                               
                               <div className="flex items-center gap-1.5">
@@ -339,17 +339,11 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                             </div>
 
                             {/* Row 2: PDF Scan */}
-                            <div className="grid grid-cols-[180px_auto_auto_140px_120px_auto] gap-3 items-center py-2 border-b">
+                            <div className="grid grid-cols-[180px_140px_auto_auto_120px_auto] gap-3 items-center py-2">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">PDF Scan</span>
                                 <Info className="h-3.5 w-3.5 text-muted-foreground" />
                               </div>
-                              
-                              <span className="text-sm text-muted-foreground">
-                                {format(new Date(audit.uploaded_at), "dd MMM yyyy")}
-                              </span>
-                              
-                              <div></div>
                               
                               <Button
                                 variant="outline"
@@ -364,23 +358,14 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                                 REPLACE PDF
                               </Button>
                               
-                              <span className="text-sm font-medium">Cloud Audit</span>
-                              
-                              <span className="text-sm text-muted-foreground">-</span>
-                            </div>
-
-                            {/* Row 3: Data Entry By */}
-                            <div className="grid grid-cols-[180px_auto_auto_140px_120px_auto] gap-3 items-center py-2">
-                              <span className="text-sm font-medium">Data Entry By</span>
-                              
-                              <span className="text-sm text-muted-foreground">-</span>
-                              
                               <div></div>
                               <div></div>
                               
-                              <span className="text-sm font-medium">VAC Audit</span>
+                              <span className="text-sm font-medium">Uploaded At</span>
                               
-                              <span className="text-sm text-muted-foreground">-</span>
+                              <span className="text-sm text-muted-foreground">
+                                {format(new Date(audit.uploaded_at), "dd MMM yyyy, hh:mm a")}
+                              </span>
                             </div>
                           </div>
                         </div>
