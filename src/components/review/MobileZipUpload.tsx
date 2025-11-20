@@ -31,8 +31,7 @@ export const MobileZipUpload = ({ auditId, onUploadSuccess }: MobileZipUploadPro
         title: "Uploading mobile ZIP file...",
       });
 
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${auditId}/${Date.now()}.${fileExt}`;
+      const filePath = `${auditId}/${file.name}`;
 
       const { error: uploadError } = await supabase.storage
         .from('mobile-zips')
