@@ -49,10 +49,10 @@ const Index = () => {
         query = query.ilike("file_name", `%${filters.interviewId}%`);
       }
       if (filters.startDate) {
-        query = query.gte("last_modified", filters.startDate);
+        query = query.gte("uploaded_at", filters.startDate);
       }
       if (filters.endDate) {
-        query = query.lte("last_modified", filters.endDate);
+        query = query.lte("uploaded_at", filters.endDate);
       }
 
       // Add pagination and ordering
@@ -60,7 +60,7 @@ const Index = () => {
       const to = from + itemsPerPage - 1;
       
       const { data, error, count } = await query
-        .order("last_modified", { ascending: false })
+        .order("uploaded_at", { ascending: false })
         .range(from, to);
 
       if (error) throw error;
