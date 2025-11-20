@@ -16,34 +16,43 @@ export type Database = {
     Tables: {
       audits: {
         Row: {
+          action_plan: string | null
           file_name: string
           file_url: string
           id: string
           last_modified: string
           mobile_zip_uploaded_at: string | null
           mobile_zip_url: string | null
+          review_comment: string | null
+          reviewed_at: string | null
           reviewed_by: string | null
           status: Database["public"]["Enums"]["audit_status"]
           uploaded_at: string
         }
         Insert: {
+          action_plan?: string | null
           file_name: string
           file_url: string
           id?: string
           last_modified?: string
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
+          review_comment?: string | null
+          reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
           uploaded_at?: string
         }
         Update: {
+          action_plan?: string | null
           file_name?: string
           file_url?: string
           id?: string
           last_modified?: string
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
+          review_comment?: string | null
+          reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
           uploaded_at?: string
