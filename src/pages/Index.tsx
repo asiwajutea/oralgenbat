@@ -25,6 +25,8 @@ const Index = () => {
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
     interviewId: "",
+    reviewer: "",
+    interviewerId: "",
     startDate: "",
     endDate: "",
   });
@@ -47,6 +49,13 @@ const Index = () => {
       }
       if (filters.interviewId) {
         query = query.ilike("file_name", `%${filters.interviewId}%`);
+      }
+      if (filters.reviewer) {
+        query = query.ilike("reviewed_by", `%${filters.reviewer}%`);
+      }
+      if (filters.interviewerId) {
+        // Extract interviewer ID from file_name pattern: NG71_704_20251013_1000 -> 704
+        query = query.ilike("file_name", `%_${filters.interviewerId}_%`);
       }
       if (filters.startDate) {
         query = query.gte("uploaded_at", filters.startDate);
