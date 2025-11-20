@@ -8,6 +8,7 @@ import { AudioAnalysisPanel } from "@/components/review/AudioAnalysisPanel";
 import { PDFViewer } from "@/components/review/PDFViewer";
 import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 import { MobileZipUpload } from "@/components/review/MobileZipUpload";
+import { ReviewActions } from "@/components/review/ReviewActions";
 
 const ReviewInterview = () => {
   const { auditId } = useParams<{ auditId: string }>();
@@ -102,15 +103,23 @@ const ReviewInterview = () => {
       {/* Left Panel - Metadata & Media */}
       <div className="w-1/2 border-r border-border bg-background h-screen flex flex-col">
         {/* Sticky Header Section */}
-        <div className="flex-shrink-0 p-6 pb-0 border-b border-border">
-          <ReviewNavigation nextAuditId={nextAudit?.id} />
-          
-          <div className="pb-4 mt-6">
-            <h1 className="text-2xl font-bold">Interview Review</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Interview ID: {audit.file_name}
-            </p>
+        <div className="flex-shrink-0 sticky top-0 z-10 bg-background">
+          <div className="p-6 pb-0 border-b border-border">
+            <ReviewNavigation nextAuditId={nextAudit?.id} />
+            
+            <div className="pb-4 mt-6">
+              <h1 className="text-2xl font-bold">Interview Review</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Interview ID: {audit.file_name}
+              </p>
+            </div>
           </div>
+          
+          <ReviewActions 
+            auditId={auditId!} 
+            currentStatus={audit.status}
+            nextAuditId={nextAudit?.id}
+          />
         </div>
 
         {/* Scrollable Content Section */}
