@@ -58,7 +58,11 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      audit_status: "Pending" | "Audit Passed" | "Audit Failed"
+      audit_status:
+        | "Pending"
+        | "Audit Passed"
+        | "Audit Failed"
+        | "Awaiting Review"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -186,7 +190,12 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      audit_status: ["Pending", "Audit Passed", "Audit Failed"],
+      audit_status: [
+        "Pending",
+        "Audit Passed",
+        "Audit Failed",
+        "Awaiting Review",
+      ],
     },
   },
 } as const
