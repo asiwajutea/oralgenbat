@@ -250,9 +250,9 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                     </TableCell>
                   </TableRow>
                   {isExpanded && (
-                    <TableRow>
+                    <TableRow className="animate-accordion-down">
                       <TableCell colSpan={4} className="bg-muted/10 p-0">
-                        <div className="p-4">
+                        <div className="p-4 transition-all duration-300">
                           {/* Header with title and actions */}
                           <div className="flex items-center justify-between mb-4">
                             <h3 className="text-sm font-semibold">Interview Details</h3>
@@ -280,7 +280,7 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                           {/* Grid layout for details */}
                           <div className="space-y-3">
                             {/* Row 1: Mobile Zip File */}
-                            <div className="grid grid-cols-[180px_140px_auto_auto_120px_auto] gap-3 items-center py-2 border-b">
+                            <div className="grid grid-cols-[180px_140px_100px_50px_120px_auto] gap-3 items-center py-2 border-b">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">Mobile Zip File</span>
                                 <Info className="h-3.5 w-3.5 text-muted-foreground" />
@@ -339,7 +339,7 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                             </div>
 
                             {/* Row 2: PDF Scan */}
-                            <div className="grid grid-cols-[180px_140px_auto_auto_120px_auto] gap-3 items-center py-2">
+                            <div className="grid grid-cols-[180px_140px_100px_50px_120px_auto] gap-3 items-center py-2">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">PDF Scan</span>
                                 <Info className="h-3.5 w-3.5 text-muted-foreground" />
