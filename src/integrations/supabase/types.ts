@@ -50,6 +50,151 @@ export type Database = {
         }
         Relationships: []
       }
+      interview_metadata: {
+        Row: {
+          audio_quality_summary: string | null
+          audit_id: string | null
+          contractor_business_name: string | null
+          contractor_id: string
+          created_at: string | null
+          family_story_duration: number | null
+          family_story_noise_level: number | null
+          family_story_silence_level: number | null
+          field_manager: string | null
+          first_ancestor: string | null
+          id: string
+          interview_date: string
+          interview_language: string | null
+          interview_location: string | null
+          interview_time: string
+          interviewee_age: number | null
+          interviewee_birth_location: string | null
+          interviewee_birth_year: number | null
+          interviewee_clan: string | null
+          interviewee_name: string | null
+          interviewee_phone: string | null
+          interviewee_title: string | null
+          interviewee_tribe: string | null
+          interviewer_code: string
+          interviewer_id: string | null
+          interviewer_name: string | null
+          pedigree_segment_duration: number | null
+          pedigree_segment_noise_level: number | null
+          pedigree_segment_silence_level: number | null
+          total_names: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          audio_quality_summary?: string | null
+          audit_id?: string | null
+          contractor_business_name?: string | null
+          contractor_id: string
+          created_at?: string | null
+          family_story_duration?: number | null
+          family_story_noise_level?: number | null
+          family_story_silence_level?: number | null
+          field_manager?: string | null
+          first_ancestor?: string | null
+          id?: string
+          interview_date: string
+          interview_language?: string | null
+          interview_location?: string | null
+          interview_time: string
+          interviewee_age?: number | null
+          interviewee_birth_location?: string | null
+          interviewee_birth_year?: number | null
+          interviewee_clan?: string | null
+          interviewee_name?: string | null
+          interviewee_phone?: string | null
+          interviewee_title?: string | null
+          interviewee_tribe?: string | null
+          interviewer_code: string
+          interviewer_id?: string | null
+          interviewer_name?: string | null
+          pedigree_segment_duration?: number | null
+          pedigree_segment_noise_level?: number | null
+          pedigree_segment_silence_level?: number | null
+          total_names?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          audio_quality_summary?: string | null
+          audit_id?: string | null
+          contractor_business_name?: string | null
+          contractor_id?: string
+          created_at?: string | null
+          family_story_duration?: number | null
+          family_story_noise_level?: number | null
+          family_story_silence_level?: number | null
+          field_manager?: string | null
+          first_ancestor?: string | null
+          id?: string
+          interview_date?: string
+          interview_language?: string | null
+          interview_location?: string | null
+          interview_time?: string
+          interviewee_age?: number | null
+          interviewee_birth_location?: string | null
+          interviewee_birth_year?: number | null
+          interviewee_clan?: string | null
+          interviewee_name?: string | null
+          interviewee_phone?: string | null
+          interviewee_title?: string | null
+          interviewee_tribe?: string | null
+          interviewer_code?: string
+          interviewer_id?: string | null
+          interviewer_name?: string | null
+          pedigree_segment_duration?: number | null
+          pedigree_segment_noise_level?: number | null
+          pedigree_segment_silence_level?: number | null
+          total_names?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_metadata_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interview_photos: {
+        Row: {
+          audit_id: string | null
+          created_at: string | null
+          display_order: number | null
+          file_name: string
+          id: string
+          storage_path: string
+        }
+        Insert: {
+          audit_id?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          file_name: string
+          id?: string
+          storage_path: string
+        }
+        Update: {
+          audit_id?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          file_name?: string
+          id?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_photos_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

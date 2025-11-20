@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +67,7 @@ const getStatusBadge = (status: Audit["status"]) => {
 
 export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const navigate = useNavigate();
 
   const toggleRow = (id: string) => {
     const newExpanded = new Set(expandedRows);
@@ -107,11 +109,37 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
           })
           .eq('id', auditId);
 
-        onRefresh();
         toast({
-          title: "Success",
-          description: "Mobile materials uploaded successfully",
+          title: "Processing",
+          description: "Mobile materials uploaded. Processing ZIP file...",
         });
+
+        // Call edge function to process the ZIP
+        const { data: processData, error: processError } = await supabase.functions.invoke(
+          'process-mobile-zip',
+          {
+            body: {
+              auditId,
+              mobileZipUrl: publicUrl,
+            },
+          }
+        );
+
+        if (processError) {
+          console.error("Error processing ZIP:", processError);
+          toast({
+            title: "Warning",
+            description: "ZIP uploaded but processing failed. Please try again.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Success",
+            description: "Mobile materials processed successfully",
+          });
+        }
+
+        onRefresh();
       } catch (error) {
         toast({
           title: "Error",
@@ -259,7 +287,10 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                             <div className="flex items-center gap-2">
                               <Button 
                                 className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/review/${audit.id}`);
+                                }}
                               >
                                 REVIEW INTERVIEW
                               </Button>
