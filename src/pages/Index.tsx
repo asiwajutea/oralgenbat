@@ -43,7 +43,7 @@ const Index = () => {
 
       // Apply filters to query
       if (filters.statuses.length > 0) {
-        query = query.in("status", filters.statuses);
+        query = query.in("status", filters.statuses as Array<Audit["status"]>);
       }
       if (filters.interviewId) {
         query = query.ilike("file_name", `%${filters.interviewId}%`);
