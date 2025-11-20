@@ -219,12 +219,19 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
               const isExpanded = expandedRows.has(audit.id);
               return (
                 <>
-                  <TableRow key={audit.id} className="cursor-pointer hover:bg-muted/50">
+                  <TableRow 
+                    key={audit.id} 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => toggleRow(audit.id)}
+                  >
                     <TableCell>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleRow(audit.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleRow(audit.id);
+                        }}
                         className="h-6 w-6 p-0"
                       >
                         {isExpanded ? (
@@ -244,102 +251,121 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                   </TableRow>
                   {isExpanded && (
                     <TableRow>
-                      <TableCell colSpan={4} className="bg-muted/20 p-0">
-                        <div className="p-6">
-                          {/* Header: Interview Details + Action Buttons */}
-                          <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-lg font-semibold">Interview Details</h3>
-                            <div className="flex items-center gap-2">
-                              <Button className="bg-cyan-600 hover:bg-cyan-700 h-11">
-                                REVIEW INTERVIEW
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={() => handleDelete(audit.id)}
-                              >
-                                <Trash2 className="h-5 w-5 text-muted-foreground" />
-                              </Button>
-                            </div>
+                      <TableCell colSpan={4} className="bg-muted/10 p-0">
+                        <div className="p-3">
+                          {/* Compact Action Bar */}
+                          <div className="flex items-center justify-end gap-1.5 mb-2">
+                            <Button 
+                              className="bg-cyan-600 hover:bg-cyan-700 h-8 text-xs px-3"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              REVIEW
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(audit.id);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
                           </div>
 
-                          {/* Details Grid */}
-                          <div className="space-y-4">
-                            {/* Mobile Zip File Row */}
-                            <div className="flex items-center justify-between py-3 border-b">
+                          {/* Compact Details Grid */}
+                          <div className="space-y-2">
+                            {/* Mobile Materials Row */}
+                            <div className="flex items-center justify-between py-1.5">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Mobile Materials
+                              </span>
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">Mobile Zip File</span>
-                                <Info className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                              <div className="flex items-center gap-3">
                                 {audit.mobile_zip_url ? (
                                   <>
-                                    <div className="flex items-center gap-2 text-sm">
-                                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                      <CheckCircle2 className="h-3 w-3 text-green-600" />
                                       <span>Uploaded</span>
                                     </div>
-                                    <Button variant="ghost" size="icon" asChild>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="h-7 w-7"
+                                      onClick={(e) => e.stopPropagation()}
+                                      asChild
+                                    >
                                       <a href={audit.mobile_zip_url} target="_blank" rel="noopener noreferrer">
-                                        <Eye className="h-4 w-4" />
+                                        <Eye className="h-3.5 w-3.5" />
                                       </a>
                                     </Button>
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      className="h-9"
-                                      onClick={() => handleMobileZipUpload(audit.id)}
+                                      className="h-7 text-xs px-2"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMobileZipUpload(audit.id);
+                                      }}
                                     >
-                                      <Upload className="h-4 w-4 mr-2" />
-                                      REPLACE MAT
+                                      <Upload className="h-3 w-3 mr-1" />
+                                      REPLACE
                                     </Button>
                                   </>
                                 ) : (
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-9"
-                                    onClick={() => handleMobileZipUpload(audit.id)}
+                                    className="h-7 text-xs px-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMobileZipUpload(audit.id);
+                                    }}
                                   >
-                                    <Upload className="h-4 w-4 mr-2" />
-                                    ATTACH MAT
+                                    <Upload className="h-3 w-3 mr-1" />
+                                    ATTACH
                                   </Button>
                                 )}
                               </div>
                             </div>
 
                             {/* PDF Scan Row */}
-                            <div className="flex items-center justify-between py-3 border-b">
+                            <div className="flex items-center justify-between py-1.5">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                PDF Scan
+                              </span>
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">PDF Scan</span>
-                                <Info className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="text-sm text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   {format(new Date(audit.uploaded_at), "dd MMM yyyy")}
-                                </div>
+                                </span>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-9"
-                                  onClick={() => handlePdfReplace(audit.id)}
+                                  className="h-7 text-xs px-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePdfReplace(audit.id);
+                                  }}
                                 >
-                                  <Upload className="h-4 w-4 mr-2" />
-                                  REPLACE PDF
+                                  <Upload className="h-3 w-3 mr-1" />
+                                  REPLACE
                                 </Button>
                               </div>
                             </div>
 
                             {/* Reviewed By Row */}
-                            <div className="flex items-center justify-between py-3">
-                              <span className="text-sm font-medium">Reviewed By</span>
-                              <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-between py-1.5">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                Reviewed By
+                              </span>
+                              <div className="flex items-center gap-1.5">
                                 {audit.reviewed_by ? (
                                   <>
-                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                    <span className="text-sm">{audit.reviewed_by}</span>
+                                    <CheckCircle2 className="h-3 w-3 text-green-600" />
+                                    <span className="text-xs">{audit.reviewed_by}</span>
                                   </>
                                 ) : (
-                                  <span className="text-sm text-muted-foreground">-</span>
+                                  <span className="text-xs text-muted-foreground">-</span>
                                 )}
                               </div>
                             </div>
