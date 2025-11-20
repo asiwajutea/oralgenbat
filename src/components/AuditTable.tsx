@@ -252,122 +252,135 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                   {isExpanded && (
                     <TableRow>
                       <TableCell colSpan={4} className="bg-muted/10 p-0">
-                        <div className="p-3">
-                          {/* Compact Action Bar */}
-                          <div className="flex items-center justify-end gap-1.5 mb-2">
-                            <Button 
-                              className="bg-cyan-600 hover:bg-cyan-700 h-8 text-xs px-3"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              REVIEW
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(audit.id);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            </Button>
+                        <div className="p-4">
+                          {/* Header with title and actions */}
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-semibold">Interview Details</h3>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                REVIEW INTERVIEW
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                className="h-9 w-9"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDelete(audit.id);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            </div>
                           </div>
 
-                          {/* Compact Details Grid */}
-                          <div className="space-y-2">
-                            {/* Mobile Materials Row */}
-                            <div className="flex items-center justify-between py-1.5">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                Mobile Materials
-                              </span>
-                              <div className="flex items-center gap-2">
-                                {audit.mobile_zip_url ? (
-                                  <>
-                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                      <CheckCircle2 className="h-3 w-3 text-green-600" />
-                                      <span>Uploaded</span>
-                                    </div>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon" 
-                                      className="h-7 w-7"
-                                      onClick={(e) => e.stopPropagation()}
-                                      asChild
-                                    >
-                                      <a href={audit.mobile_zip_url} target="_blank" rel="noopener noreferrer">
-                                        <Eye className="h-3.5 w-3.5" />
-                                      </a>
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 text-xs px-2"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleMobileZipUpload(audit.id);
-                                      }}
-                                    >
-                                      <Upload className="h-3 w-3 mr-1" />
-                                      REPLACE
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 text-xs px-2"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleMobileZipUpload(audit.id);
-                                    }}
+                          {/* Grid layout for details */}
+                          <div className="space-y-3">
+                            {/* Row 1: Mobile Zip File */}
+                            <div className="grid grid-cols-[180px_auto_auto_140px_120px_auto] gap-3 items-center py-2 border-b">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-medium">Mobile Zip File</span>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                              </div>
+                              
+                              {audit.mobile_zip_url ? (
+                                <>
+                                  <div className="flex items-center gap-1.5">
+                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    <span className="text-sm">Uploaded</span>
+                                  </div>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8"
+                                    onClick={(e) => e.stopPropagation()}
+                                    asChild
                                   >
-                                    <Upload className="h-3 w-3 mr-1" />
-                                    ATTACH
+                                    <a href={audit.mobile_zip_url} target="_blank" rel="noopener noreferrer">
+                                      <Eye className="h-4 w-4" />
+                                    </a>
                                   </Button>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* PDF Scan Row */}
-                            <div className="flex items-center justify-between py-1.5">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                PDF Scan
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">
-                                  {format(new Date(audit.uploaded_at), "dd MMM yyyy")}
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs px-2"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handlePdfReplace(audit.id);
-                                  }}
-                                >
-                                  <Upload className="h-3 w-3 mr-1" />
-                                  REPLACE
-                                </Button>
-                              </div>
-                            </div>
-
-                            {/* Reviewed By Row */}
-                            <div className="flex items-center justify-between py-1.5">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                Reviewed By
-                              </span>
+                                </>
+                              ) : (
+                                <>
+                                  <div></div>
+                                  <div></div>
+                                </>
+                              )}
+                              
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 justify-start"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMobileZipUpload(audit.id);
+                                }}
+                              >
+                                <Upload className="h-3.5 w-3.5 mr-2" />
+                                {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
+                              </Button>
+                              
+                              <span className="text-sm font-medium">Reviewed By</span>
+                              
                               <div className="flex items-center gap-1.5">
                                 {audit.reviewed_by ? (
                                   <>
-                                    <CheckCircle2 className="h-3 w-3 text-green-600" />
-                                    <span className="text-xs">{audit.reviewed_by}</span>
+                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    <span className="text-sm">{audit.reviewed_by}</span>
                                   </>
                                 ) : (
-                                  <span className="text-xs text-muted-foreground">-</span>
+                                  <span className="text-sm text-muted-foreground">-</span>
                                 )}
                               </div>
+                            </div>
+
+                            {/* Row 2: PDF Scan */}
+                            <div className="grid grid-cols-[180px_auto_auto_140px_120px_auto] gap-3 items-center py-2 border-b">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-medium">PDF Scan</span>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                              </div>
+                              
+                              <span className="text-sm text-muted-foreground">
+                                {format(new Date(audit.uploaded_at), "dd MMM yyyy")}
+                              </span>
+                              
+                              <div></div>
+                              
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 justify-start"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePdfReplace(audit.id);
+                                }}
+                              >
+                                <Upload className="h-3.5 w-3.5 mr-2" />
+                                REPLACE PDF
+                              </Button>
+                              
+                              <span className="text-sm font-medium">Cloud Audit</span>
+                              
+                              <span className="text-sm text-muted-foreground">-</span>
+                            </div>
+
+                            {/* Row 3: Data Entry By */}
+                            <div className="grid grid-cols-[180px_auto_auto_140px_120px_auto] gap-3 items-center py-2">
+                              <span className="text-sm font-medium">Data Entry By</span>
+                              
+                              <span className="text-sm text-muted-foreground">-</span>
+                              
+                              <div></div>
+                              <div></div>
+                              
+                              <span className="text-sm font-medium">VAC Audit</span>
+                              
+                              <span className="text-sm text-muted-foreground">-</span>
                             </div>
                           </div>
                         </div>
