@@ -26,6 +26,7 @@ interface ReviewActionsProps {
 
 export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewActionsProps) => {
   const [showFailDialog, setShowFailDialog] = useState(false);
+  const [showPassDialog, setShowPassDialog] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
   const [actionPlan, setActionPlan] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +53,7 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
         description: "The interview has been marked as passed.",
       });
 
+      setShowPassDialog(false);
       queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
       
       if (nextAuditId) {
@@ -131,15 +133,11 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
     <>
       <div className="flex items-center gap-3 py-3 px-6 border-b border-border bg-background">
         <Button
-          onClick={handlePass}
+          onClick={() => setShowPassDialog(true)}
           disabled={isReviewed || isSubmitting}
           className="gap-2 bg-green-600 hover:bg-green-700 text-white"
         >
-          {isSubmitting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <CheckCircle className="h-4 w-4" />
-          )}
+          <CheckCircle className="h-4 w-4" />
           Pass Interview
         </Button>
 
@@ -209,6 +207,31 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
                 "Submit Failure Report"
               )}
             </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Pass Confirmation Dialog */}
+      <AlertDialog open={showPassDialog} onOpenChange={setShowPassDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Pass Interview</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark this interview as passed? This action will update the interview status.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handlePass} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Passing...
+                </>
+              ) : (
+                "Confirm Pass"
+              )}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

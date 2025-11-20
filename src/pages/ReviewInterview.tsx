@@ -9,6 +9,7 @@ import { PDFViewer } from "@/components/review/PDFViewer";
 import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 import { ReviewActions } from "@/components/review/ReviewActions";
+import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 
 const ReviewInterview = () => {
   const { auditId } = useParams<{ auditId: string }>();
@@ -124,6 +125,14 @@ const ReviewInterview = () => {
 
         {/* Scrollable Content Section */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Show review comments for failed interviews */}
+          <ReviewCommentsPanel 
+            status={audit.status}
+            reviewComment={audit.review_comment}
+            actionPlan={audit.action_plan}
+            reviewedAt={audit.reviewed_at}
+          />
+          
           {metadata ? (
             <>
               <MetadataPanel metadata={metadata} />
