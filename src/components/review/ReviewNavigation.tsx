@@ -10,7 +10,7 @@ export const ReviewNavigation = ({ nextAuditId }: ReviewNavigationProps) => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex items-center justify-between border-b border-border pb-4 mb-6">
+    <div className="flex items-center justify-between">
       <Button
         variant="ghost"
         onClick={() => navigate("/")}
