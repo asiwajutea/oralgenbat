@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import JSZip from "https://esm.sh/jszip@3.10.1";
+import { parseBuffer } from "https://esm.sh/music-metadata@10.1.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -252,15 +253,24 @@ async function analyzeAudioFromZip(zipFile: any): Promise<AudioAnalysis> {
     // Read audio file as Uint8Array
     const audioData = await zipFile.async("uint8array");
     
-    // For MP3 files, estimate duration from file size (rough approximation)
-    // Average MP3 bitrate is ~128kbps = 16KB/s
-    const estimatedDuration = Math.round(audioData.length / 16000);
+    // Parse MP3 metadata to get accurate duration
+    let duration = 0;
+    try {
+      const metadata = await parseBuffer(audioData, { mimeType: 'audio/mpeg' });
+      duration = Math.round(metadata.format.duration || 0);
+      console.log(`Parsed MP3 duration: ${duration} seconds`);
+    } catch (parseError) {
+      console.error("Error parsing MP3 metadata:", parseError);
+      // Fallback to rough estimation only if parsing fails
+      duration = Math.round(audioData.length / 16000);
+      console.log(`Using fallback duration estimation: ${duration} seconds`);
+    }
     
-    // Analyze audio content
+    // Analyze audio content for noise/silence levels
     const analysis = await analyzeAudioBuffer(audioData);
     
     return {
-      duration: estimatedDuration,
+      duration,
       noiseLevel: analysis.noiseLevel,
       silenceLevel: analysis.silenceLevel,
     };
