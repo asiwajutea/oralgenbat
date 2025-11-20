@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { AlertCircle, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 
 interface ReviewCommentsPanelProps {
@@ -16,41 +18,57 @@ export const ReviewCommentsPanel = ({
   actionPlan, 
   reviewedAt 
 }: ReviewCommentsPanelProps) => {
+  const [isOpen, setIsOpen] = useState(true);
+
   // Only show for failed interviews
   if (status !== "Audit Failed" || !reviewComment || !actionPlan) {
     return null;
   }
 
   return (
-    <Card className="border-destructive">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-destructive" />
-            Review Feedback
-          </CardTitle>
-          <Badge variant="destructive">Failed</Badge>
-        </div>
-        {reviewedAt && (
-          <p className="text-sm text-muted-foreground">
-            Reviewed on {format(new Date(reviewedAt), "PPP 'at' p")}
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <h4 className="font-semibold text-sm mb-2">Reason for Failure</h4>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-            {reviewComment}
-          </p>
-        </div>
-        <div>
-          <h4 className="font-semibold text-sm mb-2">Action Plan for Correction</h4>
-          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-            {actionPlan}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card className="border-destructive">
+        <CollapsibleTrigger className="w-full">
+          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-destructive" />
+                Review Feedback
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Badge variant="destructive">Failed</Badge>
+                <ChevronDown 
+                  className={`h-4 w-4 transition-transform duration-200 ${
+                    isOpen ? '' : '-rotate-90'
+                  }`} 
+                />
+              </div>
+            </div>
+            {reviewedAt && (
+              <p className="text-sm text-muted-foreground text-left">
+                Reviewed on {format(new Date(reviewedAt), "PPP 'at' p")}
+              </p>
+            )}
+          </CardHeader>
+        </CollapsibleTrigger>
+        
+        <CollapsibleContent>
+          <CardContent className="space-y-4 pt-0">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Reason for Failure</h4>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {reviewComment}
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Action Plan for Correction</h4>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {actionPlan}
+              </p>
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 };
