@@ -7,6 +7,13 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface AuditPaginationProps {
   currentPage: number;
@@ -14,6 +21,7 @@ interface AuditPaginationProps {
   totalCount: number;
   itemsPerPage: number;
   onPageChange: (page: number) => void;
+  onItemsPerPageChange: (itemsPerPage: number) => void;
 }
 
 export const AuditPagination = ({
@@ -22,6 +30,7 @@ export const AuditPagination = ({
   totalCount,
   itemsPerPage,
   onPageChange,
+  onItemsPerPageChange,
 }: AuditPaginationProps) => {
   if (totalPages <= 1) return null;
 
@@ -59,10 +68,26 @@ export const AuditPagination = ({
   const pageNumbers = getPageNumbers();
 
   return (
-    <div className="mt-6 flex flex-col items-center gap-4">
-      <p className="text-sm text-muted-foreground">
-        Showing {startItem}-{endItem} of {totalCount} results
-      </p>
+    <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
+      <div className="flex items-center gap-3">
+        <p className="text-sm text-muted-foreground">
+          Showing {startItem}-{endItem} of {totalCount} results
+        </p>
+        <Select
+          value={itemsPerPage.toString()}
+          onValueChange={(value) => onItemsPerPageChange(Number(value))}
+        >
+          <SelectTrigger className="w-[110px] h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="10">10 / page</SelectItem>
+            <SelectItem value="25">25 / page</SelectItem>
+            <SelectItem value="50">50 / page</SelectItem>
+            <SelectItem value="100">100 / page</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       
       <Pagination>
         <PaginationContent>

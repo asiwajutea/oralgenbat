@@ -29,7 +29,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const fetchAudits = async () => {
     try {
@@ -74,12 +74,17 @@ const Index = () => {
 
   useEffect(() => {
     fetchAudits();
-  }, [currentPage, filters]);
+  }, [currentPage, filters, itemsPerPage]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
+
+  // Reset to page 1 when items per page changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [itemsPerPage]);
 
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -133,6 +138,7 @@ const Index = () => {
                 totalCount={totalCount}
                 itemsPerPage={itemsPerPage}
                 onPageChange={setCurrentPage}
+                onItemsPerPageChange={setItemsPerPage}
               />
             </>
           )}
