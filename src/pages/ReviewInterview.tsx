@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 import { MetadataPanel } from "@/components/review/MetadataPanel";
@@ -7,9 +7,11 @@ import { PhotosPanel } from "@/components/review/PhotosPanel";
 import { AudioAnalysisPanel } from "@/components/review/AudioAnalysisPanel";
 import { PDFViewer } from "@/components/review/PDFViewer";
 import { ReviewNavigation } from "@/components/review/ReviewNavigation";
+import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 
 const ReviewInterview = () => {
   const { auditId } = useParams<{ auditId: string }>();
+  const queryClient = useQueryClient();
 
   const { data: audit, isLoading: auditLoading } = useQuery({
     queryKey: ["audit", auditId],
@@ -116,14 +118,14 @@ const ReviewInterview = () => {
               <AudioAnalysisPanel metadata={metadata} />
             </>
           ) : (
-            <div className="p-8 text-center border border-dashed rounded-lg">
-              <p className="text-muted-foreground">
-                No mobile data available for this interview.
-              </p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Upload a mobile ZIP file to see interview details.
-              </p>
-            </div>
+            <MobileZipUpload 
+              auditId={auditId!}
+              onUploadSuccess={() => {
+                queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+                queryClient.invalidateQueries({ queryKey: ["interview-metadata", auditId] });
+                queryClient.invalidateQueries({ queryKey: ["interview-photos", auditId] });
+              }}
+            />
           )}
         </div>
       </div>
