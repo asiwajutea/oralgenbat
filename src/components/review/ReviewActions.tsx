@@ -1,13 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 
 interface ReviewActionsProps {
   auditId: string;
@@ -20,7 +29,6 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
   const [reviewComment, setReviewComment] = useState("");
   const [actionPlan, setActionPlan] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -47,7 +55,7 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
       queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
       
       if (nextAuditId) {
-        navigate(`/review/${nextAuditId}`);
+        setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
       }
     } catch (error) {
       console.error("Error passing interview:", error);
@@ -100,10 +108,12 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
       });
 
       setShowFailDialog(false);
+      setReviewComment("");
+      setActionPlan("");
       queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
       
       if (nextAuditId) {
-        navigate(`/review/${nextAuditId}`);
+        setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
       }
     } catch (error) {
       console.error("Error failing interview:", error);
