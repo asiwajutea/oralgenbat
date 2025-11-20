@@ -27,6 +27,10 @@ export const MobileZipUpload = ({ auditId, onUploadSuccess }: MobileZipUploadPro
     setUploadStatus('uploading');
 
     try {
+      console.log('=== UPLOAD DEBUG ===');
+      console.log('Original filename:', file.name);
+      console.log('Upload path:', `${auditId}/${file.name}`);
+      
       toast({
         title: "Uploading mobile ZIP file...",
       });
