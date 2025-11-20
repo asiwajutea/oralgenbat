@@ -12,9 +12,12 @@ interface Audit {
   id: string;
   file_name: string;
   file_url: string;
-  status: "Pending" | "Audit Passed" | "Audit Failed";
+  status: "Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review";
   uploaded_at: string;
   last_modified: string;
+  mobile_zip_url: string | null;
+  mobile_zip_uploaded_at: string | null;
+  reviewed_by: string | null;
 }
 
 const Index = () => {
@@ -40,7 +43,7 @@ const Index = () => {
 
       // Apply filters to query
       if (filters.statuses.length > 0) {
-        query = query.in("status", filters.statuses as Audit["status"][]);
+        query = query.in("status", filters.statuses);
       }
       if (filters.interviewId) {
         query = query.ilike("file_name", `%${filters.interviewId}%`);
@@ -131,7 +134,7 @@ const Index = () => {
             </div>
           ) : (
             <>
-              <AuditTable audits={audits} />
+              <AuditTable audits={audits} onRefresh={fetchAudits} />
               <AuditPagination
                 currentPage={currentPage}
                 totalPages={Math.ceil(totalCount / itemsPerPage)}

@@ -20,6 +20,9 @@ export type Database = {
           file_url: string
           id: string
           last_modified: string
+          mobile_zip_uploaded_at: string | null
+          mobile_zip_url: string | null
+          reviewed_by: string | null
           status: Database["public"]["Enums"]["audit_status"]
           uploaded_at: string
         }
@@ -28,6 +31,9 @@ export type Database = {
           file_url: string
           id?: string
           last_modified?: string
+          mobile_zip_uploaded_at?: string | null
+          mobile_zip_url?: string | null
+          reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
           uploaded_at?: string
         }
@@ -36,6 +42,9 @@ export type Database = {
           file_url?: string
           id?: string
           last_modified?: string
+          mobile_zip_uploaded_at?: string | null
+          mobile_zip_url?: string | null
+          reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
           uploaded_at?: string
         }
