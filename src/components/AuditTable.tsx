@@ -288,15 +288,28 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                           <div className="flex items-center justify-between mb-4">
                             <h3 className="text-sm font-semibold">Interview Details</h3>
                             <div className="flex items-center gap-2">
-                              <Button 
-                                className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate(`/review/${audit.id}`);
-                                }}
-                              >
-                                REVIEW INTERVIEW
-                              </Button>
+                              {audit.status === "Audit Failed" ? (
+                                <Button 
+                                  className="bg-blue-600 hover:bg-blue-700 h-9 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/review/${audit.id}`);
+                                  }}
+                                >
+                                  VIEW REPORT
+                                </Button>
+                              ) : (
+                                <Button 
+                                  className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/review/${audit.id}`);
+                                  }}
+                                  disabled={audit.status === "Audit Passed"}
+                                >
+                                  REVIEW INTERVIEW
+                                </Button>
+                              )}
                               <Button 
                                 variant="ghost" 
                                 size="icon"
