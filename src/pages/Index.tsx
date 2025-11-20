@@ -3,6 +3,7 @@ import { Filter } from "lucide-react";
 import { FilterSidebar, FilterState } from "@/components/FilterSidebar";
 import { AuditTable } from "@/components/AuditTable";
 import { UploadDialog } from "@/components/UploadDialog";
+import { AuditPagination } from "@/components/AuditPagination";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -18,7 +19,6 @@ interface Audit {
 
 const Index = () => {
   const [audits, setAudits] = useState<Audit[]>([]);
-  const [filteredAudits, setFilteredAudits] = useState<Audit[]>([]);
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
     interviewId: "",
@@ -27,17 +27,43 @@ const Index = () => {
   });
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const itemsPerPage = 10;
 
   const fetchAudits = async () => {
     try {
-      const { data, error } = await supabase
+      setIsLoading(true);
+      let query = supabase
         .from("audits")
-        .select("*")
-        .order("last_modified", { ascending: false });
+        .select("*", { count: "exact" });
+
+      // Apply filters to query
+      if (filters.statuses.length > 0) {
+        query = query.in("status", filters.statuses as Audit["status"][]);
+      }
+      if (filters.interviewId) {
+        query = query.ilike("file_name", `%${filters.interviewId}%`);
+      }
+      if (filters.startDate) {
+        query = query.gte("last_modified", filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte("last_modified", filters.endDate);
+      }
+
+      // Add pagination and ordering
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+      
+      const { data, error, count } = await query
+        .order("last_modified", { ascending: false })
+        .range(from, to);
 
       if (error) throw error;
+      
       setAudits(data || []);
-      setFilteredAudits(data || []);
+      setTotalCount(count || 0);
     } catch (error) {
       console.error("Error fetching audits:", error);
       toast.error("Failed to load audits");
@@ -48,39 +74,12 @@ const Index = () => {
 
   useEffect(() => {
     fetchAudits();
-  }, []);
+  }, [currentPage, filters]);
 
+  // Reset to page 1 when filters change
   useEffect(() => {
-    let filtered = [...audits];
-
-    // Filter by status
-    if (filters.statuses.length > 0) {
-      filtered = filtered.filter((audit) =>
-        filters.statuses.includes(audit.status)
-      );
-    }
-
-    // Filter by interview ID
-    if (filters.interviewId) {
-      filtered = filtered.filter((audit) =>
-        audit.file_name.toLowerCase().includes(filters.interviewId.toLowerCase())
-      );
-    }
-
-    // Filter by date range
-    if (filters.startDate) {
-      filtered = filtered.filter(
-        (audit) => new Date(audit.last_modified) >= new Date(filters.startDate)
-      );
-    }
-    if (filters.endDate) {
-      filtered = filtered.filter(
-        (audit) => new Date(audit.last_modified) <= new Date(filters.endDate)
-      );
-    }
-
-    setFilteredAudits(filtered);
-  }, [filters, audits]);
+    setCurrentPage(1);
+  }, [filters]);
 
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -111,7 +110,7 @@ const Index = () => {
               <div>
                 <h1 className="text-2xl font-bold">Interviews</h1>
                 <p className="text-sm text-muted-foreground">
-                  Results ({filteredAudits.length})
+                  {totalCount} {totalCount === 1 ? "result" : "results"}
                 </p>
               </div>
             </div>
@@ -120,13 +119,22 @@ const Index = () => {
         </header>
 
         {/* Table Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 flex flex-col">
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <p className="text-muted-foreground">Loading audits...</p>
             </div>
           ) : (
-            <AuditTable audits={filteredAudits} />
+            <>
+              <AuditTable audits={audits} />
+              <AuditPagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(totalCount / itemsPerPage)}
+                totalCount={totalCount}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+              />
+            </>
           )}
         </main>
       </div>
