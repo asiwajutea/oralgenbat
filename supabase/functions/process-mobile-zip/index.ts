@@ -252,19 +252,52 @@ async function analyzeAudioFromZip(zipFile: any): Promise<AudioAnalysis> {
     
     // Read audio file as Uint8Array
     const audioData = await zipFile.async("uint8array");
+    console.log(`Audio file size: ${audioData.length} bytes (${(audioData.length / 1024).toFixed(2)} KB)`);
     
-    // Parse MP3 metadata to get accurate duration
     let duration = 0;
+    
+    // Method 1: Try music-metadata parsing
     try {
+      console.log("Attempting music-metadata parsing...");
       const metadata = await parseBuffer(audioData, { mimeType: 'audio/mpeg' });
-      duration = Math.round(metadata.format.duration || 0);
-      console.log(`Parsed MP3 duration: ${duration} seconds`);
+      console.log(`Metadata format:`, JSON.stringify(metadata.format));
+      
+      if (metadata.format.duration && metadata.format.duration > 0) {
+        duration = Math.round(metadata.format.duration);
+        console.log(`✓ Parsed MP3 duration from metadata: ${duration} seconds`);
+      } else {
+        console.log("Metadata parsing returned 0 or null duration, trying fallback methods...");
+        throw new Error("No valid duration in metadata");
+      }
     } catch (parseError) {
-      console.error("Error parsing MP3 metadata:", parseError);
-      // Fallback to rough estimation only if parsing fails
-      duration = Math.round(audioData.length / 16000);
-      console.log(`Using fallback duration estimation: ${duration} seconds`);
+      console.error("Music-metadata parsing failed:", parseError);
+      
+      // Method 2: Detect MP3 frames and calculate duration
+      try {
+        console.log("Attempting MP3 frame detection...");
+        duration = estimateDurationFromFrames(audioData);
+        if (duration > 0) {
+          console.log(`✓ Calculated duration from MP3 frames: ${duration} seconds`);
+        } else {
+          throw new Error("Frame detection returned 0");
+        }
+      } catch (frameError) {
+        console.error("Frame detection failed:", frameError);
+        
+        // Method 3: Use file size with common bitrates
+        console.log("Using file size estimation with common bitrates...");
+        // Try multiple common bitrates and pick the middle estimate
+        const estimates = [
+          audioData.length / 16000,  // 128 kbps
+          audioData.length / 24000,  // 192 kbps
+          audioData.length / 12000,  // 96 kbps
+        ];
+        duration = Math.round(estimates[0]); // Default to 128kbps estimate
+        console.log(`✓ Fallback duration estimation: ${duration} seconds (file size / 128kbps)`);
+      }
     }
+    
+    console.log(`Final calculated duration: ${duration} seconds`);
     
     // Analyze audio content for noise/silence levels
     const analysis = await analyzeAudioBuffer(audioData);
@@ -282,6 +315,42 @@ async function analyzeAudioFromZip(zipFile: any): Promise<AudioAnalysis> {
       silenceLevel: 0,
     };
   }
+}
+
+// Helper function to estimate duration from MP3 frames
+function estimateDurationFromFrames(audioData: Uint8Array): number {
+  let frameCount = 0;
+  let sampleRate = 44100; // Default sample rate
+  const samplesPerFrame = 1152; // Standard for MPEG1 Layer 3
+  
+  // Scan for MP3 sync bytes (0xFF 0xFB or 0xFF 0xFA)
+  for (let i = 0; i < audioData.length - 1; i++) {
+    if (audioData[i] === 0xFF && (audioData[i + 1] & 0xE0) === 0xE0) {
+      frameCount++;
+      
+      // Try to extract sample rate from frame header (if at start of frame)
+      if (frameCount === 1 && i + 3 < audioData.length) {
+        const byte2 = audioData[i + 2];
+        const sampleRateIndex = (byte2 >> 2) & 0x03;
+        const sampleRates = [44100, 48000, 32000];
+        if (sampleRateIndex < 3) {
+          sampleRate = sampleRates[sampleRateIndex];
+        }
+      }
+      
+      // Skip ahead to avoid counting same frame multiple times
+      i += 100;
+    }
+  }
+  
+  console.log(`Detected ${frameCount} MP3 frames, sample rate: ${sampleRate} Hz`);
+  
+  if (frameCount > 0) {
+    const duration = Math.round((frameCount * samplesPerFrame) / sampleRate);
+    return duration;
+  }
+  
+  return 0;
 }
 
 async function analyzeAudioBuffer(audioData: Uint8Array): Promise<{ noiseLevel: number; silenceLevel: number }> {
