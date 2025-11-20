@@ -45,14 +45,14 @@ const getStatusBadge = (status: Audit["status"]) => {
       return (
         <Badge variant="destructive" className="flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" />
-          VAC Audit Failed
+          BAC Audit Failed
         </Badge>
       );
     case "Audit Passed":
       return (
         <Badge className="flex items-center gap-1 bg-success text-success-foreground hover:bg-success/90">
           <CheckCircle2 className="h-3 w-3" />
-          VAC Audit Passed
+          BAC Audit Passed
         </Badge>
       );
     case "Pending":
