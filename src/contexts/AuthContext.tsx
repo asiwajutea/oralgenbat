@@ -20,6 +20,7 @@ interface AuthContextType {
   isApproved: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -107,6 +108,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     navigate("/auth");
   };
 
+  const refreshProfile = async () => {
+    if (user?.id) {
+      await fetchProfileAndRole(user.id);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -117,6 +124,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         isApproved,
         loading,
         signOut,
+        refreshProfile,
       }}
     >
       {children}
