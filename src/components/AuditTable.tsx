@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -67,6 +68,8 @@ const getStatusBadge = (status: Audit["status"]) => {
 
 export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
+  const [uploadingAudits, setUploadingAudits] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
   const toggleRow = (id: string) => {
@@ -79,6 +82,53 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
     setExpandedRows(newExpanded);
   };
 
+  const uploadFileWithProgress = async (
+    file: File,
+    filePath: string,
+    auditId: string
+  ): Promise<string> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const { data: uploadData, error: urlError } = await supabase.storage
+          .from("mobile-zips")
+          .createSignedUploadUrl(filePath);
+
+        if (urlError) throw urlError;
+
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(prev => ({ ...prev, [auditId]: percent }));
+          }
+        });
+
+        xhr.addEventListener("load", async () => {
+          if (xhr.status === 200) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const { data: { publicUrl } } = supabase.storage
+              .from("mobile-zips")
+              .getPublicUrl(filePath);
+
+            resolve(publicUrl);
+          } else {
+            reject(new Error("Upload failed"));
+          }
+        });
+
+        xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+
+        xhr.open("PUT", uploadData.signedUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.send(file);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
+
   const handleMobileZipUpload = async (auditId: string) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -88,21 +138,40 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
       if (!file) return;
 
       try {
-        console.log('=== AUDIT TABLE UPLOAD DEBUG ===');
-        console.log('Original filename:', file.name);
-        console.log('Upload path:', `${auditId}/${file.name}`);
-        
+        const { data: audit, error: fetchError } = await supabase
+          .from('audits')
+          .select('file_name')
+          .eq('id', auditId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+          toast({
+            title: "Invalid file type",
+            description: "Please select a ZIP file",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const zipFileName = file.name.replace(/\.zip$/i, '');
+        const expectedFileName = audit.file_name;
+
+        if (zipFileName.toLowerCase() !== expectedFileName.toLowerCase()) {
+          toast({
+            title: "Filename mismatch",
+            description: `The ZIP file must be named "${expectedFileName}.zip" to match the interview ID. Your file is named "${file.name}"`,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        setUploadingAudits(prev => new Set(prev).add(auditId));
+        setUploadProgress(prev => ({ ...prev, [auditId]: 0 }));
+
         const filePath = `${auditId}/${file.name}`;
-        
-        const { data, error } = await supabase.storage
-          .from('mobile-zips')
-          .upload(filePath, file);
-
-        if (error) throw error;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('mobile-zips')
-          .getPublicUrl(filePath);
+        const publicUrl = await uploadFileWithProgress(file, filePath, auditId);
 
         await supabase
           .from('audits')
@@ -117,8 +186,7 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
           description: "Mobile materials uploaded. Processing ZIP file...",
         });
 
-        // Call edge function to process the ZIP
-        const { data: processData, error: processError } = await supabase.functions.invoke(
+        const { error: processError } = await supabase.functions.invoke(
           'process-mobile-zip',
           {
             body: {
@@ -144,10 +212,22 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
 
         onRefresh();
       } catch (error) {
+        console.error("Upload error:", error);
         toast({
           title: "Error",
-          description: "Failed to upload mobile materials",
+          description: error instanceof Error ? error.message : "Failed to upload mobile materials",
           variant: "destructive",
+        });
+      } finally {
+        setUploadingAudits(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(auditId);
+          return newSet;
+        });
+        setUploadProgress(prev => {
+          const newProgress = { ...prev };
+          delete newProgress[auditId];
+          return newProgress;
         });
       }
     };
@@ -333,18 +413,30 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                                 <Info className="h-3.5 w-3.5 text-muted-foreground" />
                               </div>
                               
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 justify-start"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMobileZipUpload(audit.id);
-                                }}
-                              >
-                                <Upload className="h-3.5 w-3.5 mr-2" />
-                                {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
-                              </Button>
+                              <div className="flex flex-col gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 justify-start"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMobileZipUpload(audit.id);
+                                  }}
+                                  disabled={uploadingAudits.has(audit.id)}
+                                >
+                                  <Upload className="h-3.5 w-3.5 mr-2" />
+                                  {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
+                                </Button>
+                                
+                                {uploadingAudits.has(audit.id) && (
+                                  <div className="space-y-1">
+                                    <Progress value={uploadProgress[audit.id] || 0} className="h-2" />
+                                    <span className="text-xs text-muted-foreground">
+                                      Uploading: {uploadProgress[audit.id] || 0}%
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                               
                               {audit.mobile_zip_url ? (
                                 <>
