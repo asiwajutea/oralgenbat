@@ -36,6 +36,7 @@ interface AuditTableProps {
   onRefresh?: () => void;
   onReaudit?: (audit: Audit) => void;
   showReauditAction?: boolean;
+  hideReviewButton?: boolean;
 }
 
 const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false) => {
@@ -80,7 +81,7 @@ const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false) => 
   }
 };
 
-export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction }: AuditTableProps) => {
+export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hideReviewButton = false }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [uploadingAudits, setUploadingAudits] = useState<Set<string>>(new Set());
@@ -406,16 +407,20 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction }: 
                                   )}
                                 </>
                               ) : (
-                                <Button 
-                                  className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/review/${audit.id}`);
-                                  }}
-                                  disabled={audit.status === "Audit Passed"}
-                                >
-                                  REVIEW INTERVIEW
-                                </Button>
+                                <>
+                                  {!hideReviewButton && (
+                                    <Button 
+                                      className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate(`/review/${audit.id}`);
+                                      }}
+                                      disabled={audit.status === "Audit Passed"}
+                                    >
+                                      REVIEW INTERVIEW
+                                    </Button>
+                                  )}
+                                </>
                               )}
                               <Button 
                                 variant="ghost" 

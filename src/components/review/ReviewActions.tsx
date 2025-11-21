@@ -18,23 +18,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Upload } from "lucide-react";
+import { ReAuditDialog } from "./ReAuditDialog";
 
 interface ReviewActionsProps {
   auditId: string;
   currentStatus: string;
+  currentFileName: string;
   nextAuditId?: string;
 }
 
-export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewActionsProps) => {
+export const ReviewActions = ({ auditId, currentStatus, currentFileName, nextAuditId }: ReviewActionsProps) => {
   const [showFailDialog, setShowFailDialog] = useState(false);
   const [showPassDialog, setShowPassDialog] = useState(false);
+  const [showReauditDialog, setShowReauditDialog] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
   const [actionPlan, setActionPlan] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { profile } = useAuth();
+  const { profile, userRole } = useAuth();
+
+  const isAuditor = userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin';
+  const isFieldManagerOrContractor = userRole === 'field_manager' || userRole === 'contractor';
 
   const isReviewed = currentStatus === "Audit Passed" || currentStatus === "Audit Failed";
 
@@ -137,28 +143,52 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
   return (
     <>
       <div className="flex items-center gap-3 py-3 px-6 border-b border-border bg-background">
-        <Button
-          onClick={() => setShowPassDialog(true)}
-          disabled={isReviewed || isSubmitting}
-          className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-        >
-          <CheckCircle className="h-4 w-4" />
-          Pass Interview
-        </Button>
+        {/* Auditors see Pass/Fail buttons */}
+        {isAuditor && (
+          <>
+            <Button
+              onClick={() => setShowPassDialog(true)}
+              disabled={isReviewed || isSubmitting}
+              className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+            >
+              <CheckCircle className="h-4 w-4" />
+              Pass Interview
+            </Button>
 
-        <Button
-          onClick={() => setShowFailDialog(true)}
-          disabled={isReviewed || isSubmitting}
-          variant="destructive"
-          className="gap-2"
-        >
-          <XCircle className="h-4 w-4" />
-          Fail Interview
-        </Button>
+            <Button
+              onClick={() => setShowFailDialog(true)}
+              disabled={isReviewed || isSubmitting}
+              variant="destructive"
+              className="gap-2"
+            >
+              <XCircle className="h-4 w-4" />
+              Fail Interview
+            </Button>
 
-        {isReviewed && (
-          <span className="text-sm text-muted-foreground ml-2">
-            Already reviewed: {currentStatus}
+            {isReviewed && (
+              <span className="text-sm text-muted-foreground ml-2">
+                Already reviewed: {currentStatus}
+              </span>
+            )}
+          </>
+        )}
+
+        {/* Field Managers/Contractors see SEND FOR RE-AUDIT button for failed audits */}
+        {isFieldManagerOrContractor && currentStatus === "Audit Failed" && (
+          <Button
+            onClick={() => setShowReauditDialog(true)}
+            disabled={isSubmitting}
+            className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+          >
+            <Upload className="h-4 w-4" />
+            SEND FOR RE-AUDIT
+          </Button>
+        )}
+
+        {/* Show status for non-auditors if reviewed */}
+        {!isAuditor && isReviewed && (
+          <span className="text-sm text-muted-foreground">
+            Status: {currentStatus}
           </span>
         )}
       </div>
@@ -241,6 +271,27 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Re-Audit Dialog for Field Managers/Contractors */}
+      {isFieldManagerOrContractor && (
+        <ReAuditDialog
+          open={showReauditDialog}
+          onOpenChange={setShowReauditDialog}
+          auditId={auditId}
+          currentFileName={currentFileName}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+            toast({
+              title: "Success",
+              description: "Interview submitted for re-audit",
+            });
+            setShowReauditDialog(false);
+            if (nextAuditId) {
+              setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
+            }
+          }}
+        />
+      )}
     </>
   );
 };

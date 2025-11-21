@@ -8,7 +8,6 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import { FieldManagerRoute } from "@/components/FieldManagerRoute";
 import { ContractorRoute } from "@/components/ContractorRoute";
-import { AuditorRoute } from "@/components/AuditorRoute";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import ReviewInterview from "./pages/ReviewInterview";
@@ -48,11 +47,9 @@ const App = () => (
               path="/review/:auditId"
               element={
                 <ProtectedRoute>
-                  <AuditorRoute>
-                    <Layout>
-                      <ReviewInterview />
-                    </Layout>
-                  </AuditorRoute>
+                  <Layout>
+                    <ReviewInterview />
+                  </Layout>
                 </ProtectedRoute>
               }
             />

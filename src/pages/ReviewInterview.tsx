@@ -120,6 +120,7 @@ const ReviewInterview = () => {
           <ReviewActions 
             auditId={auditId!} 
             currentStatus={audit.status}
+            currentFileName={audit.file_name}
             nextAuditId={nextAudit?.id}
           />
         </div>
