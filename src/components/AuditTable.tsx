@@ -383,15 +383,28 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction }: 
                             <h3 className="text-sm font-semibold">Interview Details</h3>
                             <div className="flex items-center gap-2">
                               {audit.status === "Audit Failed" ? (
-                                <Button 
-                                  className="bg-blue-600 hover:bg-blue-700 h-9 text-sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/review/${audit.id}`);
-                                  }}
-                                >
-                                  VIEW REPORT
-                                </Button>
+                                <>
+                                  <Button 
+                                    className="bg-blue-600 hover:bg-blue-700 h-9 text-sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate(`/review/${audit.id}`);
+                                    }}
+                                  >
+                                    VIEW REPORT
+                                  </Button>
+                                  {showReauditAction && onReaudit && (
+                                    <Button 
+                                      className="bg-orange-600 hover:bg-orange-700 h-9 text-sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onReaudit(audit);
+                                      }}
+                                    >
+                                      SEND FOR RE-AUDIT
+                                    </Button>
+                                  )}
+                                </>
                               ) : (
                                 <Button 
                                   className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
