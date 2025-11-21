@@ -27,7 +27,7 @@ interface UserProfile {
 }
 
 const AdminDashboard = () => {
-  const { user, userRole } = useAuth();
+  const { user: currentUser, userRole } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending" | "approved">("all");
@@ -106,7 +106,7 @@ const AdminDashboard = () => {
         .from("profiles")
         .update({
           is_approved: true,
-          approved_by: user?.id,
+          approved_by: currentUser?.id,
           approved_at: new Date().toISOString(),
         })
         .eq("id", userId);
@@ -130,7 +130,7 @@ const AdminDashboard = () => {
   };
 
   const canModifyUser = (targetUserId: string) => {
-    if (user?.id === targetUserId) {
+    if (currentUser?.id === targetUserId) {
       toast({
         title: "Action Not Allowed",
         description: "You cannot modify your own account",
@@ -290,7 +290,7 @@ const AdminDashboard = () => {
                                 <Select
                                   value={user.role || "user"}
                                   onValueChange={(newRole) => updateUserRole(user.id, newRole)}
-                                  disabled={user.id === user?.id}
+                                  disabled={user.id === currentUser?.id}
                                 >
                                   <SelectTrigger className="w-40">
                                     <SelectValue />
