@@ -204,14 +204,87 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          contractor_id: string
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          is_approved: boolean
+          phone: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contractor_id: string
+          created_at?: string | null
+          email: string
+          full_name: string
+          id: string
+          is_approved?: boolean
+          phone: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contractor_id?: string
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          is_approved?: boolean
+          phone?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_user_approved: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
+      app_role:
+        | "field_manager"
+        | "auditor"
+        | "contractor"
+        | "admin"
+        | "super_admin"
       audit_status:
         | "Pending"
         | "Audit Passed"
@@ -344,6 +417,13 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: [
+        "field_manager",
+        "auditor",
+        "contractor",
+        "admin",
+        "super_admin",
+      ],
       audit_status: [
         "Pending",
         "Audit Passed",

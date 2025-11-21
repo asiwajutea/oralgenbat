@@ -7,6 +7,7 @@ import { AuditPagination } from "@/components/AuditPagination";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import UserMenu from "@/components/UserMenu";
 
 interface Audit {
   id: string;
@@ -131,7 +132,10 @@ const Index = () => {
                 </p>
               </div>
             </div>
-            <UploadDialog onUploadComplete={fetchAudits} />
+            <div className="flex items-center gap-3">
+              <UploadDialog onUploadComplete={fetchAudits} />
+              <UserMenu />
+            </div>
           </div>
         </header>
 
