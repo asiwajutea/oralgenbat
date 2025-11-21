@@ -7,9 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock, Shield } from "lucide-react";
+import { Loader2, CheckCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
-import UserMenu from "@/components/UserMenu";
 
 interface UserProfile {
   id: string;
@@ -148,17 +147,7 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
-      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Shield className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-          </div>
-          <UserMenu />
-        </div>
-      </header>
-
-      <main className="container py-8">
+      <div className="container py-8">
         <Card>
           <CardHeader>
             <CardTitle>User Management</CardTitle>
@@ -256,7 +245,7 @@ const AdminDashboard = () => {
             </Tabs>
           </CardContent>
         </Card>
-      </main>
+      </div>
     </div>
   );
 };

@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
+import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import ReviewInterview from "./pages/ReviewInterview";
 import Auth from "./pages/Auth";
@@ -29,7 +30,9 @@ const App = () => (
               path="/"
               element={
                 <ProtectedRoute>
-                  <Index />
+                  <Layout>
+                    <Index />
+                  </Layout>
                 </ProtectedRoute>
               }
             />
@@ -37,7 +40,9 @@ const App = () => (
               path="/review/:auditId"
               element={
                 <ProtectedRoute>
-                  <ReviewInterview />
+                  <Layout>
+                    <ReviewInterview />
+                  </Layout>
                 </ProtectedRoute>
               }
             />
@@ -45,7 +50,9 @@ const App = () => (
               path="/admin"
               element={
                 <AdminRoute>
-                  <AdminDashboard />
+                  <Layout>
+                    <AdminDashboard />
+                  </Layout>
                 </AdminRoute>
               }
             />
