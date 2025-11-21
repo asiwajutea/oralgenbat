@@ -152,7 +152,7 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Interview Audit System</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Backend Audit Tool (BAT)</CardTitle>
           <CardDescription className="text-center">
             Sign in to your account or create a new one
           </CardDescription>
