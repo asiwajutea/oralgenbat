@@ -7,8 +7,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { CheckCircle2, XCircle, Calendar, FileText } from "lucide-react";
+import { CheckCircle2, XCircle, Calendar, FileText, Edit2, Save, X, Lock } from "lucide-react";
+import { z } from "zod";
+
+const profileSchema = z.object({
+  full_name: z.string().trim().min(2, "Name must be at least 2 characters").max(100, "Name must be less than 100 characters"),
+  phone: z.string().trim().regex(/^[\d\s\-\+\(\)]+$/, "Invalid phone format").max(20, "Phone must be less than 20 characters"),
+});
+
+const passwordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+  confirmPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
 
 interface AuditActivity {
   id: string;
@@ -27,11 +46,24 @@ interface ReviewStats {
 }
 
 const UserProfile = () => {
-  const { profile } = useAuth();
+  const { profile, userRole, refreshProfile } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [recentActivities, setRecentActivities] = useState<AuditActivity[]>([]);
   const [stats, setStats] = useState<ReviewStats>({ total: 0, passed: 0, failed: 0, monthly: 0 });
   const [loading, setLoading] = useState(true);
+  
+  // Profile editing state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedFullName, setEditedFullName] = useState("");
+  const [editedPhone, setEditedPhone] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Password update state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -95,6 +127,121 @@ const UserProfile = () => {
     fetchData();
   }, [profile?.full_name]);
 
+  const handleEditToggle = () => {
+    if (!isEditing) {
+      setEditedFullName(profile?.full_name || "");
+      setEditedPhone(profile?.phone || "");
+    }
+    setIsEditing(!isEditing);
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const validationResult = profileSchema.safeParse({
+        full_name: editedFullName,
+        phone: editedPhone,
+      });
+
+      if (!validationResult.success) {
+        const firstError = validationResult.error.errors[0];
+        toast({
+          title: "Validation Error",
+          description: firstError.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsSaving(true);
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: editedFullName.trim(),
+          phone: editedPhone.trim(),
+        })
+        .eq("id", profile?.id);
+
+      if (error) throw error;
+
+      await refreshProfile();
+      setIsEditing(false);
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been successfully updated.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePasswordUpdate = async () => {
+    try {
+      const validationResult = passwordSchema.safeParse({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+
+      if (!validationResult.success) {
+        const firstError = validationResult.error.errors[0];
+        toast({
+          title: "Validation Error",
+          description: firstError.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsUpdatingPassword(true);
+
+      // Verify current password
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: profile?.email || "",
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        throw new Error("Current password is incorrect");
+      }
+
+      // Update password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) throw updateError;
+
+      // Clear form
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+
+      toast({
+        title: "Password Updated",
+        description: "Your password has been successfully changed.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
+  const formatRole = (role: string | null) => {
+    if (!role) return "User";
+    return role.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto p-6 space-y-6">
@@ -123,29 +270,153 @@ const UserProfile = () => {
 
       {/* Personal Information */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Personal Information</CardTitle>
+          {!isEditing && (
+            <Button variant="outline" size="sm" onClick={handleEditToggle}>
+              <Edit2 className="h-4 w-4 mr-2" />
+              Edit Profile
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {isEditing ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="full_name">Full Name</Label>
+                  <Input
+                    id="full_name"
+                    value={editedFullName}
+                    onChange={(e) => setEditedFullName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    value={editedPhone}
+                    onChange={(e) => setEditedPhone(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <p className="text-sm text-muted-foreground mt-2">{profile?.email} (read-only)</p>
+                </div>
+                <div>
+                  <Label>Contractor ID</Label>
+                  <p className="text-sm text-muted-foreground mt-2">{profile?.contractor_id} (read-only)</p>
+                </div>
+                <div>
+                  <Label>Role</Label>
+                  <div className="mt-2">
+                    <Badge variant="outline" className="capitalize">
+                      {formatRole(userRole)}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label>Account Status</Label>
+                  <div className="mt-2">
+                    <Badge variant={profile?.is_approved ? "default" : "secondary"}>
+                      {profile?.is_approved ? "Approved" : "Pending Approval"}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={handleEditToggle} disabled={isSaving}>
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveProfile} disabled={isSaving}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Full Name</p>
+                <p className="text-foreground">{profile?.full_name}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Phone</p>
+                <p className="text-foreground">{profile?.phone}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Email</p>
+                <p className="text-foreground">{profile?.email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Contractor ID</p>
+                <p className="text-foreground">{profile?.contractor_id}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Role</p>
+                <Badge variant="outline" className="capitalize">
+                  {formatRole(userRole)}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Account Status</p>
+                <Badge variant={profile?.is_approved ? "default" : "secondary"}>
+                  {profile?.is_approved ? "Approved" : "Pending Approval"}
+                </Badge>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Security Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5" />
+            Security Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4 max-w-md">
             <div>
-              <p className="text-sm text-muted-foreground">Email</p>
-              <p className="text-foreground">{profile?.email}</p>
+              <Label htmlFor="currentPassword">Current Password</Label>
+              <Input
+                id="currentPassword"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+              />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Phone</p>
-              <p className="text-foreground">{profile?.phone}</p>
+              <Label htmlFor="newPassword">New Password</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password (min 8 characters)"
+              />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Contractor ID</p>
-              <p className="text-foreground">{profile?.contractor_id}</p>
+              <Label htmlFor="confirmPassword">Confirm New Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+              />
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Account Status</p>
-              <Badge variant={profile?.is_approved ? "default" : "secondary"}>
-                {profile?.is_approved ? "Approved" : "Pending Approval"}
-              </Badge>
-            </div>
+            <Button 
+              onClick={handlePasswordUpdate} 
+              disabled={isUpdatingPassword || !currentPassword || !newPassword || !confirmPassword}
+            >
+              <Lock className="h-4 w-4 mr-2" />
+              {isUpdatingPassword ? "Updating..." : "Update Password"}
+            </Button>
           </div>
         </CardContent>
       </Card>
