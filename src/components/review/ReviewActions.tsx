@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -30,23 +31,14 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
   const [showPassDialog, setShowPassDialog] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
   const [actionPlan, setActionPlan] = useState("");
-  const [reviewerName, setReviewerName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   const isReviewed = currentStatus === "Audit Passed" || currentStatus === "Audit Failed";
 
   const handlePass = async () => {
-    if (reviewerName.trim().length < 2) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter your name.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const { error } = await supabase
@@ -54,7 +46,7 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
         .update({
           status: "Audit Passed",
           reviewed_at: new Date().toISOString(),
-          reviewed_by: reviewerName.trim(),
+          reviewed_by: profile?.full_name || "Unknown",
         })
         .eq("id", auditId);
 
@@ -66,7 +58,6 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
       });
 
       setShowPassDialog(false);
-      setReviewerName("");
       queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
       
       if (nextAuditId) {
@@ -85,15 +76,6 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
   };
 
   const handleFailSubmit = async () => {
-    if (reviewerName.trim().length < 2) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter your name.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (reviewComment.trim().length < 10) {
       toast({
         title: "Validation Error",
@@ -121,7 +103,7 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
           review_comment: reviewComment,
           action_plan: actionPlan,
           reviewed_at: new Date().toISOString(),
-          reviewed_by: reviewerName.trim(),
+          reviewed_by: profile?.full_name || "Unknown",
         })
         .eq("id", auditId);
 
@@ -135,7 +117,6 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
       setShowFailDialog(false);
       setReviewComment("");
       setActionPlan("");
-      setReviewerName("");
       queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
       
       if (nextAuditId) {
@@ -187,21 +168,11 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
           <AlertDialogHeader>
             <AlertDialogTitle>Fail Interview</AlertDialogTitle>
             <AlertDialogDescription>
-              Please provide the reason for failure and an action plan for correction. Both fields are required.
+              Please provide the reason for failure and an action plan for correction. This will be recorded as reviewed by {profile?.full_name}.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="reviewer-name">Your Name *</Label>
-              <Input
-                id="reviewer-name"
-                placeholder="Enter your name"
-                value={reviewerName}
-                onChange={(e) => setReviewerName(e.target.value)}
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="review-comment">Reason for Failure *</Label>
               <Textarea
@@ -251,19 +222,9 @@ export const ReviewActions = ({ auditId, currentStatus, nextAuditId }: ReviewAct
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Pass Interview</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to mark this interview as passed? This action will update the interview status.
+              Are you sure you want to mark this interview as passed? This will be recorded as reviewed by {profile?.full_name}.
             </AlertDialogDescription>
           </AlertDialogHeader>
-
-          <div className="space-y-2 py-4">
-            <Label htmlFor="reviewer-name-pass">Your Name *</Label>
-            <Input
-              id="reviewer-name-pass"
-              placeholder="Enter your name"
-              value={reviewerName}
-              onChange={(e) => setReviewerName(e.target.value)}
-            />
-          </div>
 
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
