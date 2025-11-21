@@ -308,16 +308,17 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
   };
 
   return (
-    <div className="border rounded-lg">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-12"></TableHead>
-            <TableHead>Interview ID</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Last Modified</TableHead>
-          </TableRow>
-        </TableHeader>
+    <div className="border rounded-lg overflow-hidden">
+      <div className="overflow-auto max-h-[calc(100vh-300px)]">
+        <Table>
+          <TableHeader className="sticky top-0 z-10 bg-card">
+            <TableRow>
+              <TableHead className="w-12 bg-card"></TableHead>
+              <TableHead className="bg-card">Interview ID</TableHead>
+              <TableHead className="bg-card">Status</TableHead>
+              <TableHead className="bg-card">Last Modified</TableHead>
+            </TableRow>
+          </TableHeader>
         <TableBody>
           {audits.length === 0 ? (
             <TableRow>
@@ -517,6 +518,7 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
           )}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 };
