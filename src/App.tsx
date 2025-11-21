@@ -107,7 +107,9 @@ const App = () => (
               path="/admin/team-approvals"
               element={
                 <ProtectedRoute>
-                  <TeamApprovals />
+                  <ContractorRoute>
+                    <TeamApprovals />
+                  </ContractorRoute>
                 </ProtectedRoute>
               }
             />
