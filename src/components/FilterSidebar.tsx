@@ -100,17 +100,22 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
   };
 
   return (
-    <aside className="w-[336px] h-full border-l bg-card p-6 space-y-6 overflow-y-auto flex flex-col">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Filter Results</h2>
-        {onClose && (
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        )}
+    <aside className="w-[336px] h-full border-l bg-card flex flex-col">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-10 bg-card border-b px-6 pt-6 pb-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Filter Results</h2>
+          {onClose && (
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="space-y-4">
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="space-y-4">
         <div>
           <Label className="text-sm font-medium mb-3 block">Interview Status</Label>
           <div className="space-y-3">
@@ -212,6 +217,7 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
         >
           RESET FILTERS
         </Button>
+        </div>
       </div>
     </aside>
   );
