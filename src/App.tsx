@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
+import { FieldManagerRoute } from "@/components/FieldManagerRoute";
+import { ContractorRoute } from "@/components/ContractorRoute";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import ReviewInterview from "./pages/ReviewInterview";
@@ -13,6 +15,10 @@ import Auth from "./pages/Auth";
 import PendingApproval from "./pages/PendingApproval";
 import AdminDashboard from "./pages/AdminDashboard";
 import UserProfile from "./pages/UserProfile";
+import TeamManagement from "./pages/TeamManagement";
+import TeamApprovals from "./pages/TeamApprovals";
+import FieldManagerDashboard from "./pages/FieldManagerDashboard";
+import ContractorDashboard from "./pages/ContractorDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -64,6 +70,44 @@ const App = () => (
                   <Layout>
                     <UserProfile />
                   </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/team-management"
+              element={
+                <ProtectedRoute>
+                  <FieldManagerRoute>
+                    <TeamManagement />
+                  </FieldManagerRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/field-manager-dashboard"
+              element={
+                <ProtectedRoute>
+                  <FieldManagerRoute>
+                    <FieldManagerDashboard />
+                  </FieldManagerRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/contractor-dashboard"
+              element={
+                <ProtectedRoute>
+                  <ContractorRoute>
+                    <ContractorDashboard />
+                  </ContractorRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/team-approvals"
+              element={
+                <ProtectedRoute>
+                  <TeamApprovals />
                 </ProtectedRoute>
               }
             />

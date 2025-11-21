@@ -18,6 +18,9 @@ interface Audit {
   mobile_zip_url: string | null;
   mobile_zip_uploaded_at: string | null;
   reviewed_by: string | null;
+  is_re_audit: boolean;
+  re_audit_count: number;
+  original_status: "Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review" | null;
 }
 
 const Index = () => {

@@ -10,6 +10,7 @@ import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 import { ReviewActions } from "@/components/review/ReviewActions";
 import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
+import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 
 const ReviewInterview = () => {
   const { auditId } = useParams<{ auditId: string }>();
@@ -132,6 +133,9 @@ const ReviewInterview = () => {
             actionPlan={audit.action_plan}
             reviewedAt={audit.reviewed_at}
           />
+          
+          {/* Show re-audit history if exists */}
+          {audit.is_re_audit && <ReAuditHistory auditId={auditId!} />}
           
           {metadata ? (
             <>
