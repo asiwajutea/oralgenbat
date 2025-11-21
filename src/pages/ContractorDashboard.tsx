@@ -225,6 +225,7 @@ const ContractorDashboard = () => {
                     audits={audits || []}
                     onReaudit={handleReaudit}
                     showReauditAction
+                    hideReviewButton
                   />
                 )}
               </CardContent>

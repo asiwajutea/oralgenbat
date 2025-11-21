@@ -214,6 +214,7 @@ const FieldManagerDashboard = () => {
                     audits={audits || []}
                     onReaudit={handleReaudit}
                     showReauditAction
+                    hideReviewButton
                   />
                 )}
               </CardContent>
