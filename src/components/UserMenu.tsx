@@ -1,4 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,10 +10,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, User } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 
 const UserMenu = () => {
   const { profile, userRole, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const getInitials = (name: string) => {
     return name
@@ -45,6 +47,15 @@ const UserMenu = () => {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {(userRole === 'admin' || userRole === 'super_admin') && (
+          <>
+            <DropdownMenuItem onClick={() => navigate('/admin')}>
+              <Shield className="mr-2 h-4 w-4" />
+              <span>Admin Dashboard</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuItem onClick={signOut}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>Sign out</span>
