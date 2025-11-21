@@ -83,6 +83,26 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
     });
   };
 
+  const checkForDuplicates = async (files: File[]) => {
+    const fileNames = files.map(file => file.name.replace(/\.pdf$/i, ""));
+    
+    const { data: existingAudits, error } = await supabase
+      .from("audits")
+      .select("file_name")
+      .in("file_name", fileNames);
+
+    if (error) throw error;
+
+    const existingFileNames = new Set(existingAudits?.map(audit => audit.file_name) || []);
+    const duplicates = fileNames.filter(name => existingFileNames.has(name));
+    const validFiles = files.filter(file => {
+      const fileName = file.name.replace(/\.pdf$/i, "");
+      return !existingFileNames.has(fileName);
+    });
+
+    return { duplicates, validFiles };
+  };
+
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
       toast.error("Please select at least one PDF file");
@@ -93,8 +113,24 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
     setUploadProgress({});
 
     try {
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
+      // Check for duplicates
+      const { duplicates, validFiles } = await checkForDuplicates(selectedFiles);
+
+      // If all files are duplicates, show error and stop
+      if (duplicates.length > 0 && validFiles.length === 0) {
+        toast.error(`Interview already exists: ${duplicates.join(", ")}`);
+        setIsUploading(false);
+        return;
+      }
+
+      // If some files are duplicates, show warning
+      if (duplicates.length > 0) {
+        toast.error(`Skipping existing interviews: ${duplicates.join(", ")}`);
+      }
+
+      // Upload only valid files
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
         const fileName = file.name.replace(/\.pdf$/i, "");
         const timestamp = Date.now();
         const storagePath = `${fileName}_${timestamp}.pdf`;
@@ -112,7 +148,10 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
         if (dbError) throw dbError;
       }
 
-      toast.success(`Successfully uploaded ${selectedFiles.length} file(s)`);
+      if (validFiles.length > 0) {
+        toast.success(`Successfully uploaded ${validFiles.length} file(s)`);
+      }
+      
       setSelectedFiles([]);
       setUploadProgress({});
       setIsOpen(false);
