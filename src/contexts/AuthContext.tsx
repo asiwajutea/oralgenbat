@@ -59,6 +59,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUserRole(roleData?.role || null);
     } catch (error) {
       console.error("Error fetching profile and role:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -77,8 +79,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setProfile(null);
           setUserRole(null);
           setIsApproved(false);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
@@ -89,8 +91,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       
       if (session?.user) {
         fetchProfileAndRole(session.user.id);
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
