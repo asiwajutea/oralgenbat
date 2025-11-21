@@ -9,7 +9,8 @@ interface FieldManagerRouteProps {
 export const FieldManagerRoute = ({ children }: FieldManagerRouteProps) => {
   const { userRole } = useAuth();
   
-  if (userRole !== 'field_manager') {
+  // Allow field managers, admins, and super admins
+  if (userRole !== 'field_manager' && userRole !== 'admin' && userRole !== 'super_admin') {
     return <Navigate to="/" replace />;
   }
   
