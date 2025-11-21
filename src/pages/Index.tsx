@@ -158,7 +158,7 @@ const Index = () => {
       </div>
 
       {/* Desktop Filter Sidebar */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block sticky top-0 h-screen">
         <FilterSidebar onFilterChange={setFilters} />
       </div>
     </div>
