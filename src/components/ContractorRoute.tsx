@@ -9,7 +9,8 @@ interface ContractorRouteProps {
 export const ContractorRoute = ({ children }: ContractorRouteProps) => {
   const { userRole } = useAuth();
   
-  if (userRole !== 'contractor') {
+  // Allow contractors, admins, and super admins
+  if (userRole !== 'contractor' && userRole !== 'admin' && userRole !== 'super_admin') {
     return <Navigate to="/" replace />;
   }
   
