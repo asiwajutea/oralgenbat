@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
@@ -25,10 +27,12 @@ interface UserProfile {
 }
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending" | "approved">("all");
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [showRevokeDialog, setShowRevokeDialog] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -125,6 +129,84 @@ const AdminDashboard = () => {
     }
   };
 
+  const canModifyUser = (targetUserId: string) => {
+    if (user?.id === targetUserId) {
+      toast({
+        title: "Action Not Allowed",
+        description: "You cannot modify your own account",
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
+  };
+
+  const updateUserRole = async (userId: string, newRole: string) => {
+    if (!canModifyUser(userId)) return;
+
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .update({ role: newRole as any })
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `User role updated to ${formatRole(newRole)}`,
+      });
+
+      fetchUsers();
+    } catch (error) {
+      console.error("Error updating user role:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update user role. You may not have permission.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const confirmRevokeAccess = (targetUser: UserProfile) => {
+    if (!canModifyUser(targetUser.id)) return;
+    setSelectedUser(targetUser);
+    setShowRevokeDialog(true);
+  };
+
+  const revokeUserAccess = async () => {
+    if (!selectedUser) return;
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          is_approved: false,
+          approved_by: null,
+          approved_at: null,
+        })
+        .eq("id", selectedUser.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Access Revoked",
+        description: `${selectedUser.full_name}'s access has been revoked`,
+      });
+
+      setShowRevokeDialog(false);
+      setSelectedUser(null);
+      fetchUsers();
+    } catch (error) {
+      console.error("Error revoking access:", error);
+      toast({
+        title: "Error",
+        description: "Failed to revoke user access",
+        variant: "destructive",
+      });
+    }
+  };
+
   const formatRole = (role: string) => {
     return role.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
   };
@@ -191,7 +273,7 @@ const AdminDashboard = () => {
                           <TableHead>Contractor ID</TableHead>
                           <TableHead>Role</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead className="text-right space-x-2">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -203,7 +285,28 @@ const AdminDashboard = () => {
                             <TableCell>
                               <Badge variant="outline">{user.contractor_id}</Badge>
                             </TableCell>
-                            <TableCell>{formatRole(user.role || "user")}</TableCell>
+                            <TableCell>
+                              {userRole === 'super_admin' ? (
+                                <Select
+                                  value={user.role || "user"}
+                                  onValueChange={(newRole) => updateUserRole(user.id, newRole)}
+                                  disabled={user.id === user?.id}
+                                >
+                                  <SelectTrigger className="w-40">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="field_manager">Field Manager</SelectItem>
+                                    <SelectItem value="auditor">Auditor</SelectItem>
+                                    <SelectItem value="contractor">Contractor</SelectItem>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <span>{formatRole(user.role || "user")}</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               {user.is_approved ? (
                                 <div className="space-y-1">
@@ -225,14 +328,24 @@ const AdminDashboard = () => {
                                 </Badge>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">
-                              {!user.is_approved && (
+                            <TableCell className="text-right space-x-2">
+                              {!user.is_approved ? (
                                 <Button
                                   size="sm"
                                   onClick={() => approveUser(user.id)}
                                 >
                                   Approve
                                 </Button>
+                              ) : (
+                                userRole === 'super_admin' && (
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => confirmRevokeAccess(user)}
+                                  >
+                                    Revoke Access
+                                  </Button>
+                                )
                               )}
                             </TableCell>
                           </TableRow>
@@ -246,6 +359,25 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={showRevokeDialog} onOpenChange={setShowRevokeDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke User Access?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revoke access for <strong>{selectedUser?.full_name}</strong>.
+              They will no longer be able to access the system until re-approved.
+              This action can be reversed by approving them again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={revokeUserAccess} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Revoke Access
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
