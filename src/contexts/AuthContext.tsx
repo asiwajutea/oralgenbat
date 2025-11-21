@@ -71,11 +71,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSession(session);
         setUser(session?.user ?? null);
 
-        if (session?.user) {
-          setTimeout(() => {
-            fetchProfileAndRole(session.user.id);
-          }, 0);
-        } else {
+      if (session?.user) {
+        fetchProfileAndRole(session.user.id);
+      } else {
           setProfile(null);
           setUserRole(null);
           setIsApproved(false);
