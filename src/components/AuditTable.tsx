@@ -26,14 +26,28 @@ interface Audit {
   mobile_zip_url: string | null;
   mobile_zip_uploaded_at: string | null;
   reviewed_by: string | null;
+  is_re_audit: boolean;
+  re_audit_count: number;
+  original_status: "Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review" | null;
 }
 
 interface AuditTableProps {
   audits: Audit[];
-  onRefresh: () => void;
+  onRefresh?: () => void;
+  onReaudit?: (audit: Audit) => void;
+  showReauditAction?: boolean;
 }
 
-const getStatusBadge = (status: Audit["status"]) => {
+const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false) => {
+  if (status === "Awaiting Review" && isReAudit) {
+    return (
+      <Badge className="flex items-center gap-1 bg-red-100 text-red-700 hover:bg-red-100/90">
+        <AlertTriangle className="h-3 w-3" />
+        Re-Audit Required
+      </Badge>
+    );
+  }
+
   switch (status) {
     case "Awaiting Review":
       return (
@@ -66,7 +80,7 @@ const getStatusBadge = (status: Audit["status"]) => {
   }
 };
 
-export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
+export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [uploadingAudits, setUploadingAudits] = useState<Set<string>>(new Set());
@@ -355,7 +369,7 @@ export const AuditTable = ({ audits, onRefresh }: AuditTableProps) => {
                     <TableCell className="font-mono text-sm">
                       {audit.file_name}
                     </TableCell>
-                    <TableCell>{getStatusBadge(audit.status)}</TableCell>
+                    <TableCell>{getStatusBadge(audit.status, audit.is_re_audit)}</TableCell>
                     <TableCell>
                       {format(new Date(audit.last_modified), "dd MMM yyyy")}
                     </TableCell>

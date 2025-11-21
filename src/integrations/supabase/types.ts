@@ -20,9 +20,12 @@ export type Database = {
           file_name: string
           file_url: string
           id: string
+          is_re_audit: boolean | null
           last_modified: string
           mobile_zip_uploaded_at: string | null
           mobile_zip_url: string | null
+          original_status: Database["public"]["Enums"]["audit_status"] | null
+          re_audit_count: number | null
           review_comment: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -34,9 +37,12 @@ export type Database = {
           file_name: string
           file_url: string
           id?: string
+          is_re_audit?: boolean | null
           last_modified?: string
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
+          original_status?: Database["public"]["Enums"]["audit_status"] | null
+          re_audit_count?: number | null
           review_comment?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -48,9 +54,12 @@ export type Database = {
           file_name?: string
           file_url?: string
           id?: string
+          is_re_audit?: boolean | null
           last_modified?: string
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
+          original_status?: Database["public"]["Enums"]["audit_status"] | null
+          re_audit_count?: number | null
           review_comment?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -243,6 +252,89 @@ export type Database = {
         }
         Relationships: []
       }
+      re_audit_submissions: {
+        Row: {
+          audit_id: string
+          id: string
+          new_pdf_url: string | null
+          new_zip_url: string | null
+          replaced_pdf: boolean | null
+          replaced_zip: boolean | null
+          submission_comment: string | null
+          submitted_at: string | null
+          submitted_by: string
+          submitted_by_role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          audit_id: string
+          id?: string
+          new_pdf_url?: string | null
+          new_zip_url?: string | null
+          replaced_pdf?: boolean | null
+          replaced_zip?: boolean | null
+          submission_comment?: string | null
+          submitted_at?: string | null
+          submitted_by: string
+          submitted_by_role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          audit_id?: string
+          id?: string
+          new_pdf_url?: string | null
+          new_zip_url?: string | null
+          replaced_pdf?: boolean | null
+          replaced_zip?: boolean | null
+          submission_comment?: string | null
+          submitted_at?: string | null
+          submitted_by?: string
+          submitted_by_role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "re_audit_submissions_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_assignments: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          contractor_id: string
+          created_at: string | null
+          field_manager_id: string
+          id: string
+          interviewer_code: string
+          notes: string | null
+          status: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contractor_id: string
+          created_at?: string | null
+          field_manager_id: string
+          id?: string
+          interviewer_code: string
+          notes?: string | null
+          status?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contractor_id?: string
+          created_at?: string | null
+          field_manager_id?: string
+          id?: string
+          interviewer_code?: string
+          notes?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -277,6 +369,17 @@ export type Database = {
         Returns: boolean
       }
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
+      mark_audit_for_reaudit: {
+        Args: {
+          _audit_id: string
+          _comment: string
+          _new_pdf_url?: string
+          _new_zip_url?: string
+          _submitted_by: string
+          _submitted_by_role: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role:

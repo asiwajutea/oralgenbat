@@ -24,6 +24,42 @@ const Header = () => {
           >
             Interviews
           </NavLink>
+          {userRole === 'field_manager' && (
+            <>
+              <NavLink 
+                to="/field-manager-dashboard"
+                className="text-sm font-medium transition-colors hover:text-primary"
+                activeClassName="text-primary"
+              >
+                My Dashboard
+              </NavLink>
+              <NavLink 
+                to="/team-management"
+                className="text-sm font-medium transition-colors hover:text-primary"
+                activeClassName="text-primary"
+              >
+                Team Management
+              </NavLink>
+            </>
+          )}
+          {userRole === 'contractor' && (
+            <NavLink 
+              to="/contractor-dashboard"
+              className="text-sm font-medium transition-colors hover:text-primary"
+              activeClassName="text-primary"
+            >
+              My Dashboard
+            </NavLink>
+          )}
+          {(userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && (
+            <NavLink 
+              to="/admin/team-approvals"
+              className="text-sm font-medium transition-colors hover:text-primary"
+              activeClassName="text-primary"
+            >
+              Team Approvals
+            </NavLink>
+          )}
           {(userRole === 'admin' || userRole === 'super_admin') && (
             <NavLink 
               to="/admin"
