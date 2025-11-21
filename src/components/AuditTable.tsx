@@ -59,7 +59,7 @@ const getStatusBadge = (status: Audit["status"]) => {
       return (
         <Badge className="flex items-center gap-1 bg-warning text-warning-foreground hover:bg-warning/90">
           <Clock className="h-3 w-3" />
-          Pending
+          Awaiting Review
         </Badge>
       );
   }

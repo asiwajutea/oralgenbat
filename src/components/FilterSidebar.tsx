@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FilterSidebarProps {
   onFilterChange: (filters: FilterState) => void;
@@ -34,6 +42,26 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
     startDate: "",
     endDate: "",
   });
+  const [reviewers, setReviewers] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchReviewers = async () => {
+      const { data, error } = await supabase
+        .from("audits")
+        .select("reviewed_by")
+        .not("reviewed_by", "is", null)
+        .order("reviewed_by");
+
+      if (!error && data) {
+        const uniqueReviewers = Array.from(
+          new Set(data.map((audit) => audit.reviewed_by).filter(Boolean))
+        ) as string[];
+        setReviewers(uniqueReviewers);
+      }
+    };
+
+    fetchReviewers();
+  }, []);
 
   const handleStatusChange = (status: string, checked: boolean) => {
     const newStatuses = checked
@@ -47,6 +75,13 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
 
   const handleInputChange = (field: keyof FilterState, value: string) => {
     const newFilters = { ...filters, [field]: value };
+    setFilters(newFilters);
+    onFilterChange(newFilters);
+  };
+
+  const handleSelectChange = (field: keyof FilterState, value: string) => {
+    const actualValue = value === "all" ? "" : value;
+    const newFilters = { ...filters, [field]: actualValue };
     setFilters(newFilters);
     onFilterChange(newFilters);
   };
@@ -115,12 +150,22 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
           <Label htmlFor="reviewer" className="text-sm font-medium mb-2 block">
             Reviewer
           </Label>
-          <Input
-            id="reviewer"
-            placeholder="Search by reviewer..."
-            value={filters.reviewer}
-            onChange={(e) => handleInputChange("reviewer", e.target.value)}
-          />
+          <Select
+            value={filters.reviewer || "all"}
+            onValueChange={(value) => handleSelectChange("reviewer", value)}
+          >
+            <SelectTrigger id="reviewer">
+              <SelectValue placeholder="Select a reviewer..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Reviewers</SelectItem>
+              {reviewers.map((reviewer) => (
+                <SelectItem key={reviewer} value={reviewer}>
+                  {reviewer}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div>
