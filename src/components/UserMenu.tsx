@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, Shield } from "lucide-react";
+import { LogOut, Shield, User } from "lucide-react";
 
 const UserMenu = () => {
   const { profile, userRole, signOut } = useAuth();
@@ -46,6 +46,11 @@ const UserMenu = () => {
             </p>
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => navigate('/profile')}>
+          <User className="mr-2 h-4 w-4" />
+          <span>Profile</span>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {(userRole === 'admin' || userRole === 'super_admin') && (
           <>
