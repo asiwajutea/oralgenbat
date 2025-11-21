@@ -39,8 +39,12 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
           }
         });
 
-        xhr.addEventListener("load", () => {
+        xhr.addEventListener("load", async () => {
           if (xhr.status === 200) {
+            // Wait for Supabase Storage to finalize the file
+            // This prevents "corrupted zip" errors when accessing immediately
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
             // Get public URL
             const { data: { publicUrl } } = supabase.storage
               .from("mobile-zips")
