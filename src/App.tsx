@@ -78,7 +78,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <FieldManagerRoute>
-                    <TeamManagement />
+                    <Layout>
+                      <TeamManagement />
+                    </Layout>
                   </FieldManagerRoute>
                 </ProtectedRoute>
               }
@@ -88,7 +90,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <FieldManagerRoute>
-                    <FieldManagerDashboard />
+                    <Layout>
+                      <FieldManagerDashboard />
+                    </Layout>
                   </FieldManagerRoute>
                 </ProtectedRoute>
               }
@@ -98,7 +102,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ContractorRoute>
-                    <ContractorDashboard />
+                    <Layout>
+                      <ContractorDashboard />
+                    </Layout>
                   </ContractorRoute>
                 </ProtectedRoute>
               }
@@ -108,7 +114,9 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <ContractorRoute>
-                    <TeamApprovals />
+                    <Layout>
+                      <TeamApprovals />
+                    </Layout>
                   </ContractorRoute>
                 </ProtectedRoute>
               }
