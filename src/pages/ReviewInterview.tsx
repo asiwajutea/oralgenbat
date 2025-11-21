@@ -142,6 +142,7 @@ const ReviewInterview = () => {
           ) : (
             <MobileZipUpload 
               auditId={auditId!}
+              expectedFileName={audit.file_name}
               onUploadSuccess={() => {
                 queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
                 queryClient.invalidateQueries({ queryKey: ["interview-metadata", auditId] });

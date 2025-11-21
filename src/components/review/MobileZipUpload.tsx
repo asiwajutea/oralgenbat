@@ -1,17 +1,66 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Upload, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
 interface MobileZipUploadProps {
   auditId: string;
+  expectedFileName: string;
   onUploadSuccess: () => void;
 }
 
-export const MobileZipUpload = ({ auditId, onUploadSuccess }: MobileZipUploadProps) => {
+export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: MobileZipUploadProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing'>('idle');
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+
+  const uploadFileWithProgress = async (
+    file: File,
+    filePath: string
+  ): Promise<string> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Get signed upload URL
+        const { data: uploadData, error: urlError } = await supabase.storage
+          .from("mobile-zips")
+          .createSignedUploadUrl(filePath);
+
+        if (urlError) throw urlError;
+
+        // Upload with progress tracking
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(percent);
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status === 200) {
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from("mobile-zips")
+              .getPublicUrl(filePath);
+            resolve(publicUrl);
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+
+        xhr.open("PUT", uploadData.signedUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.send(file);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
 
   const handleFileSelect = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.zip')) {
@@ -23,8 +72,20 @@ export const MobileZipUpload = ({ auditId, onUploadSuccess }: MobileZipUploadPro
       return;
     }
 
+    // Validate filename matches expected interview ID
+    const zipFileName = file.name.replace(/\.zip$/i, '');
+    if (zipFileName !== expectedFileName) {
+      toast({
+        title: "Filename mismatch",
+        description: `The ZIP file must be named "${expectedFileName}.zip" to match the interview ID. Your file is named "${file.name}"`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsUploading(true);
     setUploadStatus('uploading');
+    setUploadProgress(0);
 
     try {
       console.log('=== UPLOAD DEBUG ===');
@@ -37,15 +98,8 @@ export const MobileZipUpload = ({ auditId, onUploadSuccess }: MobileZipUploadPro
 
       const filePath = `${auditId}/${file.name}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('mobile-zips')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('mobile-zips')
-        .getPublicUrl(filePath);
+      // Upload with progress tracking
+      const publicUrl = await uploadFileWithProgress(file, filePath);
 
       const { error: updateError } = await supabase
         .from('audits')
@@ -90,6 +144,7 @@ export const MobileZipUpload = ({ auditId, onUploadSuccess }: MobileZipUploadPro
     } finally {
       setIsUploading(false);
       setUploadStatus('idle');
+      setUploadProgress(0);
     }
   };
 
@@ -132,7 +187,27 @@ export const MobileZipUpload = ({ auditId, onUploadSuccess }: MobileZipUploadPro
           <p className="text-sm text-muted-foreground max-w-md">
             Upload a mobile ZIP file to view interview photos, audio analysis, and detailed metadata
           </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Expected file: <span className="font-mono font-medium">{expectedFileName}.zip</span>
+          </p>
         </div>
+
+        {isUploading && uploadStatus === 'uploading' && (
+          <div className="w-full max-w-md space-y-2">
+            <Progress value={uploadProgress} className="h-2" />
+            <p className="text-xs text-center text-muted-foreground">
+              Uploading: {uploadProgress}%
+            </p>
+          </div>
+        )}
+
+        {isUploading && uploadStatus === 'processing' && (
+          <div className="w-full max-w-md">
+            <p className="text-sm text-center text-muted-foreground">
+              Processing ZIP file...
+            </p>
+          </div>
+        )}
 
         <Button 
           onClick={triggerFileInput}

@@ -9,6 +9,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -20,6 +21,7 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -32,6 +34,55 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
     setSelectedFiles(pdfFiles);
   };
 
+  const uploadFileWithProgress = async (
+    file: File,
+    storagePath: string
+  ): Promise<string> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Get signed upload URL
+        const { data: uploadData, error: urlError } = await supabase.storage
+          .from("audit-pdfs")
+          .createSignedUploadUrl(storagePath);
+
+        if (urlError) throw urlError;
+
+        // Upload with progress tracking
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress((prev) => ({
+              ...prev,
+              [file.name]: percent,
+            }));
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          if (xhr.status === 200) {
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from("audit-pdfs")
+              .getPublicUrl(storagePath);
+            resolve(publicUrl);
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+
+        xhr.open("PUT", uploadData.signedUrl);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.send(file);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
+
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
       toast.error("Please select at least one PDF file");
@@ -39,25 +90,17 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
     }
 
     setIsUploading(true);
+    setUploadProgress({});
 
     try {
-      for (const file of selectedFiles) {
-        // Extract file name without extension
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
         const fileName = file.name.replace(/\.pdf$/i, "");
         const timestamp = Date.now();
         const storagePath = `${fileName}_${timestamp}.pdf`;
 
-        // Upload to storage
-        const { data: storageData, error: storageError } = await supabase.storage
-          .from("audit-pdfs")
-          .upload(storagePath, file);
-
-        if (storageError) throw storageError;
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from("audit-pdfs")
-          .getPublicUrl(storagePath);
+        // Upload with progress tracking
+        const publicUrl = await uploadFileWithProgress(file, storagePath);
 
         // Insert into database
         const { error: dbError } = await supabase.from("audits").insert({
@@ -71,6 +114,7 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
 
       toast.success(`Successfully uploaded ${selectedFiles.length} file(s)`);
       setSelectedFiles([]);
+      setUploadProgress({});
       setIsOpen(false);
       onUploadComplete();
     } catch (error) {
@@ -118,12 +162,26 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
           </div>
 
           {selectedFiles.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Selected files:</p>
-              <ul className="text-sm text-muted-foreground space-y-1">
+            <div className="space-y-3">
+              <p className="text-sm font-medium">
+                {isUploading
+                  ? `Uploading ${Object.keys(uploadProgress).length} of ${selectedFiles.length} file(s)...`
+                  : `Selected ${selectedFiles.length} file(s):`}
+              </p>
+              <ul className="space-y-3">
                 {selectedFiles.map((file, index) => (
-                  <li key={index} className="truncate">
-                    {file.name}
+                  <li key={index} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="truncate flex-1">{file.name}</span>
+                      {uploadProgress[file.name] !== undefined && (
+                        <span className="text-xs text-muted-foreground ml-2">
+                          {uploadProgress[file.name]}%
+                        </span>
+                      )}
+                    </div>
+                    {uploadProgress[file.name] !== undefined && (
+                      <Progress value={uploadProgress[file.name]} className="h-2" />
+                    )}
                   </li>
                 ))}
               </ul>
