@@ -1,10 +1,14 @@
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileCheck } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { MetadataPanel } from "@/components/review/MetadataPanel";
 import { PhotosPanel } from "@/components/review/PhotosPanel";
 import { AudioAnalysisPanel } from "@/components/review/AudioAnalysisPanel";
+import { PDFAnalysisPanel } from "@/components/review/PDFAnalysisPanel";
 import { PDFViewer } from "@/components/review/PDFViewer";
 import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 import { MobileZipUpload } from "@/components/review/MobileZipUpload";
@@ -15,6 +19,7 @@ import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 const ReviewInterview = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const queryClient = useQueryClient();
+  const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
 
   const { data: audit, isLoading: auditLoading } = useQuery({
     queryKey: ["audit", auditId],
@@ -81,6 +86,27 @@ const ReviewInterview = () => {
 
   const isLoading = auditLoading || metadataLoading || photosLoading;
 
+  const handleAnalyzePDF = async () => {
+    if (!auditId) return;
+    
+    setIsAnalyzingPDF(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-pdf', {
+        body: { auditId }
+      });
+      
+      if (error) throw error;
+      
+      toast.success('PDF analyzed successfully');
+      queryClient.invalidateQueries({ queryKey: ["interview-metadata", auditId] });
+    } catch (error) {
+      console.error('PDF analysis error:', error);
+      toast.error('Failed to analyze PDF. Please try again.');
+    } finally {
+      setIsAnalyzingPDF(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -143,6 +169,34 @@ const ReviewInterview = () => {
               <MetadataPanel metadata={metadata} />
               <PhotosPanel photos={photos || []} auditId={auditId!} />
               <AudioAnalysisPanel metadata={metadata} />
+              {(metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null) ? (
+                <PDFAnalysisPanel metadata={metadata} />
+              ) : (
+                <div className="border border-dashed border-border rounded-lg p-6 text-center">
+                  <FileCheck className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                  <h3 className="font-medium mb-2">PDF Quality Not Analyzed</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Analyze the PDF to get clarity, legibility scores and AI feedback
+                  </p>
+                  <Button 
+                    onClick={handleAnalyzePDF} 
+                    disabled={isAnalyzingPDF}
+                    variant="outline"
+                  >
+                    {isAnalyzingPDF ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analyzing PDF...
+                      </>
+                    ) : (
+                      <>
+                        <FileCheck className="mr-2 h-4 w-4" />
+                        Analyze PDF Quality
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </>
           ) : (
             <MobileZipUpload 
