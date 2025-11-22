@@ -61,13 +61,22 @@ const Header = () => {
             </NavLink>
           )}
           {(userRole === 'admin' || userRole === 'super_admin') && (
-            <NavLink 
-              to="/admin"
-              className="text-sm font-medium transition-colors hover:text-primary"
-              activeClassName="text-primary"
-            >
-              Manage Users
-            </NavLink>
+            <>
+              <NavLink 
+                to="/admin"
+                className="text-sm font-medium transition-colors hover:text-primary"
+                activeClassName="text-primary"
+              >
+                Manage Users
+              </NavLink>
+              <NavLink 
+                to="/analytics"
+                className="text-sm font-medium transition-colors hover:text-primary"
+                activeClassName="text-primary"
+              >
+                Analytics
+              </NavLink>
+            </>
           )}
         </nav>
         
