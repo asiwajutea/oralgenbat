@@ -96,6 +96,10 @@ export type Database = {
           interviewer_code: string
           interviewer_id: string | null
           interviewer_name: string | null
+          pdf_analyzed_at: string | null
+          pdf_clarity_score: number | null
+          pdf_handwriting_legibility: number | null
+          pdf_quality_feedback: string | null
           pedigree_segment_duration: number | null
           pedigree_segment_noise_level: number | null
           pedigree_segment_silence_level: number | null
@@ -129,6 +133,10 @@ export type Database = {
           interviewer_code: string
           interviewer_id?: string | null
           interviewer_name?: string | null
+          pdf_analyzed_at?: string | null
+          pdf_clarity_score?: number | null
+          pdf_handwriting_legibility?: number | null
+          pdf_quality_feedback?: string | null
           pedigree_segment_duration?: number | null
           pedigree_segment_noise_level?: number | null
           pedigree_segment_silence_level?: number | null
@@ -162,6 +170,10 @@ export type Database = {
           interviewer_code?: string
           interviewer_id?: string | null
           interviewer_name?: string | null
+          pdf_analyzed_at?: string | null
+          pdf_clarity_score?: number | null
+          pdf_handwriting_legibility?: number | null
+          pdf_quality_feedback?: string | null
           pedigree_segment_duration?: number | null
           pedigree_segment_noise_level?: number | null
           pedigree_segment_silence_level?: number | null
