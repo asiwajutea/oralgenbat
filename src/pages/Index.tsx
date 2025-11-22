@@ -7,6 +7,7 @@ import { AuditPagination } from "@/components/AuditPagination";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Audit {
   id: string;
@@ -24,6 +25,7 @@ interface Audit {
 }
 
 const Index = () => {
+  const { userRole } = useAuth();
   const [audits, setAudits] = useState<Audit[]>([]);
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
@@ -38,6 +40,8 @@ const Index = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  const hideReviewButton = userRole === 'field_manager' || userRole === 'contractor';
 
   const fetchAudits = async () => {
     try {
@@ -146,7 +150,7 @@ const Index = () => {
             </div>
           ) : (
             <>
-              <AuditTable audits={audits} onRefresh={fetchAudits} />
+              <AuditTable audits={audits} onRefresh={fetchAudits} hideReviewButton={hideReviewButton} />
               <AuditPagination
                 currentPage={currentPage}
                 totalPages={Math.ceil(totalCount / itemsPerPage)}
