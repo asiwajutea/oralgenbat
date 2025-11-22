@@ -14,6 +14,7 @@ import ReviewInterview from "./pages/ReviewInterview";
 import Auth from "./pages/Auth";
 import PendingApproval from "./pages/PendingApproval";
 import AdminDashboard from "./pages/AdminDashboard";
+import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import UserProfile from "./pages/UserProfile";
 import TeamManagement from "./pages/TeamManagement";
 import TeamApprovals from "./pages/TeamApprovals";
@@ -60,6 +61,14 @@ const App = () => (
                   <Layout>
                     <AdminDashboard />
                   </Layout>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/analytics"
+              element={
+                <AdminRoute>
+                  <AnalyticsDashboard />
                 </AdminRoute>
               }
             />
