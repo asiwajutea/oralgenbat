@@ -31,16 +31,10 @@ const TeamApprovals = () => {
         userId: session?.user?.id
       });
 
+      // First, fetch team assignments
       let query = supabase
         .from("team_assignments")
-        .select(`
-          *,
-          manager:profiles!field_manager_id (
-            id,
-            full_name,
-            email
-          )
-        `)
+        .select("*")
         .eq("status", "pending");
 
       // If user is a contractor (not admin), filter by their contractor_id
@@ -49,12 +43,32 @@ const TeamApprovals = () => {
         query = query.eq("contractor_id", profile.contractor_id);
       }
 
-      const { data, error } = await query.order("created_at", { ascending: false });
+      const { data: assignments, error: assignmentsError } = await query.order("created_at", { ascending: false });
       
-      console.log("📊 Query Results:", { data, error, count: data?.length });
+      if (assignmentsError) throw assignmentsError;
+      if (!assignments || assignments.length === 0) return [];
 
-      if (error) throw error;
-      return data;
+      // Fetch field manager profiles for all assignments
+      const managerIds = [...new Set(assignments.map(a => a.field_manager_id))];
+      const { data: managers, error: managersError } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", managerIds);
+
+      if (managersError) console.error("Failed to fetch managers:", managersError);
+
+      // Combine the data
+      const combinedData = assignments.map(assignment => ({
+        ...assignment,
+        manager: managers?.find(m => m.id === assignment.field_manager_id) || null
+      }));
+
+      console.log("📊 Query Results:", { 
+        assignments: combinedData.length, 
+        managers: managers?.length 
+      });
+
+      return combinedData;
     },
   });
 
