@@ -37,9 +37,34 @@ serve(async (req) => {
     if (!zipResponse.ok) {
       throw new Error(`Failed to download ZIP file: ${zipResponse.statusText}`);
     }
+    
     const zipBlob = await zipResponse.blob();
+    console.log(`Downloaded blob size: ${zipBlob.size} bytes`);
+    
+    // Validate blob size
+    if (zipBlob.size === 0) {
+      throw new Error("Downloaded ZIP file is empty (0 bytes)");
+    }
+    
+    if (zipBlob.size < 100) {
+      throw new Error(`Downloaded file is too small to be a valid ZIP (${zipBlob.size} bytes)`);
+    }
+    
     const zipArrayBuffer = await zipBlob.arrayBuffer();
     const zipBytes = new Uint8Array(zipArrayBuffer);
+    
+    // Validate ZIP file signature (should start with "PK" - 0x50 0x4B)
+    if (zipBytes.length < 4) {
+      throw new Error(`File too small to validate: ${zipBytes.length} bytes`);
+    }
+    
+    const isValidZip = zipBytes[0] === 0x50 && zipBytes[1] === 0x4B;
+    if (!isValidZip) {
+      const firstBytes = Array.from(zipBytes.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      throw new Error(`Invalid ZIP file signature. First bytes: ${firstBytes}. Expected: 50 4B (PK)`);
+    }
+    
+    console.log(`✓ Valid ZIP file detected (${zipBytes.length} bytes)`);
 
     // Extract filename from URL and parse it
     const urlParts = mobileZipUrl.split("/");
@@ -62,7 +87,14 @@ serve(async (req) => {
 
     // Extract ZIP using JSZip
     console.log("Extracting ZIP...");
-    const zip = await JSZip.loadAsync(zipArrayBuffer);
+    let zip;
+    try {
+      zip = await JSZip.loadAsync(zipBytes);
+      console.log("✓ ZIP file loaded successfully");
+    } catch (zipError) {
+      console.error("JSZip loading failed:", zipError);
+      throw new Error(`Failed to parse ZIP file: ${zipError instanceof Error ? zipError.message : 'Unknown error'}. File may be corrupted or incomplete.`);
+    }
     
     // Read metadata.json
     let metadata: any = {};
