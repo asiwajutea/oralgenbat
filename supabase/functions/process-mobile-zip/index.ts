@@ -407,10 +407,18 @@ async function analyzeAudioFromZip(zipFile: any): Promise<AudioAnalysis> {
     } catch (parseError) {
       console.error("Music-metadata parsing failed:", parseError);
       
-      // Fallback: Parse AAC/ADTS frames manually
-      console.log("Attempting AAC/ADTS frame detection...");
-      duration = estimateAACDurationFromFrames(audioData);
-      console.log(`✓ Calculated AAC duration: ${duration} seconds`);
+      // Method 2: Try MP3 frame parsing (most common format)
+      console.log("Attempting MP3 frame detection...");
+      duration = estimateMP3DurationFromFrames(audioData);
+      
+      if (duration > 0) {
+        console.log(`✓ Calculated MP3 duration: ${duration} seconds`);
+      } else {
+        // Method 3: Fall back to AAC/ADTS frame detection
+        console.log("MP3 parsing failed, attempting AAC/ADTS frame detection...");
+        duration = estimateAACDurationFromFrames(audioData);
+        console.log(`✓ Calculated AAC duration: ${duration} seconds`);
+      }
     }
     
     console.log(`Final calculated duration: ${duration} seconds`);
@@ -431,6 +439,67 @@ async function analyzeAudioFromZip(zipFile: any): Promise<AudioAnalysis> {
       silenceLevel: 0,
     };
   }
+}
+
+// Helper function to estimate duration from MP3 frames
+function estimateMP3DurationFromFrames(audioData: Uint8Array): number {
+  let frameCount = 0;
+  let sampleRate = 44100; // Default
+  let offset = 0;
+  const SAMPLES_PER_MP3_FRAME = 1152; // For MPEG1 Layer 3
+  
+  // Bitrate tables for MPEG1 Layer 3 (in kbps)
+  const bitratesV1L3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+  const sampleRates = [44100, 48000, 32000];
+  
+  while (offset < audioData.length - 4) {
+    // Check for MP3 sync word (11 bits set: 0xFFE or higher)
+    if (audioData[offset] === 0xFF && (audioData[offset + 1] & 0xE0) === 0xE0) {
+      const byte1 = audioData[offset + 1];
+      const byte2 = audioData[offset + 2];
+      
+      // Extract MPEG version (bits 11-12 of byte1)
+      const version = (byte1 >> 3) & 0x03;
+      // Extract layer (bits 13-14 of byte1)
+      const layer = (byte1 >> 1) & 0x03;
+      
+      // We want MPEG1 (version=3) Layer 3 (layer=1)
+      if (version === 3 && layer === 1) {
+        // Extract bitrate index (bits 16-19 of byte2)
+        const bitrateIndex = (byte2 >> 4) & 0x0F;
+        // Extract sample rate index (bits 20-21 of byte2)
+        const sampleRateIndex = (byte2 >> 2) & 0x03;
+        // Extract padding bit (bit 22 of byte2)
+        const padding = (byte2 >> 1) & 0x01;
+        
+        if (bitrateIndex !== 0 && bitrateIndex !== 15 && sampleRateIndex !== 3) {
+          const bitrate = bitratesV1L3[bitrateIndex];
+          if (frameCount === 0) {
+            sampleRate = sampleRates[sampleRateIndex];
+          }
+          
+          // Calculate frame length: (144 * bitrate * 1000) / sampleRate + padding
+          const frameLength = Math.floor((144 * bitrate * 1000) / sampleRate) + padding;
+          
+          if (frameLength > 0 && frameLength < 2881) { // Max MP3 frame size
+            frameCount++;
+            offset += frameLength;
+            continue;
+          }
+        }
+      }
+    }
+    offset++;
+  }
+  
+  console.log(`Detected ${frameCount} MP3 frames, sample rate: ${sampleRate} Hz`);
+  
+  if (frameCount > 0) {
+    const duration = Math.round((frameCount * SAMPLES_PER_MP3_FRAME) / sampleRate);
+    return duration;
+  }
+  
+  return 0;
 }
 
 // Helper function to estimate duration from AAC/ADTS frames
