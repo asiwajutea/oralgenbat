@@ -11,7 +11,7 @@ import { toast } from "sonner";
 interface ExportButtonProps {
   data: any[];
   filename: string;
-  type?: 'agent' | 'auditor' | 'contractor';
+  type?: 'agent' | 'auditor' | 'contractor' | 'field-manager';
 }
 
 export const ExportButton = ({ data, filename, type = 'agent' }: ExportButtonProps) => {
