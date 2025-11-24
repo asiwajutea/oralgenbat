@@ -373,6 +373,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_storage_usage: {
+        Args: never
+        Returns: {
+          bucket_id: string
+          file_count: number
+          total_size_bytes: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
