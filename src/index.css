@@ -115,3 +115,13 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Fix extra white space below PDF pages - canvas elements are inline by default */
+.react-pdf__Page__canvas {
+  display: block !important;
+}
+
+.react-pdf__Page__textContent,
+.react-pdf__Page__annotations {
+  display: block;
+}
