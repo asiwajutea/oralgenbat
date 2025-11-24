@@ -46,7 +46,7 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
       </div>
       
       <div className="flex-1 overflow-auto p-4">
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex flex-col items-center gap-2">
           <Document
             file={pdfUrl}
             onLoadSuccess={onDocumentLoadSuccess}
@@ -62,17 +62,19 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
             }
           >
             {Array.from(new Array(numPages), (el, index) => (
-              <div key={`page_${index + 1}`} className="mb-6 relative">
+              <div key={`page_${index + 1}`} className="mb-4 relative">
                 <div className="absolute top-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm font-medium z-10">
                   Page {index + 1} of {numPages}
                 </div>
-                <Page
-                  pageNumber={index + 1}
-                  scale={scale}
-                  renderTextLayer={true}
-                  renderAnnotationLayer={true}
-                  className="shadow-lg border border-border"
-                />
+                <div className="overflow-hidden">
+                  <Page
+                    pageNumber={index + 1}
+                    scale={scale}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="shadow-lg border border-border"
+                  />
+                </div>
               </div>
             ))}
           </Document>
