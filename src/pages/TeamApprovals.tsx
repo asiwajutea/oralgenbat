@@ -15,6 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CheckCircle, XCircle, Loader2, Users, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 
@@ -98,10 +105,27 @@ const TeamApprovals = () => {
         .select("id, full_name, email")
         .in("id", managerIds);
 
-      // Group assignments by field manager
+      // Fetch interviewer names from interview_metadata
+      const interviewerCodes = [...new Set(assignments.map(a => a.interviewer_code))];
+      const { data: interviewers } = await supabase
+        .from("interview_metadata")
+        .select("interviewer_code, interviewer_name")
+        .in("interviewer_code", interviewerCodes);
+
+      // Create a map of interviewer codes to names
+      const interviewerMap = new Map(
+        interviewers?.map(i => [i.interviewer_code, i.interviewer_name])
+      );
+
+      // Group assignments by field manager with interviewer names
       const teamsByManager = managerIds.map(managerId => {
         const manager = managers?.find(m => m.id === managerId);
-        const members = assignments.filter(a => a.field_manager_id === managerId);
+        const members = assignments
+          .filter(a => a.field_manager_id === managerId)
+          .map(assignment => ({
+            ...assignment,
+            interviewer_name: interviewerMap.get(assignment.interviewer_code) || "Unknown"
+          }));
         
         return {
           managerId,
@@ -113,6 +137,38 @@ const TeamApprovals = () => {
       });
 
       return teamsByManager;
+    },
+  });
+
+  // Fetch all field managers for reassignment dropdown
+  const { data: allFieldManagers } = useQuery({
+    queryKey: ["all-field-managers", profile?.contractor_id],
+    queryFn: async () => {
+      // Get all field manager user IDs
+      const { data: fieldManagerRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "field_manager");
+
+      if (!fieldManagerRoles || fieldManagerRoles.length === 0) return [];
+
+      const managerIds = fieldManagerRoles.map(r => r.user_id);
+
+      // Get profiles for these field managers
+      let profilesQuery = supabase
+        .from("profiles")
+        .select("id, full_name, email, contractor_id")
+        .in("id", managerIds)
+        .eq("is_approved", true);
+
+      // Filter by contractor_id for contractors
+      if (userRole === 'contractor' && profile?.contractor_id) {
+        profilesQuery = profilesQuery.eq("contractor_id", profile.contractor_id);
+      }
+
+      const { data: managers } = await profilesQuery.order("full_name");
+
+      return managers || [];
     },
   });
 
@@ -198,6 +254,42 @@ const TeamApprovals = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to update assignment.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reassignAgentMutation = useMutation({
+    mutationFn: async ({
+      assignmentId,
+      newFieldManagerId,
+    }: {
+      assignmentId: string;
+      newFieldManagerId: string;
+    }) => {
+      if (!session?.user.id) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("team_assignments")
+        .update({
+          field_manager_id: newFieldManagerId,
+        })
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["approved-teams"] });
+      queryClient.invalidateQueries({ queryKey: ["unassigned-interviewers"] });
+      toast({
+        title: "Success",
+        description: "Agent reassigned successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reassign agent.",
         variant: "destructive",
       });
     },
@@ -349,11 +441,39 @@ const TeamApprovals = () => {
                     </div>
                     <div className="space-y-2">
                       {team.members.map(member => (
-                        <div key={member.id} className="flex items-center gap-2 text-sm">
-                          <Badge variant="secondary">{member.interviewer_code}</Badge>
-                          <span className="text-muted-foreground">
-                            Assigned {format(new Date(member.approved_at), "MMM d, yyyy")}
-                          </span>
+                        <div key={member.id} className="flex items-center justify-between gap-2 p-2 rounded border bg-muted/30">
+                          <div className="flex items-center gap-2 flex-1">
+                            <Badge variant="secondary">{member.interviewer_code}</Badge>
+                            <span className="font-medium">{member.interviewer_name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              • Assigned {format(new Date(member.approved_at), "MMM d, yyyy")}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={member.field_manager_id}
+                              onValueChange={(newManagerId) => {
+                                if (newManagerId !== member.field_manager_id) {
+                                  reassignAgentMutation.mutate({
+                                    assignmentId: member.id,
+                                    newFieldManagerId: newManagerId,
+                                  });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-[200px] h-8 text-xs">
+                                <SelectValue placeholder="Reassign to..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allFieldManagers?.map(manager => (
+                                  <SelectItem key={manager.id} value={manager.id}>
+                                    {manager.full_name}
+                                    {manager.id === team.managerId && " (Current)"}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       ))}
                     </div>
