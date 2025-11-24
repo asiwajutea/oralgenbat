@@ -52,6 +52,27 @@ export interface ContractorPerformance {
   rank: number;
 }
 
+export interface FieldManagerPerformance {
+  field_manager_id: string;
+  field_manager_name: string;
+  contractor_id: string;
+  team_size: number;
+  active_team_members: number;
+  total_interviews: number;
+  passed: number;
+  failed: number;
+  pending: number;
+  team_pass_rate: number;
+  avg_team_audio_quality: number;
+  avg_team_names: number;
+  team_re_audit_rate: number;
+  interviews_this_week: number;
+  interviews_this_month: number;
+  performance_score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  rank: number;
+}
+
 export interface SummaryStats {
   total_audits: number;
   pass_rate: number;
@@ -353,11 +374,17 @@ export const useContractorPerformance = (filters: AnalyticsFilters) => {
     queryFn: async (): Promise<ContractorPerformance[]> => {
       const { start, end } = filters.dateRange;
 
-      const { data } = await supabase
+      let query = supabase
         .from('interview_metadata')
         .select('*, audits!inner(*)')
         .gte('audits.uploaded_at', start.toISOString())
         .lte('audits.uploaded_at', end.toISOString());
+
+      if (filters.contractors.length > 0) {
+        query = query.in('contractor_id', filters.contractors);
+      }
+
+      const { data } = await query;
 
       if (!data) return [];
 
@@ -366,30 +393,29 @@ export const useContractorPerformance = (filters: AnalyticsFilters) => {
         const key = item.contractor_id;
         if (!acc[key]) {
           acc[key] = {
-            contractor_id: key,
+            contractor_id: item.contractor_id,
             interviewers: new Set(),
             audits: [],
-            quality_scores: [],
+            audioScores: [],
           };
         }
         acc[key].interviewers.add(item.interviewer_code);
         acc[key].audits.push(item.audits);
         
-        if (item.family_story_noise_level && item.family_story_silence_level) {
-          const quality = 100 - ((item.family_story_noise_level + item.family_story_silence_level) / 2);
-          acc[key].quality_scores.push(quality);
-        }
+        const noise = item.family_story_noise_level || 0;
+        const silence = item.family_story_silence_level || 0;
+        const audioQuality = 100 - ((noise + silence) / 2);
+        acc[key].audioScores.push(audioQuality);
         
         return acc;
       }, {} as any);
 
-      const contractorStats: ContractorPerformance[] = Object.values(grouped).map((contractor: any) => {
+      const contractorStats: ContractorPerformance[] = Object.values(grouped).map((contractor: any, index: number) => {
         const total = contractor.audits.length;
         const passed = contractor.audits.filter((a: any) => a.status === 'Audit Passed').length;
         const passRate = total > 0 ? (passed / total) * 100 : 0;
-        
-        const avgQuality = contractor.quality_scores.length > 0
-          ? contractor.quality_scores.reduce((sum: number, q: number) => sum + q, 0) / contractor.quality_scores.length
+        const avgQuality = contractor.audioScores.length > 0
+          ? contractor.audioScores.reduce((sum: number, q: number) => sum + q, 0) / contractor.audioScores.length
           : 0;
 
         return {
@@ -398,16 +424,183 @@ export const useContractorPerformance = (filters: AnalyticsFilters) => {
           total_interviews: total,
           overall_pass_rate: passRate,
           avg_quality_score: avgQuality,
-          rank: 0,
+          rank: index + 1,
         };
       });
 
+      // Sort by pass rate
       contractorStats.sort((a, b) => b.overall_pass_rate - a.overall_pass_rate);
       contractorStats.forEach((contractor, index) => {
         contractor.rank = index + 1;
       });
 
       return contractorStats;
+    },
+  });
+};
+
+export const useFieldManagerPerformance = (filters: AnalyticsFilters) => {
+  return useQuery({
+    queryKey: ['field-manager-performance', filters],
+    queryFn: async (): Promise<FieldManagerPerformance[]> => {
+      const { start, end } = filters.dateRange;
+      const now = new Date();
+      const weekStart = startOfWeek(now);
+      const monthStart = startOfMonth(now);
+
+      // Fetch approved team assignments
+      const { data: assignments } = await supabase
+        .from('team_assignments')
+        .select('field_manager_id, interviewer_code, contractor_id, profiles!inner(full_name)')
+        .eq('status', 'approved');
+
+      if (!assignments || assignments.length === 0) return [];
+
+      // Fetch interview metadata with audits
+      let query = supabase
+        .from('interview_metadata')
+        .select('*, audits!inner(*)')
+        .gte('audits.uploaded_at', start.toISOString())
+        .lte('audits.uploaded_at', end.toISOString());
+
+      if (filters.contractors.length > 0) {
+        query = query.in('contractor_id', filters.contractors);
+      }
+
+      const { data: interviews } = await query;
+
+      if (!interviews) return [];
+
+      // Create a map of interviewer_code to field_manager
+      const interviewerToFM = new Map<string, { fm_id: string; fm_name: string; contractor_id: string }>();
+      assignments.forEach(assignment => {
+        interviewerToFM.set(assignment.interviewer_code, {
+          fm_id: assignment.field_manager_id,
+          fm_name: (assignment.profiles as any).full_name,
+          contractor_id: assignment.contractor_id
+        });
+      });
+
+      // Group interviews by field manager
+      const grouped = interviews.reduce((acc, item) => {
+        const fmInfo = interviewerToFM.get(item.interviewer_code);
+        if (!fmInfo) return acc;
+
+        const key = fmInfo.fm_id;
+        if (!acc[key]) {
+          acc[key] = {
+            field_manager_id: fmInfo.fm_id,
+            field_manager_name: fmInfo.fm_name,
+            contractor_id: fmInfo.contractor_id,
+            team_members: new Set<string>(),
+            active_members: new Set<string>(),
+            audits: [],
+            names: [],
+            audioScores: [],
+            interviewsThisWeek: 0,
+            interviewsThisMonth: 0,
+          };
+        }
+
+        acc[key].team_members.add(item.interviewer_code);
+        acc[key].active_members.add(item.interviewer_code);
+        acc[key].audits.push(item.audits);
+        
+        if (item.total_names) acc[key].names.push(item.total_names);
+        
+        const noise = item.family_story_noise_level || 0;
+        const silence = item.family_story_silence_level || 0;
+        const audioQuality = 100 - ((noise + silence) / 2);
+        acc[key].audioScores.push(audioQuality);
+
+        const uploadDate = new Date(item.audits.uploaded_at);
+        if (uploadDate >= weekStart) acc[key].interviewsThisWeek++;
+        if (uploadDate >= monthStart) acc[key].interviewsThisMonth++;
+
+        return acc;
+      }, {} as any);
+
+      // Calculate team size for all field managers (including those without interviews)
+      assignments.forEach(assignment => {
+        const key = assignment.field_manager_id;
+        if (!grouped[key]) {
+          grouped[key] = {
+            field_manager_id: assignment.field_manager_id,
+            field_manager_name: (assignment.profiles as any).full_name,
+            contractor_id: assignment.contractor_id,
+            team_members: new Set<string>([assignment.interviewer_code]),
+            active_members: new Set<string>(),
+            audits: [],
+            names: [],
+            audioScores: [],
+            interviewsThisWeek: 0,
+            interviewsThisMonth: 0,
+          };
+        } else {
+          grouped[key].team_members.add(assignment.interviewer_code);
+        }
+      });
+
+      const fmStats: FieldManagerPerformance[] = Object.values(grouped).map((fm: any) => {
+        const total = fm.audits.length;
+        const passed = fm.audits.filter((a: any) => a.status === 'Audit Passed').length;
+        const failed = fm.audits.filter((a: any) => a.status === 'Audit Failed').length;
+        const pending = fm.audits.filter((a: any) => a.status === 'Pending' || a.status === 'Awaiting Review').length;
+        const reAudits = fm.audits.filter((a: any) => a.is_re_audit).length;
+        
+        const teamPassRate = total > 0 ? (passed / total) * 100 : 0;
+        const teamReAuditRate = total > 0 ? (reAudits / total) * 100 : 0;
+        
+        const avgTeamNames = fm.names.length > 0
+          ? fm.names.reduce((sum: number, n: number) => sum + n, 0) / fm.names.length
+          : 0;
+        
+        const avgTeamAudioQuality = fm.audioScores.length > 0
+          ? fm.audioScores.reduce((sum: number, q: number) => sum + q, 0) / fm.audioScores.length
+          : 0;
+
+        const teamSize = fm.team_members.size;
+        const activeMembers = fm.active_members.size;
+        const utilization = teamSize > 0 ? (activeMembers / teamSize) * 100 : 0;
+
+        // Calculate performance score
+        const passRateScore = teamPassRate * 0.4;
+        const audioScore = avgTeamAudioQuality * 0.2;
+        const utilizationScore = utilization * 0.2;
+        const reAuditPenalty = (100 - teamReAuditRate) * 0.1;
+        const namesScore = Math.min((avgTeamNames / 200) * 100, 100) * 0.1;
+        
+        const performanceScore = passRateScore + audioScore + utilizationScore + reAuditPenalty + namesScore;
+        
+        return {
+          field_manager_id: fm.field_manager_id,
+          field_manager_name: fm.field_manager_name,
+          contractor_id: fm.contractor_id,
+          team_size: teamSize,
+          active_team_members: activeMembers,
+          total_interviews: total,
+          passed,
+          failed,
+          pending,
+          team_pass_rate: teamPassRate,
+          avg_team_audio_quality: avgTeamAudioQuality,
+          avg_team_names: avgTeamNames,
+          team_re_audit_rate: teamReAuditRate,
+          interviews_this_week: fm.interviewsThisWeek,
+          interviews_this_month: fm.interviewsThisMonth,
+          performance_score: performanceScore,
+          grade: calculateGrade(performanceScore),
+          rank: 0,
+        };
+      });
+
+      // Sort by performance score and assign ranks
+      fmStats.sort((a, b) => b.performance_score - a.performance_score);
+      fmStats.forEach((fm, index) => {
+        fm.rank = index + 1;
+      });
+
+      return fmStats;
     },
   });
 };

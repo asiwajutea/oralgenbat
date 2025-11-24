@@ -9,12 +9,14 @@ import { PerformanceBarChart } from "@/components/analytics/PerformanceBarChart"
 import { AgentPerformanceTable } from "@/components/analytics/AgentPerformanceTable";
 import { AuditorPerformanceTable } from "@/components/analytics/AuditorPerformanceTable";
 import { ContractorPerformanceTable } from "@/components/analytics/ContractorPerformanceTable";
+import { FieldManagerPerformanceTable } from "@/components/analytics/FieldManagerPerformanceTable";
 import { ExportButton } from "@/components/analytics/ExportButton";
 import {
   useAnalyticsSummary,
   useAgentPerformance,
   useAuditorPerformance,
   useContractorPerformance,
+  useFieldManagerPerformance,
   useTrendData,
   getDefaultFilters,
   AnalyticsFilters as FilterState,
@@ -32,6 +34,7 @@ const AnalyticsDashboard = () => {
   const { data: agentData = [], isLoading: agentLoading } = useAgentPerformance(filters);
   const { data: auditorData = [], isLoading: auditorLoading } = useAuditorPerformance(filters);
   const { data: contractorData = [], isLoading: contractorLoading } = useContractorPerformance(filters);
+  const { data: fieldManagerData = [], isLoading: fieldManagerLoading } = useFieldManagerPerformance(filters);
   const { data: trendData = [] } = useTrendData(filters, trendPeriod);
   const { data: storageUsage, isLoading: storageLoading } = useStorageUsage();
 
@@ -94,11 +97,12 @@ const AnalyticsDashboard = () => {
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
           <div className="sticky top-0 z-50 bg-background pb-4 -mx-6 px-6 pt-2">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="agents">Agents</TabsTrigger>
               <TabsTrigger value="auditors">Auditors</TabsTrigger>
               <TabsTrigger value="contractors">Contractors</TabsTrigger>
+              <TabsTrigger value="field-managers">Field Managers</TabsTrigger>
             </TabsList>
           </div>
 
@@ -144,6 +148,14 @@ const AnalyticsDashboard = () => {
               <ExportButton data={contractorData} filename="contractor-performance" type="contractor" />
             </div>
             <ContractorPerformanceTable data={contractorData} />
+          </TabsContent>
+
+          {/* Field Managers Tab */}
+          <TabsContent value="field-managers" className="space-y-6">
+            <div className="flex justify-end">
+              <ExportButton data={fieldManagerData} filename="field-manager-performance" type="field-manager" />
+            </div>
+            <FieldManagerPerformanceTable data={fieldManagerData} />
           </TabsContent>
         </Tabs>
       </div>
