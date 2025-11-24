@@ -93,12 +93,14 @@ const AnalyticsDashboard = () => {
 
         {/* Main Content Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="agents">Agents</TabsTrigger>
-            <TabsTrigger value="auditors">Auditors</TabsTrigger>
-            <TabsTrigger value="contractors">Contractors</TabsTrigger>
-          </TabsList>
+          <div className="sticky top-0 z-50 bg-background pb-4 -mx-6 px-6 pt-2">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="agents">Agents</TabsTrigger>
+              <TabsTrigger value="auditors">Auditors</TabsTrigger>
+              <TabsTrigger value="contractors">Contractors</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
