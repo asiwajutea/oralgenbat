@@ -295,6 +295,49 @@ const TeamApprovals = () => {
     },
   });
 
+  const assignAgentMutation = useMutation({
+    mutationFn: async ({
+      interviewerCode,
+      fieldManagerId,
+      contractorId,
+    }: {
+      interviewerCode: string;
+      fieldManagerId: string;
+      contractorId: string;
+    }) => {
+      if (!session?.user.id) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("team_assignments")
+        .insert({
+          interviewer_code: interviewerCode,
+          field_manager_id: fieldManagerId,
+          contractor_id: contractorId,
+          status: "approved",
+          approved_by: session.user.id,
+          approved_at: new Date().toISOString(),
+          notes: "Direct assignment by contractor/admin"
+        });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["approved-teams"] });
+      queryClient.invalidateQueries({ queryKey: ["unassigned-interviewers"] });
+      toast({
+        title: "Success",
+        description: "Agent assigned to team successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign agent.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleApprove = (assignmentId: string) => {
     updateAssignmentMutation.mutate({ assignmentId, status: "approved" });
   };
@@ -513,6 +556,7 @@ const TeamApprovals = () => {
                     <TableHead>Interviewer Code</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Contractor ID</TableHead>
+                    <TableHead>Assign To Team</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -522,6 +566,30 @@ const TeamApprovals = () => {
                       <TableCell>{interviewer.name || "-"}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{interviewer.contractor_id}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          onValueChange={(fieldManagerId) => {
+                            assignAgentMutation.mutate({
+                              interviewerCode: interviewer.code,
+                              fieldManagerId,
+                              contractorId: interviewer.contractor_id,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="Select field manager..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allFieldManagers
+                              ?.filter(manager => manager.contractor_id === interviewer.contractor_id)
+                              .map(manager => (
+                                <SelectItem key={manager.id} value={manager.id}>
+                                  {manager.full_name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                     </TableRow>
                   ))}
