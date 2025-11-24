@@ -19,13 +19,13 @@ import { CheckCircle, XCircle, Loader2, Users } from "lucide-react";
 import { format } from "date-fns";
 
 const TeamApprovals = () => {
-  const { session } = useAuth();
+  const { session, userRole, profile } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: pendingRequests, isLoading } = useQuery({
-    queryKey: ["pending-team-assignments"],
+    queryKey: ["pending-team-assignments", profile?.contractor_id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("team_assignments")
         .select(`
           *,
@@ -35,8 +35,14 @@ const TeamApprovals = () => {
             email
           )
         `)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
+        .eq("status", "pending");
+
+      // If user is a contractor (not admin), filter by their contractor_id
+      if (userRole === 'contractor' && profile?.contractor_id) {
+        query = query.eq("contractor_id", profile.contractor_id);
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
 
       if (error) throw error;
       return data;

@@ -8,6 +8,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import { FieldManagerRoute } from "@/components/FieldManagerRoute";
 import { ContractorRoute } from "@/components/ContractorRoute";
+import { ApproverRoute } from "@/components/ApproverRoute";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import ReviewInterview from "./pages/ReviewInterview";
@@ -116,9 +117,9 @@ const App = () => (
               path="/admin/team-approvals"
               element={
                 <ProtectedRoute>
-                  <ContractorRoute>
+                  <ApproverRoute>
                     <TeamApprovals />
-                  </ContractorRoute>
+                  </ApproverRoute>
                 </ProtectedRoute>
               }
             />
