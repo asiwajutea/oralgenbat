@@ -116,19 +116,48 @@ All colors MUST be HSL.
   }
 }
 
-/* Fix extra white space below PDF pages - canvas elements are inline by default */
-.react-pdf__Page__canvas {
-  display: block !important;
-}
-
-.react-pdf__Page__textContent,
-.react-pdf__Page__annotations {
-  display: block;
-}
-
-/* Remove default margin/padding from react-pdf Page wrapper */
+/* Fix extra white space below PDF pages - comprehensive solution */
 .react-pdf__Page {
   margin: 0 !important;
   padding: 0 !important;
   line-height: 0 !important;
+}
+
+.react-pdf__Page__canvas {
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.react-pdf__Page__textContent {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  overflow: hidden !important;
+  opacity: 0.2;
+  line-height: 1.0;
+}
+
+.react-pdf__Page__textContent span {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.react-pdf__Page__annotations {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  overflow: hidden !important;
+}
+
+.react-pdf__Document {
+  margin: 0;
+  padding: 0;
 }
