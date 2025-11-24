@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CheckCircle, XCircle, Loader2, Users } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Users, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 
 const TeamApprovals = () => {
@@ -69,6 +69,100 @@ const TeamApprovals = () => {
       });
 
       return combinedData;
+    },
+  });
+
+  // Fetch approved teams grouped by field manager
+  const { data: approvedTeams, isLoading: loadingTeams } = useQuery({
+    queryKey: ["approved-teams", profile?.contractor_id],
+    queryFn: async () => {
+      let query = supabase
+        .from("team_assignments")
+        .select("*")
+        .eq("status", "approved");
+
+      if (userRole === 'contractor' && profile?.contractor_id) {
+        query = query.eq("contractor_id", profile.contractor_id);
+      }
+
+      const { data: assignments, error: assignmentsError } = await query
+        .order("field_manager_id");
+
+      if (assignmentsError) throw assignmentsError;
+      if (!assignments || assignments.length === 0) return [];
+
+      // Fetch field manager profiles
+      const managerIds = [...new Set(assignments.map(a => a.field_manager_id))];
+      const { data: managers } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", managerIds);
+
+      // Group assignments by field manager
+      const teamsByManager = managerIds.map(managerId => {
+        const manager = managers?.find(m => m.id === managerId);
+        const members = assignments.filter(a => a.field_manager_id === managerId);
+        
+        return {
+          managerId,
+          managerName: manager?.full_name || "Unknown",
+          managerEmail: manager?.email,
+          members,
+          memberCount: members.length
+        };
+      });
+
+      return teamsByManager;
+    },
+  });
+
+  // Fetch unassigned interviewers
+  const { data: unassignedInterviewers, isLoading: loadingUnassigned } = useQuery({
+    queryKey: ["unassigned-interviewers", profile?.contractor_id],
+    queryFn: async () => {
+      // Get all interviewers from interview_metadata
+      let metadataQuery = supabase
+        .from("interview_metadata")
+        .select("interviewer_code, interviewer_name, contractor_id");
+
+      if (userRole === 'contractor' && profile?.contractor_id) {
+        metadataQuery = metadataQuery.eq("contractor_id", profile.contractor_id);
+      }
+
+      const { data: allInterviewers, error: interviewersError } = await metadataQuery;
+      
+      if (interviewersError) throw interviewersError;
+
+      // Get unique interviewers
+      const uniqueInterviewers = Array.from(
+        new Map(
+          allInterviewers?.map(i => [
+            i.interviewer_code,
+            {
+              code: i.interviewer_code,
+              name: i.interviewer_name,
+              contractor_id: i.contractor_id
+            }
+          ])
+        ).values()
+      );
+
+      // Get all approved assignments
+      let assignmentsQuery = supabase
+        .from("team_assignments")
+        .select("interviewer_code")
+        .eq("status", "approved");
+
+      if (userRole === 'contractor' && profile?.contractor_id) {
+        assignmentsQuery = assignmentsQuery.eq("contractor_id", profile.contractor_id);
+      }
+
+      const { data: approvedAssignments } = await assignmentsQuery;
+
+      const assignedCodes = approvedAssignments?.map(a => a.interviewer_code) || [];
+      
+      // Filter out assigned interviewers
+      return uniqueInterviewers.filter(i => !assignedCodes.includes(i.code));
     },
   });
 
@@ -221,6 +315,103 @@ const TeamApprovals = () => {
                 <p className="text-sm">
                   All team assignment requests have been processed.
                 </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Active Teams Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Active Teams ({approvedTeams?.length || 0})
+            </CardTitle>
+            <CardDescription>
+              Field managers and their assigned interviewers
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingTeams ? (
+              <div className="flex justify-center p-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : approvedTeams && approvedTeams.length > 0 ? (
+              <div className="space-y-4">
+                {approvedTeams.map(team => (
+                  <div key={team.managerId} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="font-semibold">{team.managerName}</h3>
+                        <p className="text-sm text-muted-foreground">{team.managerEmail}</p>
+                      </div>
+                      <Badge variant="outline">{team.memberCount} {team.memberCount === 1 ? 'member' : 'members'}</Badge>
+                    </div>
+                    <div className="space-y-2">
+                      {team.members.map(member => (
+                        <div key={member.id} className="flex items-center gap-2 text-sm">
+                          <Badge variant="secondary">{member.interviewer_code}</Badge>
+                          <span className="text-muted-foreground">
+                            Assigned {format(new Date(member.approved_at), "MMM d, yyyy")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center p-8 text-muted-foreground">
+                <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">No Active Teams</p>
+                <p className="text-sm">No approved team assignments yet.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Unassigned Agents Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Unassigned Agents ({unassignedInterviewers?.length || 0})
+            </CardTitle>
+            <CardDescription>
+              Interviewers not currently assigned to any team
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingUnassigned ? (
+              <div className="flex justify-center p-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : unassignedInterviewers && unassignedInterviewers.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Interviewer Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Contractor ID</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {unassignedInterviewers.map(interviewer => (
+                    <TableRow key={interviewer.code}>
+                      <TableCell className="font-medium">{interviewer.code}</TableCell>
+                      <TableCell>{interviewer.name || "-"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{interviewer.contractor_id}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center p-8 text-muted-foreground">
+                <UserPlus className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">All Agents Assigned</p>
+                <p className="text-sm">All interviewers are assigned to teams.</p>
               </div>
             )}
           </CardContent>
