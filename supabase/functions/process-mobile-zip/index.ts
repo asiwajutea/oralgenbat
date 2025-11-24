@@ -31,40 +31,91 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Download ZIP file from storage
-    console.log("Downloading ZIP from:", mobileZipUrl);
-    const zipResponse = await fetch(mobileZipUrl);
-    if (!zipResponse.ok) {
-      throw new Error(`Failed to download ZIP file: ${zipResponse.statusText}`);
+    // Extract file path from URL for direct storage access
+    const storageUrlParts = mobileZipUrl.split("/storage/v1/object/public/mobile-zips/");
+    const storagePath = storageUrlParts[1];
+    console.log("Downloading ZIP from storage path:", storagePath);
+
+    // Retry logic for downloading - file might need time to propagate
+    let zipBytes: Uint8Array | null = null;
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`Download attempt ${attempt}/3...`);
+        
+        // Use Supabase Storage API directly instead of public URL
+        const { data, error } = await supabase.storage
+          .from("mobile-zips")
+          .download(storagePath);
+
+        if (error) {
+          throw new Error(`Storage download error: ${error.message}`);
+        }
+
+        if (!data) {
+          throw new Error("No data returned from storage");
+        }
+
+        const arrayBuffer = await data.arrayBuffer();
+        zipBytes = new Uint8Array(arrayBuffer);
+        
+        console.log(`Downloaded ${zipBytes.length} bytes`);
+        
+        // Validate size
+        if (zipBytes.length === 0) {
+          throw new Error("Downloaded ZIP file is empty (0 bytes)");
+        }
+        
+        if (zipBytes.length < 100) {
+          throw new Error(`File too small to be valid ZIP (${zipBytes.length} bytes)`);
+        }
+        
+        // Validate ZIP file signature (should start with "PK")
+        const isValidStart = zipBytes[0] === 0x50 && zipBytes[1] === 0x4B;
+        if (!isValidStart) {
+          const firstBytes = Array.from(zipBytes.slice(0, 10))
+            .map(b => b.toString(16).padStart(2, '0')).join(' ');
+          throw new Error(`Invalid ZIP start signature. First bytes: ${firstBytes}`);
+        }
+        
+        // Validate ZIP has End of Central Directory (EOCD) signature
+        // EOCD signature is "PK\x05\x06" (0x50 0x4B 0x05 0x06)
+        // It should be in the last 65KB of the file
+        const searchStart = Math.max(0, zipBytes.length - 65536);
+        let foundEOCD = false;
+        
+        for (let i = zipBytes.length - 22; i >= searchStart; i--) {
+          if (zipBytes[i] === 0x50 && zipBytes[i+1] === 0x4B && 
+              zipBytes[i+2] === 0x05 && zipBytes[i+3] === 0x06) {
+            foundEOCD = true;
+            console.log(`✓ Found EOCD at offset ${i}`);
+            break;
+          }
+        }
+        
+        if (!foundEOCD) {
+          throw new Error("ZIP file missing End of Central Directory (EOCD) signature - file may be incomplete");
+        }
+        
+        console.log(`✓ Valid ZIP file structure detected (${zipBytes.length} bytes)`);
+        break; // Success!
+        
+      } catch (error) {
+        lastError = error as Error;
+        console.error(`Attempt ${attempt} failed:`, error);
+        
+        if (attempt < 3) {
+          const delayMs = attempt * 2000; // 2s, 4s
+          console.log(`Waiting ${delayMs}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
     }
     
-    const zipBlob = await zipResponse.blob();
-    console.log(`Downloaded blob size: ${zipBlob.size} bytes`);
-    
-    // Validate blob size
-    if (zipBlob.size === 0) {
-      throw new Error("Downloaded ZIP file is empty (0 bytes)");
+    if (!zipBytes) {
+      throw new Error(`Failed to download valid ZIP after 3 attempts: ${lastError?.message || 'Unknown error'}`);
     }
-    
-    if (zipBlob.size < 100) {
-      throw new Error(`Downloaded file is too small to be a valid ZIP (${zipBlob.size} bytes)`);
-    }
-    
-    const zipArrayBuffer = await zipBlob.arrayBuffer();
-    const zipBytes = new Uint8Array(zipArrayBuffer);
-    
-    // Validate ZIP file signature (should start with "PK" - 0x50 0x4B)
-    if (zipBytes.length < 4) {
-      throw new Error(`File too small to validate: ${zipBytes.length} bytes`);
-    }
-    
-    const isValidZip = zipBytes[0] === 0x50 && zipBytes[1] === 0x4B;
-    if (!isValidZip) {
-      const firstBytes = Array.from(zipBytes.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      throw new Error(`Invalid ZIP file signature. First bytes: ${firstBytes}. Expected: 50 4B (PK)`);
-    }
-    
-    console.log(`✓ Valid ZIP file detected (${zipBytes.length} bytes)`);
 
     // Extract filename from URL and parse it
     const urlParts = mobileZipUrl.split("/");
