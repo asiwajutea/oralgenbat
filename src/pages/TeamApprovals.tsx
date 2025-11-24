@@ -22,9 +22,15 @@ const TeamApprovals = () => {
   const { session, userRole, profile } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data: pendingRequests, isLoading } = useQuery({
+  const { data: pendingRequests, isLoading, error } = useQuery({
     queryKey: ["pending-team-assignments", profile?.contractor_id],
     queryFn: async () => {
+      console.log("🔍 Debug Info:", {
+        userRole,
+        contractorId: profile?.contractor_id,
+        userId: session?.user?.id
+      });
+
       let query = supabase
         .from("team_assignments")
         .select(`
@@ -39,10 +45,13 @@ const TeamApprovals = () => {
 
       // If user is a contractor (not admin), filter by their contractor_id
       if (userRole === 'contractor' && profile?.contractor_id) {
+        console.log("📌 Filtering by contractor_id:", profile.contractor_id);
         query = query.eq("contractor_id", profile.contractor_id);
       }
 
       const { data, error } = await query.order("created_at", { ascending: false });
+      
+      console.log("📊 Query Results:", { data, error, count: data?.length });
 
       if (error) throw error;
       return data;
@@ -117,6 +126,12 @@ const TeamApprovals = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="bg-destructive/10 p-4 rounded-md mb-4">
+                <p className="text-destructive font-medium">Error loading requests:</p>
+                <p className="text-sm text-muted-foreground">{error.message}</p>
+              </div>
+            )}
             {isLoading ? (
               <div className="flex justify-center p-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
