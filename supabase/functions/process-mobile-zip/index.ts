@@ -220,6 +220,27 @@ serve(async (req) => {
       throw metadataError;
     }
 
+    // Automatically trigger PDF analysis
+    console.log("Triggering automatic PDF analysis...");
+    try {
+      const { data: pdfAnalysisResult, error: pdfAnalysisError } = await supabase.functions.invoke(
+        'analyze-pdf',
+        {
+          body: { auditId }
+        }
+      );
+
+      if (pdfAnalysisError) {
+        console.warn("PDF analysis failed (non-critical):", pdfAnalysisError.message);
+        console.warn("PDF can be analyzed manually later from the Review page");
+      } else {
+        console.log("✓ PDF analysis completed successfully:", pdfAnalysisResult);
+      }
+    } catch (pdfAnalysisException) {
+      console.warn("PDF analysis encountered an error (non-critical):", pdfAnalysisException);
+      console.warn("PDF can be analyzed manually later from the Review page");
+    }
+
     console.log("Mobile ZIP processing completed successfully");
     return new Response(
       JSON.stringify({ 
