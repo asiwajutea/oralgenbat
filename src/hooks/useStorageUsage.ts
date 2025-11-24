@@ -26,36 +26,38 @@ export const useStorageUsage = () => {
   return useQuery({
     queryKey: ['storage-usage'],
     queryFn: async (): Promise<StorageUsageSummary> => {
-      // Use the storage API to list objects in each bucket
       const buckets = ['audit-pdfs', 'mobile-zips', 'interview-photos'];
+      
+      // Query storage.objects table directly to get file sizes
+      // @ts-ignore - storage.objects is not in the generated types but exists
+      const { data: objects, error } = await supabase
+        .from('storage.objects' as any)
+        .select('bucket_id, metadata')
+        .in('bucket_id', buckets);
+
+      if (error) {
+        console.error('Error fetching storage objects:', error);
+        throw error;
+      }
+
+      // Group by bucket and calculate sizes
       const bucketMap = new Map<string, { count: number; bytes: number }>();
       
-      for (const bucketId of buckets) {
-        const { data: files, error: listError } = await supabase
-          .storage
-          .from(bucketId)
-          .list('', {
-            limit: 10000,
-            sortBy: { column: 'name', order: 'asc' }
-          });
+      // Initialize all buckets with zero
+      buckets.forEach(bucket => {
+        bucketMap.set(bucket, { count: 0, bytes: 0 });
+      });
 
-        if (listError) {
-          console.error(`Error listing files in ${bucketId}:`, listError);
-          continue;
-        }
-
-        if (files) {
-          const totalBytes = files.reduce((sum, file) => {
-            // @ts-ignore - metadata.size exists but not in types
-            return sum + (file.metadata?.size || 0);
-          }, 0);
-          
-          bucketMap.set(bucketId, {
-            count: files.length,
-            bytes: totalBytes
-          });
-        }
-      }
+      // Aggregate sizes from objects
+      objects?.forEach((obj: any) => {
+        const bucketId = obj.bucket_id;
+        const size = obj.metadata?.size || 0;
+        const current = bucketMap.get(bucketId) || { count: 0, bytes: 0 };
+        bucketMap.set(bucketId, {
+          count: current.count + 1,
+          bytes: current.bytes + size
+        });
+      });
 
       // Calculate totals
       let totalFiles = 0;
