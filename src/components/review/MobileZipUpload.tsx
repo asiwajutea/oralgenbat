@@ -22,45 +22,40 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
   ): Promise<string> => {
     return new Promise(async (resolve, reject) => {
       try {
-        // Get signed upload URL
-        const { data: uploadData, error: urlError } = await supabase.storage
+        console.log(`Starting upload of ${file.size} bytes to ${filePath}`);
+        
+        // Use standard upload with upsert for better reliability
+        const { data, error: uploadError } = await supabase.storage
           .from("mobile-zips")
-          .createSignedUploadUrl(filePath);
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: file.type || 'application/zip',
+          });
 
-        if (urlError) throw urlError;
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          throw uploadError;
+        }
 
-        // Upload with progress tracking
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.addEventListener("progress", (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            setUploadProgress(percent);
-          }
-        });
-
-        xhr.addEventListener("load", async () => {
-          if (xhr.status === 200) {
-            // Wait for Supabase Storage to finalize the file
-            // This prevents "corrupted zip" errors when accessing immediately
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage
-              .from("mobile-zips")
-              .getPublicUrl(filePath);
-            resolve(publicUrl);
-          } else {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
-          }
-        });
-
-        xhr.addEventListener("error", () => reject(new Error("Upload failed")));
-
-        xhr.open("PUT", uploadData.signedUrl);
-        xhr.setRequestHeader("Content-Type", file.type);
-        xhr.send(file);
+        console.log('Upload completed:', data);
+        
+        // Simulate progress for user feedback (since standard upload doesn't provide progress)
+        setUploadProgress(100);
+        
+        // Wait longer for storage to fully commit the file
+        console.log('Waiting for storage to finalize...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from("mobile-zips")
+          .getPublicUrl(filePath);
+          
+        console.log('File available at:', publicUrl);
+        resolve(publicUrl);
       } catch (error) {
+        console.error('Upload failed:', error);
         reject(error);
       }
     });
