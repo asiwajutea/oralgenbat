@@ -28,34 +28,26 @@ export const useStorageUsage = () => {
     queryFn: async (): Promise<StorageUsageSummary> => {
       const buckets = ['audit-pdfs', 'mobile-zips', 'interview-photos'];
       
-      // Query storage.objects table directly to get file sizes
-      // @ts-ignore - storage.objects is not in the generated types but exists
-      const { data: objects, error } = await supabase
-        .from('storage.objects' as any)
-        .select('bucket_id, metadata')
-        .in('bucket_id', buckets);
+      // Use RPC function to get storage usage from storage.objects
+      const { data: bucketData, error } = await supabase
+        .rpc('get_storage_usage');
 
       if (error) {
-        console.error('Error fetching storage objects:', error);
+        console.error('Error fetching storage usage:', error);
         throw error;
       }
 
-      // Group by bucket and calculate sizes
-      const bucketMap = new Map<string, { count: number; bytes: number }>();
-      
       // Initialize all buckets with zero
+      const bucketMap = new Map<string, { count: number; bytes: number }>();
       buckets.forEach(bucket => {
         bucketMap.set(bucket, { count: 0, bytes: 0 });
       });
 
-      // Aggregate sizes from objects
-      objects?.forEach((obj: any) => {
-        const bucketId = obj.bucket_id;
-        const size = obj.metadata?.size || 0;
-        const current = bucketMap.get(bucketId) || { count: 0, bytes: 0 };
-        bucketMap.set(bucketId, {
-          count: current.count + 1,
-          bytes: current.bytes + size
+      // Map the RPC results to our bucket map
+      bucketData?.forEach((row: any) => {
+        bucketMap.set(row.bucket_id, {
+          count: row.file_count,
+          bytes: row.total_size_bytes
         });
       });
 
@@ -73,7 +65,7 @@ export const useStorageUsage = () => {
       const percentageUsed = (totalGb / STORAGE_LIMIT_GB) * 100;
 
       // Format bucket data
-      const bucketData: StorageBucketUsage[] = Array.from(bucketMap.entries()).map(([bucketId, { count, bytes }]) => ({
+      const formattedBuckets: StorageBucketUsage[] = Array.from(bucketMap.entries()).map(([bucketId, { count, bytes }]) => ({
         bucket_id: bucketId,
         file_count: count,
         total_size_bytes: bytes,
@@ -83,10 +75,10 @@ export const useStorageUsage = () => {
       }));
 
       // Sort by size descending
-      bucketData.sort((a, b) => b.total_size_bytes - a.total_size_bytes);
+      formattedBuckets.sort((a, b) => b.total_size_bytes - a.total_size_bytes);
 
       return {
-        buckets: bucketData,
+        buckets: formattedBuckets,
         total_files: totalFiles,
         total_size_bytes: totalBytes,
         total_size_mb: totalMb,
