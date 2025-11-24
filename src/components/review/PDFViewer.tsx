@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ZoomIn, ZoomOut, Download } from "lucide-react";
+import { ZoomIn, ZoomOut, Download, AlertCircle } from "lucide-react";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -15,10 +15,35 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
   const [numPages, setNumPages] = useState<number>(0);
   const [scale, setScale] = useState<number>(1.0);
   const [pageInput, setPageInput] = useState<string>("");
+  const [isDocumentReady, setIsDocumentReady] = useState<boolean>(false);
+  const [pageErrors, setPageErrors] = useState<Set<number>>(new Set());
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const isMountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      setIsDocumentReady(false);
+      setNumPages(0);
+    };
+  }, [pdfUrl]);
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
+    if (isMountedRef.current) {
+      setNumPages(numPages);
+      // Wait a brief moment for the worker to be fully ready
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          setIsDocumentReady(true);
+        }
+      }, 100);
+    }
+  };
+
+  const onPageLoadError = (pageNumber: number) => {
+    console.error(`Failed to load page ${pageNumber}`);
+    setPageErrors(prev => new Set(prev).add(pageNumber));
   };
 
   const zoomIn = () => setScale((prev) => Math.min(prev + 0.2, 2.0));
@@ -106,7 +131,7 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
               </div>
             }
           >
-            {Array.from(new Array(numPages), (el, index) => (
+            {isDocumentReady && Array.from(new Array(numPages), (el, index) => (
               <div 
                 key={`page_${index + 1}`} 
                 className="mb-4 relative"
@@ -116,13 +141,32 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
                   Page {index + 1} of {numPages}
                 </div>
                 <div className="overflow-hidden">
-                  <Page
-                    pageNumber={index + 1}
-                    scale={scale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="shadow-lg border border-border"
-                  />
+                  {pageErrors.has(index + 1) ? (
+                    <div className="flex flex-col items-center justify-center h-96 bg-muted border border-border shadow-lg">
+                      <AlertCircle className="h-12 w-12 text-destructive mb-2" />
+                      <div className="text-sm text-muted-foreground">Failed to load page {index + 1}</div>
+                    </div>
+                  ) : (
+                    <Page
+                      pageNumber={index + 1}
+                      scale={scale}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="shadow-lg border border-border"
+                      loading={
+                        <div className="flex items-center justify-center h-96 bg-muted border border-border shadow-lg">
+                          <div className="text-sm text-muted-foreground">Loading page {index + 1}...</div>
+                        </div>
+                      }
+                      error={
+                        <div className="flex flex-col items-center justify-center h-96 bg-muted border border-border shadow-lg">
+                          <AlertCircle className="h-12 w-12 text-destructive mb-2" />
+                          <div className="text-sm text-muted-foreground">Error loading page {index + 1}</div>
+                        </div>
+                      }
+                      onLoadError={() => onPageLoadError(index + 1)}
+                    />
+                  )}
                 </div>
               </div>
             ))}
