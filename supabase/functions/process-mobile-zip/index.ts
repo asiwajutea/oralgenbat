@@ -84,21 +84,32 @@ serve(async (req) => {
         // It should be in the last 65KB of the file
         const searchStart = Math.max(0, zipBytes.length - 65536);
         let foundEOCD = false;
+        let eocdOffset = -1;
         
         for (let i = zipBytes.length - 22; i >= searchStart; i--) {
           if (zipBytes[i] === 0x50 && zipBytes[i+1] === 0x4B && 
               zipBytes[i+2] === 0x05 && zipBytes[i+3] === 0x06) {
             foundEOCD = true;
+            eocdOffset = i;
             console.log(`✓ Found EOCD at offset ${i}`);
             break;
           }
         }
         
         if (!foundEOCD) {
-          throw new Error("ZIP file missing End of Central Directory (EOCD) signature - file may be incomplete");
+          // Log diagnostic information
+          const lastBytes = Array.from(zipBytes.slice(-100))
+            .map(b => b.toString(16).padStart(2, '0')).join(' ');
+          console.warn(`⚠️ EOCD not found in expected location. Last 100 bytes: ${lastBytes}`);
+          console.warn(`File size: ${zipBytes.length}, searched from ${searchStart} to ${zipBytes.length - 22}`);
+          
+          // Don't fail here - let JSZip try to parse it
+          console.log('Proceeding with JSZip parsing despite missing EOCD in expected location...');
+        } else {
+          console.log(`✓ Valid ZIP file structure detected (${zipBytes.length} bytes, EOCD at ${eocdOffset})`);
         }
         
-        console.log(`✓ Valid ZIP file structure detected (${zipBytes.length} bytes)`);
+        console.log(`✓ ZIP file downloaded successfully (${zipBytes.length} bytes)`);
         break; // Success!
         
       } catch (error) {
@@ -136,15 +147,35 @@ serve(async (req) => {
 
     console.log("Parsed filename:", { contractorId, interviewerCode, interviewDate, interviewTime });
 
-    // Extract ZIP using JSZip
-    console.log("Extracting ZIP...");
+    // Extract ZIP using JSZip with better error handling
+    console.log("Attempting to extract ZIP with JSZip...");
     let zip;
     try {
+      // Try loading the Uint8Array directly
       zip = await JSZip.loadAsync(zipBytes);
-      console.log("✓ ZIP file loaded successfully");
+      console.log("✓ ZIP file loaded successfully with JSZip");
+      
+      // Log what's inside
+      const fileList = Object.keys(zip.files);
+      console.log(`ZIP contains ${fileList.length} files:`, fileList.slice(0, 10));
     } catch (zipError) {
-      console.error("JSZip loading failed:", zipError);
-      throw new Error(`Failed to parse ZIP file: ${zipError instanceof Error ? zipError.message : 'Unknown error'}. File may be corrupted or incomplete.`);
+      console.error("JSZip loading failed with error:", zipError);
+      console.error("Error name:", zipError instanceof Error ? zipError.name : 'unknown');
+      console.error("Error message:", zipError instanceof Error ? zipError.message : 'unknown');
+      
+      // Log more diagnostic info
+      const centralDirSignatures: string[] = [];
+      for (let i = 0; i < zipBytes.length - 3; i++) {
+        if (zipBytes[i] === 0x50 && zipBytes[i+1] === 0x4B) {
+          const sig = `${zipBytes[i].toString(16)}${zipBytes[i+1].toString(16)}${zipBytes[i+2].toString(16)}${zipBytes[i+3].toString(16)}`;
+          if (!centralDirSignatures.includes(sig)) {
+            centralDirSignatures.push(sig);
+          }
+        }
+      }
+      console.error("Found ZIP signatures:", centralDirSignatures);
+      
+      throw new Error(`Failed to parse ZIP file: ${zipError instanceof Error ? zipError.message : 'Unknown error'}. The ZIP file may be corrupted, use an unsupported format (ZIP64), or be incomplete. Please verify the file can be opened locally.`);
     }
     
     // Read metadata.json
