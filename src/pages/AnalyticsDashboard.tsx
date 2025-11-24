@@ -19,6 +19,9 @@ import {
   getDefaultFilters,
   AnalyticsFilters as FilterState,
 } from "@/hooks/useAnalytics";
+import { useStorageUsage } from "@/hooks/useStorageUsage";
+import { StorageUsageCard } from "@/components/analytics/StorageUsageCard";
+import { StorageBreakdown } from "@/components/analytics/StorageBreakdown";
 import { BarChart3, Users, TrendingUp, Clock } from "lucide-react";
 
 const AnalyticsDashboard = () => {
@@ -30,6 +33,7 @@ const AnalyticsDashboard = () => {
   const { data: auditorData = [], isLoading: auditorLoading } = useAuditorPerformance(filters);
   const { data: contractorData = [], isLoading: contractorLoading } = useContractorPerformance(filters);
   const { data: trendData = [] } = useTrendData(filters, trendPeriod);
+  const { data: storageUsage, isLoading: storageLoading } = useStorageUsage();
 
   const statusChartData = summary ? [
     { name: 'Passed', value: Math.round((summary.pass_rate / 100) * summary.total_audits), color: '#16a34a' },
@@ -98,6 +102,16 @@ const AnalyticsDashboard = () => {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
+            {/* Storage Usage Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1">
+                <StorageUsageCard data={storageUsage} loading={storageLoading} />
+              </div>
+              <div className="lg:col-span-2">
+                <StorageBreakdown data={storageUsage} loading={storageLoading} />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <AuditStatusChart data={statusChartData} />
               <TrendChart data={trendData} title="Audit Trends Over Time" />
