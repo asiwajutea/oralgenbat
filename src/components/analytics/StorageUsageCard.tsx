@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HardDrive, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { HardDrive, AlertTriangle, Trash2 } from "lucide-react";
 import { StorageUsageSummary } from "@/hooks/useStorageUsage";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StorageCleanupDialog } from "./StorageCleanupDialog";
 
 interface StorageUsageCardProps {
   data?: StorageUsageSummary;
@@ -11,6 +14,8 @@ interface StorageUsageCardProps {
 }
 
 export const StorageUsageCard = ({ data, loading }: StorageUsageCardProps) => {
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
+
   if (loading || !data) {
     return (
       <Card>
@@ -70,15 +75,32 @@ export const StorageUsageCard = ({ data, loading }: StorageUsageCardProps) => {
         {showWarning && (
           <Alert variant={percentage_used >= 90 ? "destructive" : "default"} className="py-2">
             <AlertTriangle className="h-4 w-4" />
-            <AlertDescription className="text-xs">
-              {percentage_used >= 90 
-                ? "Storage almost full! Consider deleting old audits."
-                : "Storage usage high. Monitor and clean up if needed."
-              }
+            <AlertDescription className="space-y-2">
+              <p className="text-xs">
+                {percentage_used >= 90 
+                  ? "Storage almost full! Clean up old files to free space."
+                  : "Storage usage high. Consider cleaning up old files from passed audits."
+                }
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 text-xs"
+                onClick={() => setCleanupDialogOpen(true)}
+              >
+                <Trash2 className="mr-1 h-3 w-3" />
+                Cleanup Old Files
+              </Button>
             </AlertDescription>
           </Alert>
         )}
       </CardContent>
+
+      <StorageCleanupDialog
+        open={cleanupDialogOpen}
+        onOpenChange={setCleanupDialogOpen}
+        currentUsageMb={total_size_mb}
+      />
     </Card>
   );
 };

@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_file_cleanup_log: {
+        Row: {
+          audit_id: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          id: string
+          notes: string | null
+          photos_deleted: number | null
+          zip_deleted: boolean | null
+          zip_url: string | null
+        }
+        Insert: {
+          audit_id?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          notes?: string | null
+          photos_deleted?: number | null
+          zip_deleted?: boolean | null
+          zip_url?: string | null
+        }
+        Update: {
+          audit_id?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          notes?: string | null
+          photos_deleted?: number | null
+          zip_deleted?: boolean | null
+          zip_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_file_cleanup_log_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_file_cleanup_log_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audits: {
         Row: {
           action_plan: string | null
@@ -373,6 +421,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_cleanable_audit_files: {
+        Args: { contractor_filter?: string; min_age_days?: number }
+        Returns: {
+          audit_id: string
+          days_since_review: number
+          file_name: string
+          has_metadata: boolean
+          mobile_zip_uploaded_at: string
+          photo_count: number
+          reviewed_at: string
+          status: Database["public"]["Enums"]["audit_status"]
+          zip_url: string
+        }[]
+      }
       get_storage_usage: {
         Args: never
         Returns: {
