@@ -186,6 +186,42 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
         setUploadProgress(prev => ({ ...prev, [auditId]: 0 }));
 
         const filePath = `${auditId}/${file.name}`;
+        
+        // Check if file already exists and delete it for replacement
+        console.log('Checking for existing file at:', filePath);
+        const { data: existingFiles } = await supabase.storage
+          .from("mobile-zips")
+          .list(auditId);
+
+        const fileExists = existingFiles?.some(f => f.name === file.name);
+
+        if (fileExists) {
+          console.log('Existing file found, deleting for replacement...');
+          
+          // Delete existing file from storage
+          const { error: deleteError } = await supabase.storage
+            .from("mobile-zips")
+            .remove([filePath]);
+            
+          if (deleteError) {
+            console.warn("Could not delete existing file:", deleteError);
+            throw new Error("Failed to delete existing file. Please try again.");
+          }
+
+          // Clean up any partial data from previous processing
+          console.log('Cleaning up previous metadata and photos...');
+          await supabase.from('interview_photos').delete().eq('audit_id', auditId);
+          await supabase.from('interview_metadata').delete().eq('audit_id', auditId);
+          
+          toast({
+            title: "Replacing existing file",
+            description: "Previous file and data have been removed",
+          });
+          
+          // Wait briefly for storage to fully process the deletion
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
         const publicUrl = await uploadFileWithProgress(file, filePath, auditId);
 
         await supabase
