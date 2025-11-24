@@ -96,11 +96,36 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
       console.log('Original filename:', file.name);
       console.log('Upload path:', `${auditId}/${file.name}`);
       
+      const filePath = `${auditId}/${file.name}`;
+
+      // Check if file already exists and delete it for clean re-upload
+      const { data: existingFiles } = await supabase.storage
+        .from("mobile-zips")
+        .list(auditId);
+
+      const fileExists = existingFiles?.some(f => f.name === file.name);
+
+      if (fileExists) {
+        console.log('Existing file found, deleting for re-upload...');
+        
+        // Delete existing file
+        const { error: deleteError } = await supabase.storage
+          .from("mobile-zips")
+          .remove([filePath]);
+          
+        if (deleteError) {
+          console.warn("Could not delete existing file:", deleteError);
+        }
+
+        // Clean up any partial data from previous failed processing
+        console.log('Cleaning up partial data from previous attempt...');
+        await supabase.from('interview_photos').delete().eq('audit_id', auditId);
+        await supabase.from('interview_metadata').delete().eq('audit_id', auditId);
+      }
+      
       toast({
         title: "Uploading mobile ZIP file...",
       });
-
-      const filePath = `${auditId}/${file.name}`;
 
       // Upload with progress tracking
       const publicUrl = await uploadFileWithProgress(file, filePath);
