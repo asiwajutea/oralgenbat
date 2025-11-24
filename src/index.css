@@ -125,3 +125,10 @@ All colors MUST be HSL.
 .react-pdf__Page__annotations {
   display: block;
 }
+
+/* Remove default margin/padding from react-pdf Page wrapper */
+.react-pdf__Page {
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 0 !important;
+}
