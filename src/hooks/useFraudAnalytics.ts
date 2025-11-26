@@ -267,6 +267,145 @@ const calculateAnomalyScore = (
   return { passRate, avgAudioQuality, reAuditRate, score };
 };
 
+export const useCriticalAgentsFraud = () => {
+  return useQuery({
+    queryKey: ['critical-agents-fraud'],
+    queryFn: async () => {
+      const thirteenWeeksAgo = subWeeks(new Date(), 13);
+      
+      // Fetch all unique interviewer codes with recent activity
+      const { data: allInterviewers, error } = await supabase
+        .from('interview_metadata')
+        .select('interviewer_code, interviewer_name, contractor_id')
+        .gte('interview_date', thirteenWeeksAgo.toISOString().split('T')[0]);
+      
+      if (error) throw error;
+      if (!allInterviewers) return [];
+      
+      // Get unique interviewers
+      const uniqueInterviewers = Array.from(
+        new Map(allInterviewers.map(i => [i.interviewer_code, i])).values()
+      );
+      
+      // Calculate fraud scores for each agent
+      const criticalAgents: Array<AgentFraudProfile> = [];
+      
+      for (const interviewer of uniqueInterviewers) {
+        try {
+          // Fetch interviews for this agent
+          const { data: metadata } = await supabase
+            .from('interview_metadata')
+            .select('*, audits!inner(*)')
+            .eq('interviewer_code', interviewer.interviewer_code)
+            .gte('interview_date', thirteenWeeksAgo.toISOString().split('T')[0]);
+          
+          if (!metadata || metadata.length === 0) continue;
+          
+          // Transform data
+          const interviews: InterviewData[] = metadata.map(m => {
+            const dateTimeStr = `${m.interview_date}T${m.interview_time}`;
+            return {
+              id: m.id,
+              audit_id: m.audit_id!,
+              interview_date: m.interview_date,
+              interview_time: m.interview_time,
+              total_names: m.total_names,
+              family_story_duration: m.family_story_duration,
+              pedigree_segment_duration: m.pedigree_segment_duration,
+              interviewer_code: m.interviewer_code,
+              status: (m.audits as any).status,
+              timestamp: parseISO(`${m.interview_date}T${m.interview_time}`),
+            };
+          });
+          
+          // Calculate fraud indicators
+          const intervalAnalysis = calculateIntervalFraudScore(interviews);
+          const audioAnalysis = calculateAudioDurationFraudScore(interviews);
+          const namesAnalysis = calculateNamesPatternFraudScore(interviews);
+          const boundaryAnalysis = calculatePageBoundaryFraudScore(interviews);
+          const anomalyAnalysis = calculateAnomalyScore(interviews, {
+            passRate: 75,
+            avgAudioQuality: 85,
+            reAuditRate: 15,
+          });
+          
+          const indicators: FraudIndicators = {
+            closeIntervals: intervalAnalysis.closeIntervals,
+            intervalFraudScore: intervalAnalysis.score,
+            shortFamilyStories: audioAnalysis.shortFamilyStories,
+            shortPedigrees: audioAnalysis.shortPedigrees,
+            audioDurationFraudScore: audioAnalysis.score,
+            namesPattern: namesAnalysis.namesPattern,
+            repeatedNamesCount: namesAnalysis.repeatedNamesCount,
+            namesPatternFraudScore: namesAnalysis.score,
+            mostCommonCount: namesAnalysis.mostCommonCount,
+            mostCommonFrequency: namesAnalysis.mostCommonFrequency,
+            boundaryHits: boundaryAnalysis.boundaryHits,
+            totalInterviews: boundaryAnalysis.totalInterviews,
+            expectedBoundaryRate: boundaryAnalysis.expectedBoundaryRate,
+            actualBoundaryRate: boundaryAnalysis.actualBoundaryRate,
+            pageBoundaryFraudScore: boundaryAnalysis.score,
+            neverHitsBoundaries: boundaryAnalysis.neverHitsBoundaries,
+            alwaysHitsBoundaries: boundaryAnalysis.alwaysHitsBoundaries,
+            passRate: anomalyAnalysis.passRate,
+            avgAudioQuality: anomalyAnalysis.avgAudioQuality,
+            reAuditRate: anomalyAnalysis.reAuditRate,
+            anomalyScore: anomalyAnalysis.score,
+          };
+          
+          // Calculate overall fraud score
+          const overallFraudScore = 
+            (indicators.intervalFraudScore * 0.25) +
+            (indicators.audioDurationFraudScore * 0.20) +
+            (indicators.namesPatternFraudScore * 0.20) +
+            (indicators.pageBoundaryFraudScore * 0.20) +
+            (indicators.anomalyScore * 0.15);
+          
+          // Determine grade
+          let fraudGrade: 'A' | 'B' | 'C' | 'D';
+          let classification: 'Safe' | 'Caution' | 'High Risk' | 'Fire Immediately';
+          
+          if (overallFraudScore < 20) {
+            fraudGrade = 'A';
+            classification = 'Safe';
+          } else if (overallFraudScore < 40) {
+            fraudGrade = 'B';
+            classification = 'Caution';
+          } else if (overallFraudScore < 70) {
+            fraudGrade = 'C';
+            classification = 'High Risk';
+          } else {
+            fraudGrade = 'D';
+            classification = 'Fire Immediately';
+          }
+          
+          // Only include grades C and D (critical)
+          if (fraudGrade === 'C' || fraudGrade === 'D') {
+            criticalAgents.push({
+              interviewer_code: interviewer.interviewer_code,
+              interviewer_name: metadata[0].interviewer_name,
+              contractor_id: metadata[0].contractor_id,
+              total_interviews: interviews.length,
+              indicators,
+              overallFraudScore,
+              fraudGrade,
+              classification,
+              interviews,
+            });
+          }
+        } catch (err) {
+          console.error(`Error calculating fraud for ${interviewer.interviewer_code}:`, err);
+        }
+      }
+      
+      // Sort by fraud score descending (most urgent first)
+      return criticalAgents.sort((a, b) => b.overallFraudScore - a.overallFraudScore);
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes to reduce load
+    refetchOnWindowFocus: true,
+  });
+};
+
 export const useFraudAnalytics = (interviewerCode: string) => {
   return useQuery({
     queryKey: ['fraud-analytics', interviewerCode],
