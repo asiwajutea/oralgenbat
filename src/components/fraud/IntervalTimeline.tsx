@@ -1,0 +1,100 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { format } from "date-fns";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertCircle } from "lucide-react";
+
+interface IntervalTimelineProps {
+  closeIntervals: {
+    interview1: string;
+    interview2: string;
+    minutesApart: number;
+    date1: Date;
+    date2: Date;
+  }[];
+  score: number;
+}
+
+export const IntervalTimeline = ({ closeIntervals, score }: IntervalTimelineProps) => {
+  const getScoreColor = (score: number) => {
+    if (score === 0) return 'text-green-600';
+    if (score < 10) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5" />
+            Interview Intervals Analysis
+          </span>
+          <Badge variant={score === 0 ? 'default' : score < 10 ? 'secondary' : 'destructive'}>
+            Score: {score.toFixed(1)}/100
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className={`text-2xl font-bold ${getScoreColor(score)}`}>
+            {closeIntervals.length} Suspicious Intervals
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Interviews completed less than 45 minutes apart may indicate rushed work or fraudulent data entry.
+          </p>
+
+          {closeIntervals.length > 0 ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time Gap</TableHead>
+                    <TableHead>Severity</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {closeIntervals.map((interval, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>
+                        <div className="text-sm">
+                          {format(interval.date1, 'MMM d, yyyy')}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {format(interval.date1, 'HH:mm')} → {format(interval.date2, 'HH:mm')}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium">
+                          {interval.minutesApart.toFixed(0)} minutes
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={interval.minutesApart < 20 ? 'destructive' : 'secondary'}>
+                          {interval.minutesApart < 20 ? 'Critical' : interval.minutesApart < 30 ? 'High' : 'Moderate'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-green-600">
+              <CheckCircle className="h-12 w-12 mx-auto mb-2" />
+              <p className="font-medium">No suspicious intervals detected</p>
+              <p className="text-sm text-muted-foreground">All interviews have appropriate time gaps</p>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const CheckCircle = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+  </svg>
+);

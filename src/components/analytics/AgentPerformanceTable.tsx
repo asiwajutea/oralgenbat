@@ -10,8 +10,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { AgentPerformance } from "@/hooks/useAnalytics";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 
 interface AgentPerformanceTableProps {
   data: AgentPerformance[];
@@ -21,6 +22,7 @@ type SortField = keyof AgentPerformance;
 type SortDirection = 'asc' | 'desc';
 
 export const AgentPerformanceTable = ({ data }: AgentPerformanceTableProps) => {
+  const navigate = useNavigate();
   const [sortField, setSortField] = useState<SortField>('rank');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
@@ -120,6 +122,7 @@ export const AgentPerformanceTable = ({ data }: AgentPerformanceTableProps) => {
                 <TableHead className="text-center">
                   <SortButton field="grade">Grade</SortButton>
                 </TableHead>
+                <TableHead className="text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -158,11 +161,21 @@ export const AgentPerformanceTable = ({ data }: AgentPerformanceTableProps) => {
                   <TableCell className="text-center">
                     <Badge className={getGradeColor(agent.grade)}>{agent.grade}</Badge>
                   </TableCell>
+                  <TableCell className="text-center">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => navigate(`/analytics/agent-fraud/${agent.interviewer_code}`)}
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-1" />
+                      Fraud Analysis
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               {sortedData.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                     No data available for the selected filters
                   </TableCell>
                 </TableRow>
