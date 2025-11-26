@@ -21,6 +21,7 @@ import TeamManagement from "./pages/TeamManagement";
 import TeamApprovals from "./pages/TeamApprovals";
 import FieldManagerDashboard from "./pages/FieldManagerDashboard";
 import ContractorDashboard from "./pages/ContractorDashboard";
+import AgentFraudAnalysis from "./pages/AgentFraudAnalysis";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -70,6 +71,14 @@ const App = () => (
               element={
                 <AdminRoute>
                   <AnalyticsDashboard />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/analytics/agent-fraud/:interviewerCode"
+              element={
+                <AdminRoute>
+                  <AgentFraudAnalysis />
                 </AdminRoute>
               }
             />
