@@ -2,13 +2,16 @@ import { useCriticalAgentsFraud } from "@/hooks/useFraudAnalytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useState } from "react";
 
 export const CriticalAgentsCard = () => {
   const { data: criticalAgents = [], isLoading } = useCriticalAgentsFraud();
   const navigate = useNavigate();
+  const [isOpen, setIsOpen] = useState(true);
 
   const getGradeColor = (grade: 'A' | 'B' | 'C' | 'D') => {
     switch (grade) {
@@ -64,70 +67,82 @@ export const CriticalAgentsCard = () => {
   }
 
   return (
-    <Card className="border-red-200 dark:border-red-800">
-      <CardHeader className="bg-red-50 dark:bg-red-950">
-        <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
-          <AlertTriangle className="h-5 w-5" />
-          Critical Fraud Alerts
-          <Badge variant="destructive">{criticalAgents.length}</Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-6">
-        <div className="space-y-3">
-          {criticalAgents.map((agent) => (
-            <div
-              key={agent.interviewer_code}
-              className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="font-semibold">{agent.interviewer_code}</p>
-                    {agent.interviewer_name && (
-                      <p className="text-sm text-muted-foreground">{agent.interviewer_name}</p>
-                    )}
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card className="border-red-200 dark:border-red-800">
+        <CollapsibleTrigger asChild>
+          <CardHeader className="bg-red-50 dark:bg-red-950 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900 transition-colors">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                <AlertTriangle className="h-5 w-5" />
+                Critical Fraud Alerts
+                <Badge variant="destructive">{criticalAgents.length}</Badge>
+              </div>
+              <ChevronDown 
+                className="h-5 w-5 text-red-700 dark:text-red-300 transition-transform duration-200" 
+                style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              />
+            </CardTitle>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-6">
+            <div className="space-y-3">
+              {criticalAgents.map((agent) => (
+                <div
+                  key={agent.interviewer_code}
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <p className="font-semibold">{agent.interviewer_code}</p>
+                        {agent.interviewer_name && (
+                          <p className="text-sm text-muted-foreground">{agent.interviewer_name}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="text-right mr-2">
+                      <p className="text-sm text-muted-foreground">Contractor</p>
+                      <p className="font-medium text-sm">{agent.contractor_id}</p>
+                    </div>
+                    
+                    <Badge className={getGradeColor(agent.fraudGrade)}>
+                      Grade {agent.fraudGrade}
+                    </Badge>
+                    
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">Score</p>
+                      <p className="font-bold text-lg text-destructive">
+                        {agent.overallFraudScore.toFixed(1)}
+                      </p>
+                    </div>
+                    
+                    <Button
+                      onClick={() => navigate(`/analytics/agent-fraud/${agent.interviewer_code}`)}
+                      size="sm"
+                      variant="destructive"
+                    >
+                      View Report
+                    </Button>
                   </div>
                 </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <div className="text-right mr-2">
-                  <p className="text-sm text-muted-foreground">Contractor</p>
-                  <p className="font-medium text-sm">{agent.contractor_id}</p>
-                </div>
-                
-                <Badge className={getGradeColor(agent.fraudGrade)}>
-                  Grade {agent.fraudGrade}
-                </Badge>
-                
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground">Score</p>
-                  <p className="font-bold text-lg text-destructive">
-                    {agent.overallFraudScore.toFixed(1)}
-                  </p>
-                </div>
-                
-                <Button
-                  onClick={() => navigate(`/analytics/agent-fraud/${agent.interviewer_code}`)}
-                  size="sm"
-                  variant="destructive"
-                >
-                  View Report
-                </Button>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-        
-        {criticalAgents.length > 0 && (
-          <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg">
-            <p className="text-sm text-red-700 dark:text-red-300">
-              <strong>Action Required:</strong> These agents require immediate attention. 
-              Review fraud reports and take appropriate action.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            
+            {criticalAgents.length > 0 && (
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg">
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  <strong>Action Required:</strong> These agents require immediate attention. 
+                  Review fraud reports and take appropriate action.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 };
