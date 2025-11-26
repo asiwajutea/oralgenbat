@@ -24,6 +24,7 @@ import {
 import { useStorageUsage } from "@/hooks/useStorageUsage";
 import { StorageUsageCard } from "@/components/analytics/StorageUsageCard";
 import { StorageBreakdown } from "@/components/analytics/StorageBreakdown";
+import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import { BarChart3, Users, TrendingUp, Clock } from "lucide-react";
 
 const AnalyticsDashboard = () => {
@@ -108,6 +109,9 @@ const AnalyticsDashboard = () => {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
+            {/* Critical Fraud Alerts - First Priority */}
+            <CriticalAgentsCard />
+            
             {/* Storage Usage Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1">
