@@ -244,11 +244,59 @@ serve(async (req) => {
       }
     }
 
-    // Analyze audio files
-    console.log("Analyzing audio files...");
+    // Upload audio files to storage for manual verification
+    console.log("Uploading audio files for manual verification...");
+    let familyStoryAudioUrl: string | null = null;
+    let pedigreeAudioUrl: string | null = null;
+
     const familyStoryFile = zip.file("family_story.mp3");
+    if (familyStoryFile) {
+      const audioData = await familyStoryFile.async("uint8array");
+      const storagePath = `${auditId}/family_story.mp3`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("interview-audio")
+        .upload(storagePath, audioData, {
+          contentType: "audio/mpeg",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("Error uploading family story audio:", uploadError);
+      } else {
+        const { data: { publicUrl } } = supabase.storage
+          .from("interview-audio")
+          .getPublicUrl(storagePath);
+        familyStoryAudioUrl = publicUrl;
+        console.log("✓ Family story audio uploaded:", publicUrl);
+      }
+    }
+
     const pedigreeSegmentFile = zip.file("pedigree_segment.mp3");
-    
+    if (pedigreeSegmentFile) {
+      const audioData = await pedigreeSegmentFile.async("uint8array");
+      const storagePath = `${auditId}/pedigree_segment.mp3`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("interview-audio")
+        .upload(storagePath, audioData, {
+          contentType: "audio/mpeg",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("Error uploading pedigree audio:", uploadError);
+      } else {
+        const { data: { publicUrl } } = supabase.storage
+          .from("interview-audio")
+          .getPublicUrl(storagePath);
+        pedigreeAudioUrl = publicUrl;
+        console.log("✓ Pedigree audio uploaded:", publicUrl);
+      }
+    }
+
+    // Analyze audio files (for initial estimates, will be manually verified)
+    console.log("Analyzing audio files...");
     const familyStoryAnalysis = familyStoryFile 
       ? await analyzeAudioFromZip(familyStoryFile)
       : { duration: 0, noiseLevel: 0, silenceLevel: 0 };
@@ -327,6 +375,11 @@ serve(async (req) => {
         pedigree_segment_noise_level: pedigreeSegmentAnalysis.noiseLevel,
         pedigree_segment_silence_level: pedigreeSegmentAnalysis.silenceLevel,
         audio_quality_summary: qualitySummary,
+        
+        // Audio file URLs for manual verification
+        family_story_audio_url: familyStoryAudioUrl,
+        pedigree_segment_audio_url: pedigreeAudioUrl,
+        duration_manually_confirmed: false,
       });
 
     if (metadataError) {

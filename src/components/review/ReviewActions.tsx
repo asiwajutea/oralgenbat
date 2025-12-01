@@ -58,6 +58,16 @@ export const ReviewActions = ({ auditId, currentStatus, currentFileName, nextAud
 
       if (error) throw error;
 
+      // Cleanup audio files after passing
+      try {
+        await supabase.functions.invoke('cleanup-interview-audio', {
+          body: { auditId }
+        });
+        console.log("Audio files cleaned up successfully");
+      } catch (cleanupError) {
+        console.warn("Audio cleanup failed (non-critical):", cleanupError);
+      }
+
       toast({
         title: "Interview Passed",
         description: "The interview has been marked as passed.",
@@ -114,6 +124,16 @@ export const ReviewActions = ({ auditId, currentStatus, currentFileName, nextAud
         .eq("id", auditId);
 
       if (error) throw error;
+
+      // Cleanup audio files after failing
+      try {
+        await supabase.functions.invoke('cleanup-interview-audio', {
+          body: { auditId }
+        });
+        console.log("Audio files cleaned up successfully");
+      } catch (cleanupError) {
+        console.warn("Audio cleanup failed (non-critical):", cleanupError);
+      }
 
       toast({
         title: "Interview Failed",
