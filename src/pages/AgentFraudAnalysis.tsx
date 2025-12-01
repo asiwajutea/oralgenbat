@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { Loader2 } from "lucide-react";
+import { generateFraudReportPdf } from "@/utils/generateFraudReportPdf";
 
 const AgentFraudAnalysis = () => {
   const { interviewerCode } = useParams<{ interviewerCode: string }>();
@@ -89,9 +90,13 @@ const AgentFraudAnalysis = () => {
               {fraudProfile.total_interviews} interviews (13 weeks)
             </div>
           </div>
-          <Button variant="outline">
+          <Button 
+            variant="outline"
+            onClick={() => generateFraudReportPdf(fraudProfile, aiAnalysis)}
+            disabled={aiLoading}
+          >
             <Download className="h-4 w-4 mr-2" />
-            Export Report
+            {aiLoading ? 'Loading Analysis...' : 'Download PDF Report'}
           </Button>
         </div>
 

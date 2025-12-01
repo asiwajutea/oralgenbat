@@ -18,13 +18,17 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    const systemPrompt = `You are a fraud detection analyst reviewing agent interview performance data. Analyze the provided data and generate:
-1. A clear, professional summary explaining detected fraudulent behaviors
-2. A list of concerning patterns
-3. A comprehensive action plan with immediate, short-term actions and escalation notes
-4. A risk assessment
+    const systemPrompt = `You are a fraud detection analyst reviewing agent interview performance data.
 
-Be direct but professional. Focus on data-driven insights.`;
+IMPORTANT: Write in plain text only. Do NOT use any markdown formatting (no #, **, ***, or bullet symbols like - or *). Use simple paragraph breaks and numbered lists with "1." format only.
+
+Analyze the provided data and generate:
+1. A clear, professional summary explaining detected fraudulent behaviors in 2-3 paragraphs
+2. A list of 3-5 concerning patterns (use numbered format: 1. Pattern one, 2. Pattern two)
+3. A comprehensive action plan with immediate steps, short-term recommendations, and escalation guidance
+4. A brief risk assessment
+
+Be direct but professional. Use simple, understandable language. Focus on data-driven insights.`;
 
     const userPrompt = `Analyze this agent's fraud profile:
 
