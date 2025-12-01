@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { MetadataPanel } from "@/components/review/MetadataPanel";
 import { PhotosPanel } from "@/components/review/PhotosPanel";
 import { AudioAnalysisPanel } from "@/components/review/AudioAnalysisPanel";
+import { AudioPlayerPanel } from "@/components/review/AudioPlayerPanel";
 import { PDFAnalysisPanel } from "@/components/review/PDFAnalysisPanel";
 import { PDFViewer } from "@/components/review/PDFViewer";
 import { ReviewNavigation } from "@/components/review/ReviewNavigation";
@@ -168,7 +169,23 @@ const ReviewInterview = () => {
             <>
               <MetadataPanel metadata={metadata} />
               <PhotosPanel photos={photos || []} auditId={auditId!} />
-              <AudioAnalysisPanel metadata={metadata} />
+              
+              {/* Show Audio Player for manual verification if audio URLs exist and not yet confirmed */}
+              {metadata.family_story_audio_url && 
+               metadata.pedigree_segment_audio_url && 
+               !metadata.duration_manually_confirmed ? (
+                <AudioPlayerPanel
+                  auditId={auditId!}
+                  familyStoryUrl={metadata.family_story_audio_url}
+                  pedigreeUrl={metadata.pedigree_segment_audio_url}
+                  onDurationConfirmed={() => {
+                    queryClient.invalidateQueries({ queryKey: ["interview-metadata", auditId] });
+                  }}
+                />
+              ) : (
+                <AudioAnalysisPanel metadata={metadata} />
+              )}
+              
               {(metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null) ? (
                 <PDFAnalysisPanel metadata={metadata} />
               ) : (

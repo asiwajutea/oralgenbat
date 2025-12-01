@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Volume2, Music } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Volume2, Music, CheckCircle, AlertTriangle } from "lucide-react";
 
 interface AudioAnalysisPanelProps {
   metadata: any;
@@ -57,10 +58,25 @@ export const AudioAnalysisPanel = ({ metadata }: AudioAnalysisPanelProps) => {
     </div>
   );
 
+  const isManuallyConfirmed = metadata.duration_manually_confirmed === true;
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Audio Analysis</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Audio Analysis</CardTitle>
+          {isManuallyConfirmed ? (
+            <Badge variant="default" className="gap-1">
+              <CheckCircle className="h-3 w-3" />
+              Manually Verified
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              Auto-parsed
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <AudioMetrics

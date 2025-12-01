@@ -123,6 +123,8 @@ export type Database = {
           contractor_business_name: string | null
           contractor_id: string
           created_at: string | null
+          duration_manually_confirmed: boolean | null
+          family_story_audio_url: string | null
           family_story_duration: number | null
           family_story_noise_level: number | null
           family_story_silence_level: number | null
@@ -148,6 +150,7 @@ export type Database = {
           pdf_clarity_score: number | null
           pdf_handwriting_legibility: number | null
           pdf_quality_feedback: string | null
+          pedigree_segment_audio_url: string | null
           pedigree_segment_duration: number | null
           pedigree_segment_noise_level: number | null
           pedigree_segment_silence_level: number | null
@@ -160,6 +163,8 @@ export type Database = {
           contractor_business_name?: string | null
           contractor_id: string
           created_at?: string | null
+          duration_manually_confirmed?: boolean | null
+          family_story_audio_url?: string | null
           family_story_duration?: number | null
           family_story_noise_level?: number | null
           family_story_silence_level?: number | null
@@ -185,6 +190,7 @@ export type Database = {
           pdf_clarity_score?: number | null
           pdf_handwriting_legibility?: number | null
           pdf_quality_feedback?: string | null
+          pedigree_segment_audio_url?: string | null
           pedigree_segment_duration?: number | null
           pedigree_segment_noise_level?: number | null
           pedigree_segment_silence_level?: number | null
@@ -197,6 +203,8 @@ export type Database = {
           contractor_business_name?: string | null
           contractor_id?: string
           created_at?: string | null
+          duration_manually_confirmed?: boolean | null
+          family_story_audio_url?: string | null
           family_story_duration?: number | null
           family_story_noise_level?: number | null
           family_story_silence_level?: number | null
@@ -222,6 +230,7 @@ export type Database = {
           pdf_clarity_score?: number | null
           pdf_handwriting_legibility?: number | null
           pdf_quality_feedback?: string | null
+          pedigree_segment_audio_url?: string | null
           pedigree_segment_duration?: number | null
           pedigree_segment_noise_level?: number | null
           pedigree_segment_silence_level?: number | null

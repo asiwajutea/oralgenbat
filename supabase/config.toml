@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.fraud-analysis]
 verify_jwt = false
+
+[functions.cleanup-interview-audio]
+verify_jwt = false
