@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.cleanup-interview-audio]
 verify_jwt = false
+
+[functions.regenerate-audio-summary]
+verify_jwt = false
