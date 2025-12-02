@@ -648,19 +648,35 @@ async function generateAudioQualitySummary(
       throw new Error("LOVABLE_API_KEY not found");
     }
 
-    const prompt = `Analyze these two audio recordings and provide a brief quality assessment summary (2-3 sentences):
+    const formatDuration = (seconds: number) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
 
-Family Story Recording:
-- Duration: ${familyStory.duration} seconds
-- Noise Level: ${familyStory.noiseLevel.toFixed(1)}%
-- Silence Level: ${familyStory.silenceLevel.toFixed(1)}%
+    const systemPrompt = `You are assessing audio recordings for a field genealogy interview project conducted in open outdoor spaces in Africa. These are NOT studio recordings - ambient environmental sounds from ongoing activities nearby are completely normal and acceptable.
 
-Pedigree Segment Recording:
-- Duration: ${pedigreeSegment.duration} seconds
-- Noise Level: ${pedigreeSegment.noiseLevel.toFixed(1)}%
-- Silence Level: ${pedigreeSegment.silenceLevel.toFixed(1)}%
+KEY PROJECT STANDARDS:
+- Family Story recording should be at least 10 minutes (600 seconds)
+- Pedigree Segment recording should be at least 15 minutes (900 seconds)
+- Continuous dialogue is expected throughout - extended silent periods indicate potential issues
+- Background ambient sounds do NOT affect quality rating
 
-Provide an overall quality rating (Excellent/Good/Fair/Poor) and mention any concerns about noise or silence levels.`;
+IMPORTANT: Base your assessment ONLY on recording duration. Do not comment on noise levels.`;
+
+    const prompt = `Assess these two field interview recordings:
+
+Family Story Recording: ${formatDuration(familyStory.duration)} (${familyStory.duration} seconds)
+- Minimum required: 10:00 (600 seconds)
+
+Pedigree Segment Recording: ${formatDuration(pedigreeSegment.duration)} (${pedigreeSegment.duration} seconds)
+- Minimum required: 15:00 (900 seconds)
+
+Provide a brief quality assessment (2-3 sentences) with an overall rating:
+- Excellent: Both recordings meet or exceed duration requirements
+- Good: Both recordings close to requirements (within 10% below minimum)
+- Fair: One recording significantly below requirement
+- Poor: Both recordings significantly below requirements`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -673,7 +689,7 @@ Provide an overall quality rating (Excellent/Good/Fair/Poor) and mention any con
         messages: [
           {
             role: "system",
-            content: "You are an audio quality assessment expert. Provide concise, professional quality assessments."
+            content: systemPrompt
           },
           {
             role: "user",

@@ -29,21 +29,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch existing metadata to get noise/silence levels
-    const { data: metadata, error: fetchError } = await supabase
-      .from("interview_metadata")
-      .select("family_story_noise_level, family_story_silence_level, pedigree_segment_noise_level, pedigree_segment_silence_level")
-      .eq("audit_id", auditId)
-      .single();
-
-    if (fetchError || !metadata) {
-      console.error("Error fetching metadata:", fetchError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch audio metadata' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Generate new AI summary with confirmed durations
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
@@ -56,19 +41,29 @@ serve(async (req) => {
       return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const prompt = `Analyze these two audio recordings and provide a brief quality assessment summary (2-3 sentences):
+    const systemPrompt = `You are assessing audio recordings for a field genealogy interview project conducted in open outdoor spaces in Africa. These are NOT studio recordings - ambient environmental sounds from ongoing activities nearby are completely normal and acceptable.
 
-Family Story Recording:
-- Duration: ${familyStoryDuration} seconds (${formatDuration(familyStoryDuration)})
-- Noise Level: ${metadata.family_story_noise_level?.toFixed(1) || '0.0'}%
-- Silence Level: ${metadata.family_story_silence_level?.toFixed(1) || '0.0'}%
+KEY PROJECT STANDARDS:
+- Family Story recording should be at least 10 minutes (600 seconds)
+- Pedigree Segment recording should be at least 15 minutes (900 seconds)
+- Continuous dialogue is expected throughout - extended silent periods indicate potential issues
+- Background ambient sounds do NOT affect quality rating
 
-Pedigree Segment Recording:
-- Duration: ${pedigreeDuration} seconds (${formatDuration(pedigreeDuration)})
-- Noise Level: ${metadata.pedigree_segment_noise_level?.toFixed(1) || '0.0'}%
-- Silence Level: ${metadata.pedigree_segment_silence_level?.toFixed(1) || '0.0'}%
+IMPORTANT: Base your assessment ONLY on recording duration. Do not comment on noise levels.`;
 
-Provide an overall quality rating (Excellent/Good/Fair/Poor) and mention any concerns about noise or silence levels.`;
+    const prompt = `Assess these two field interview recordings:
+
+Family Story Recording: ${formatDuration(familyStoryDuration)} (${familyStoryDuration} seconds)
+- Minimum required: 10:00 (600 seconds)
+
+Pedigree Segment Recording: ${formatDuration(pedigreeDuration)} (${pedigreeDuration} seconds)
+- Minimum required: 15:00 (900 seconds)
+
+Provide a brief quality assessment (2-3 sentences) with an overall rating:
+- Excellent: Both recordings meet or exceed duration requirements
+- Good: Both recordings close to requirements (within 10% below minimum)
+- Fair: One recording significantly below requirement
+- Poor: Both recordings significantly below requirements`;
 
     console.log("Calling Lovable AI to regenerate summary...");
 
@@ -83,7 +78,7 @@ Provide an overall quality rating (Excellent/Good/Fair/Poor) and mention any con
         messages: [
           {
             role: "system",
-            content: "You are an audio quality assessment expert. Provide concise, professional quality assessments."
+            content: systemPrompt
           },
           {
             role: "user",
