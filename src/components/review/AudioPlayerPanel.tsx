@@ -57,6 +57,7 @@ export const AudioPlayerPanel = ({
 
     setIsConfirming(true);
     try {
+      // Step 1: Save durations to database
       const { error } = await supabase
         .from("interview_metadata")
         .update({
@@ -68,7 +69,21 @@ export const AudioPlayerPanel = ({
 
       if (error) throw error;
 
-      toast.success("Audio durations confirmed successfully");
+      // Step 2: Regenerate AI summary with confirmed durations
+      const { error: summaryError } = await supabase.functions.invoke('regenerate-audio-summary', {
+        body: { 
+          auditId, 
+          familyStoryDuration: familyDuration, 
+          pedigreeDuration 
+        }
+      });
+
+      if (summaryError) {
+        console.warn("Summary regeneration failed:", summaryError);
+        // Don't fail the whole operation - durations are saved
+      }
+
+      toast.success("Audio durations confirmed and analysis updated");
       onDurationConfirmed();
     } catch (error) {
       console.error("Error confirming durations:", error);
