@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_checklist_progress: {
+        Row: {
+          audit_id: string
+          created_at: string | null
+          current_index: number
+          failure_comments: string | null
+          has_failures: boolean
+          id: string
+          is_completed: boolean
+          items: Json
+          reviewer_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          audit_id: string
+          created_at?: string | null
+          current_index?: number
+          failure_comments?: string | null
+          has_failures?: boolean
+          id?: string
+          is_completed?: boolean
+          items?: Json
+          reviewer_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          audit_id?: string
+          created_at?: string | null
+          current_index?: number
+          failure_comments?: string | null
+          has_failures?: boolean
+          id?: string
+          is_completed?: boolean
+          items?: Json
+          reviewer_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_checklist_progress_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: true
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_file_cleanup_log: {
         Row: {
           audit_id: string | null
