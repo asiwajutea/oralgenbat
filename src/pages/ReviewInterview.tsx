@@ -16,11 +16,21 @@ import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 import { ReviewActions } from "@/components/review/ReviewActions";
 import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
+import { AuditChecklist } from "@/components/review/AuditChecklist";
+import { useAuth } from "@/contexts/AuthContext";
 
 const ReviewInterview = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const queryClient = useQueryClient();
+  const { userRole } = useAuth();
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
+  
+  // Checklist state
+  const [checklistCompleted, setChecklistCompleted] = useState(false);
+  const [hasChecklistFailures, setHasChecklistFailures] = useState(false);
+  const [checklistComments, setChecklistComments] = useState("");
+  
+  const isAuditor = userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin';
 
   const { data: audit, isLoading: auditLoading } = useQuery({
     queryKey: ["audit", auditId],
@@ -144,11 +154,28 @@ const ReviewInterview = () => {
             </div>
           </div>
           
+          {/* Audit Checklist for auditors on unreviewed interviews */}
+          {isAuditor && audit.status !== "Audit Passed" && audit.status !== "Audit Failed" && (
+            <div className="p-4 border-b border-border">
+              <AuditChecklist
+                onComplete={(hasFailures, comments) => {
+                  setChecklistCompleted(true);
+                  setHasChecklistFailures(hasFailures);
+                  setChecklistComments(comments);
+                }}
+                isCompleted={checklistCompleted}
+              />
+            </div>
+          )}
+          
           <ReviewActions 
             auditId={auditId!} 
             currentStatus={audit.status}
             currentFileName={audit.file_name}
             nextAuditId={nextAudit?.id}
+            checklistCompleted={checklistCompleted || audit.status === "Audit Passed" || audit.status === "Audit Failed"}
+            hasChecklistFailures={hasChecklistFailures}
+            checklistFailureComments={checklistComments}
           />
         </div>
 
