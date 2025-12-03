@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,18 +26,36 @@ interface ReviewActionsProps {
   currentStatus: string;
   currentFileName: string;
   nextAuditId?: string;
+  checklistCompleted?: boolean;
+  hasChecklistFailures?: boolean;
+  checklistFailureComments?: string;
 }
 
-export const ReviewActions = ({ auditId, currentStatus, currentFileName, nextAuditId }: ReviewActionsProps) => {
+export const ReviewActions = ({ 
+  auditId, 
+  currentStatus, 
+  currentFileName, 
+  nextAuditId,
+  checklistCompleted = false,
+  hasChecklistFailures = false,
+  checklistFailureComments = "",
+}: ReviewActionsProps) => {
   const [showFailDialog, setShowFailDialog] = useState(false);
   const [showPassDialog, setShowPassDialog] = useState(false);
   const [showReauditDialog, setShowReauditDialog] = useState(false);
-  const [reviewComment, setReviewComment] = useState("");
+  const [reviewComment, setReviewComment] = useState(checklistFailureComments);
   const [actionPlan, setActionPlan] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile, userRole } = useAuth();
+
+  // Update reviewComment when checklistFailureComments changes
+  useEffect(() => {
+    if (checklistFailureComments) {
+      setReviewComment(checklistFailureComments);
+    }
+  }, [checklistFailureComments]);
 
   const isAuditor = userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin';
   const isFieldManagerOrContractor = userRole === 'field_manager' || userRole === 'contractor';
@@ -160,37 +178,60 @@ export const ReviewActions = ({ auditId, currentStatus, currentFileName, nextAud
     }
   };
 
+  // Determine if we should show auditor buttons
+  const showAuditorButtons = isAuditor && !isReviewed && checklistCompleted;
+  const canPass = showAuditorButtons && !hasChecklistFailures;
+  const canFail = showAuditorButtons;
+
   return (
     <>
       <div className="flex items-center gap-3 py-3 px-6 border-b border-border bg-background">
-        {/* Auditors see Pass/Fail buttons */}
-        {isAuditor && (
+        {/* Auditors see Pass/Fail buttons after checklist is complete */}
+        {isAuditor && !isReviewed && (
           <>
-            <Button
-              onClick={() => setShowPassDialog(true)}
-              disabled={isReviewed || isSubmitting}
-              className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-            >
-              <CheckCircle className="h-4 w-4" />
-              Pass Interview
-            </Button>
-
-            <Button
-              onClick={() => setShowFailDialog(true)}
-              disabled={isReviewed || isSubmitting}
-              variant="destructive"
-              className="gap-2"
-            >
-              <XCircle className="h-4 w-4" />
-              Fail Interview
-            </Button>
-
-            {isReviewed && (
-              <span className="text-sm text-muted-foreground ml-2">
-                Already reviewed: {currentStatus}
+            {!checklistCompleted ? (
+              <span className="text-sm text-muted-foreground">
+                Complete the checklist to review this interview
               </span>
+            ) : (
+              <>
+                {canPass && (
+                  <Button
+                    onClick={() => setShowPassDialog(true)}
+                    disabled={isSubmitting}
+                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Pass Interview
+                  </Button>
+                )}
+
+                {canFail && (
+                  <Button
+                    onClick={() => setShowFailDialog(true)}
+                    disabled={isSubmitting}
+                    variant="destructive"
+                    className="gap-2"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Fail Interview
+                  </Button>
+                )}
+
+                {hasChecklistFailures && (
+                  <span className="text-sm text-amber-600 ml-2">
+                    Checklist has failed items - interview cannot pass
+                  </span>
+                )}
+              </>
             )}
           </>
+        )}
+
+        {isAuditor && isReviewed && (
+          <span className="text-sm text-muted-foreground">
+            Already reviewed: {currentStatus}
+          </span>
         )}
 
         {/* Field Managers/Contractors see SEND FOR RE-AUDIT button for failed audits */}
