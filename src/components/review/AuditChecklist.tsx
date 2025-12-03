@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, XCircle, ChevronRight, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ChecklistItem {
   id: number;
@@ -15,6 +17,17 @@ interface ChecklistItem {
   question: string;
   answer?: "yes" | "no";
   comment?: string;
+}
+
+export interface ChecklistProgress {
+  id: string;
+  audit_id: string;
+  reviewer_id: string;
+  items: ChecklistItem[];
+  current_index: number;
+  is_completed: boolean;
+  has_failures: boolean;
+  failure_comments: string | null;
 }
 
 const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
@@ -97,21 +110,89 @@ const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
 ];
 
 interface AuditChecklistProps {
+  auditId: string;
   onComplete: (hasFailures: boolean, failureComments: string) => void;
   isCompleted: boolean;
+  initialProgress?: ChecklistProgress | null;
 }
 
-export const AuditChecklist = ({ onComplete, isCompleted }: AuditChecklistProps) => {
-  const [items, setItems] = useState<ChecklistItem[]>(
-    CHECKLIST_ITEMS.map((item) => ({ ...item }))
-  );
-  const [currentIndex, setCurrentIndex] = useState(0);
+export const AuditChecklist = ({ auditId, onComplete, isCompleted, initialProgress }: AuditChecklistProps) => {
+  const { user } = useAuth();
+  const [items, setItems] = useState<ChecklistItem[]>(() => {
+    if (initialProgress?.items && Array.isArray(initialProgress.items)) {
+      return initialProgress.items as ChecklistItem[];
+    }
+    return CHECKLIST_ITEMS.map((item) => ({ ...item }));
+  });
+  const [currentIndex, setCurrentIndex] = useState(() => initialProgress?.current_index ?? 0);
   const [currentComment, setCurrentComment] = useState("");
   const [showCommentBox, setShowCommentBox] = useState(false);
+
+  // Initialize from saved progress when it loads
+  useEffect(() => {
+    if (initialProgress?.items && Array.isArray(initialProgress.items)) {
+      setItems(initialProgress.items as ChecklistItem[]);
+      setCurrentIndex(initialProgress.current_index);
+      
+      // If already completed, call onComplete
+      if (initialProgress.is_completed) {
+        onComplete(initialProgress.has_failures, initialProgress.failure_comments || "");
+      }
+    }
+  }, [initialProgress]);
 
   const currentItem = items[currentIndex];
   const totalItems = items.length;
   const answeredCount = items.filter((item) => item.answer !== undefined).length;
+
+  const saveProgress = async (
+    updatedItems: ChecklistItem[],
+    newIndex: number,
+    completed: boolean,
+    failures: boolean,
+    comments: string
+  ) => {
+    if (!user?.id) return;
+
+    try {
+      // Check if record exists
+      const { data: existing } = await supabase
+        .from("audit_checklist_progress")
+        .select("id")
+        .eq("audit_id", auditId)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing record
+        await supabase
+          .from("audit_checklist_progress")
+          .update({
+            items: JSON.parse(JSON.stringify(updatedItems)),
+            current_index: newIndex,
+            is_completed: completed,
+            has_failures: failures,
+            failure_comments: comments || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("audit_id", auditId);
+      } else {
+        // Insert new record
+        await supabase
+          .from("audit_checklist_progress")
+          .insert({
+            audit_id: auditId,
+            reviewer_id: user.id,
+            items: JSON.parse(JSON.stringify(updatedItems)),
+            current_index: newIndex,
+            is_completed: completed,
+            has_failures: failures,
+            failure_comments: comments || null
+          });
+      }
+    } catch (error) {
+      console.error("Failed to save checklist progress:", error);
+    }
+  };
 
   const handleAnswer = (answer: "yes" | "no") => {
     const updatedItems = [...items];
@@ -120,6 +201,8 @@ export const AuditChecklist = ({ onComplete, isCompleted }: AuditChecklistProps)
 
     if (answer === "no") {
       setShowCommentBox(true);
+      // Save progress with current state
+      saveProgress(updatedItems, currentIndex, false, true, "");
     } else {
       setShowCommentBox(false);
       setCurrentComment("");
@@ -143,7 +226,11 @@ export const AuditChecklist = ({ onComplete, isCompleted }: AuditChecklistProps)
 
   const proceedToNext = (updatedItems: ChecklistItem[]) => {
     if (currentIndex < totalItems - 1) {
-      setCurrentIndex(currentIndex + 1);
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      // Save progress
+      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      saveProgress(updatedItems, nextIndex, false, hasAnyFailures, "");
     } else {
       // Checklist complete - compile results
       const failedItems = updatedItems.filter((item) => item.answer === "no");
@@ -174,6 +261,8 @@ export const AuditChecklist = ({ onComplete, isCompleted }: AuditChecklistProps)
         failureComments = `**Failed Checklist Items:**\n\n${sections.join("\n\n")}`;
       }
 
+      // Save completed progress
+      saveProgress(updatedItems, currentIndex, true, hasFailures, failureComments);
       onComplete(hasFailures, failureComments);
     }
   };

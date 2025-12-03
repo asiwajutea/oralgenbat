@@ -2,7 +2,7 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, FileCheck } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { MetadataPanel } from "@/components/review/MetadataPanel";
@@ -16,7 +16,7 @@ import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 import { ReviewActions } from "@/components/review/ReviewActions";
 import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
-import { AuditChecklist } from "@/components/review/AuditChecklist";
+import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
 import { useAuth } from "@/contexts/AuthContext";
 
 const ReviewInterview = () => {
@@ -95,7 +95,38 @@ const ReviewInterview = () => {
     enabled: !!auditId,
   });
 
-  const isLoading = auditLoading || metadataLoading || photosLoading;
+  // Fetch checklist progress
+  const { data: checklistProgress, isLoading: checklistLoading } = useQuery({
+    queryKey: ["checklist-progress", auditId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("audit_checklist_progress")
+        .select("*")
+        .eq("audit_id", auditId)
+        .maybeSingle();
+      
+      if (error) throw error;
+      if (!data) return null;
+      
+      // Transform database response to match ChecklistProgress type
+      return {
+        ...data,
+        items: data.items as unknown as ChecklistProgress["items"]
+      } as ChecklistProgress;
+    },
+    enabled: !!auditId && isAuditor,
+  });
+
+  // Initialize state from saved progress
+  useEffect(() => {
+    if (checklistProgress?.is_completed) {
+      setChecklistCompleted(true);
+      setHasChecklistFailures(checklistProgress.has_failures);
+      setChecklistComments(checklistProgress.failure_comments || "");
+    }
+  }, [checklistProgress]);
+
+  const isLoading = auditLoading || metadataLoading || photosLoading || (isAuditor && checklistLoading);
 
   const handleAnalyzePDF = async () => {
     if (!auditId) return;
@@ -158,6 +189,8 @@ const ReviewInterview = () => {
           {isAuditor && audit.status !== "Audit Passed" && audit.status !== "Audit Failed" && (
             <div className="p-4 border-b border-border">
               <AuditChecklist
+                auditId={auditId!}
+                initialProgress={checklistProgress}
                 onComplete={(hasFailures, comments) => {
                   setChecklistCompleted(true);
                   setHasChecklistFailures(hasFailures);
