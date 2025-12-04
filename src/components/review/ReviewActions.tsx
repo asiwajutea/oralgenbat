@@ -86,6 +86,17 @@ export const ReviewActions = ({
         console.warn("Audio cleanup failed (non-critical):", cleanupError);
       }
 
+      // Delete checklist progress after passing
+      try {
+        await supabase
+          .from("audit_checklist_progress")
+          .delete()
+          .eq("audit_id", auditId);
+        console.log("Checklist progress deleted for passed audit");
+      } catch (cleanupError) {
+        console.warn("Checklist cleanup failed (non-critical):", cleanupError);
+      }
+
       toast({
         title: "Interview Passed",
         description: "The interview has been marked as passed.",

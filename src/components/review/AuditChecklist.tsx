@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, ChevronRight, ClipboardCheck } from "lucide-react";
+import { CheckCircle, XCircle, ChevronRight, ChevronLeft, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -81,28 +81,34 @@ const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
     categoryLabel: "Data Consistency & Accuracy",
     question: "Are the dates and places of birth recorded for the interviewee, the spouse, and the interviewee's children?",
   },
-  // C. Form Structure & Completeness
   {
     id: 9,
+    category: "B",
+    categoryLabel: "Data Consistency & Accuracy",
+    question: "Does the folder name written on the collection form header match the interview date and the interview ID?",
+  },
+  // C. Form Structure & Completeness
+  {
+    id: 10,
     category: "C",
     categoryLabel: "Form Structure & Completeness",
     question: "Are the pages numbered correctly and in sequence?",
   },
   // D. Media Verification
   {
-    id: 10,
+    id: 11,
     category: "D",
     categoryLabel: "Media Verification",
     question: "Are all photos in the mobile app clear, relevant, and correctly captured?",
   },
   {
-    id: 11,
+    id: 12,
     category: "D",
     categoryLabel: "Media Verification",
     question: "Is the full Authorization Form clearly visible in the uploaded image?",
   },
   {
-    id: 12,
+    id: 13,
     category: "D",
     categoryLabel: "Media Verification",
     question: "Can the Field Agent and interviewee be clearly and easily heard in both the Family Story and Pedigree audio files?",
@@ -191,6 +197,18 @@ export const AuditChecklist = ({ auditId, onComplete, isCompleted, initialProgre
       }
     } catch (error) {
       console.error("Failed to save checklist progress:", error);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentIndex > 0) {
+      const prevIndex = currentIndex - 1;
+      setCurrentIndex(prevIndex);
+      setShowCommentBox(false);
+      setCurrentComment("");
+      // Save progress when going back
+      const hasAnyFailures = items.some((item) => item.answer === "no");
+      saveProgress(items, prevIndex, false, hasAnyFailures, "");
     }
   };
 
@@ -343,7 +361,7 @@ export const AuditChecklist = ({ auditId, onComplete, isCompleted, initialProgre
             Audit Review Checklist
           </CardTitle>
           <Badge variant="outline" className="font-normal">
-            {answeredCount + 1} of {totalItems}
+            {currentIndex + 1} of {totalItems}
           </Badge>
         </div>
         {/* Progress bar */}
@@ -356,13 +374,25 @@ export const AuditChecklist = ({ auditId, onComplete, isCompleted, initialProgre
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Category badge */}
-        <Badge
-          variant="outline"
-          className={cn("font-medium", getCategoryColor(currentItem.category))}
-        >
-          {currentItem.category}. {currentItem.categoryLabel}
-        </Badge>
+        {/* Navigation and Category badge */}
+        <div className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handlePrevious}
+            disabled={currentIndex === 0}
+            className="gap-1"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </Button>
+          <Badge
+            variant="outline"
+            className={cn("font-medium", getCategoryColor(currentItem.category))}
+          >
+            {currentItem.category}. {currentItem.categoryLabel}
+          </Badge>
+        </div>
 
         {/* Question */}
         <div className="space-y-4">
