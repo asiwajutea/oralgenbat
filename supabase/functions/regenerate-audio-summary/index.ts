@@ -13,7 +13,13 @@ serve(async (req) => {
   }
 
   try {
-    const { auditId, familyStoryDuration, pedigreeDuration } = await req.json();
+    const { 
+      auditId, 
+      familyStoryDuration, 
+      pedigreeDuration,
+      familyNoiseLevel,
+      pedigreeNoiseLevel 
+    } = await req.json();
 
     if (!auditId || !familyStoryDuration || !pedigreeDuration) {
       return new Response(
@@ -23,13 +29,28 @@ serve(async (req) => {
     }
 
     console.log(`Regenerating audio summary for audit: ${auditId}`);
-    console.log(`Family Story: ${familyStoryDuration}s, Pedigree: ${pedigreeDuration}s`);
+    console.log(`Family Story: ${familyStoryDuration}s, Noise: ${familyNoiseLevel}%`);
+    console.log(`Pedigree: ${pedigreeDuration}s, Noise: ${pedigreeNoiseLevel}%`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Generate new AI summary with confirmed durations
+    // Fetch existing metadata to get silence levels
+    const { data: metadata, error: fetchError } = await supabase
+      .from("interview_metadata")
+      .select("family_story_silence_level, pedigree_segment_silence_level")
+      .eq("audit_id", auditId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("Error fetching metadata:", fetchError);
+    }
+
+    const familySilenceLevel = metadata?.family_story_silence_level ?? null;
+    const pedigreeSilenceLevel = metadata?.pedigree_segment_silence_level ?? null;
+
+    // Generate new AI summary with confirmed durations and noise levels
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
       throw new Error("LOVABLE_API_KEY not found");
@@ -41,29 +62,50 @@ serve(async (req) => {
       return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const systemPrompt = `You are assessing audio recordings for a field genealogy interview project conducted in open outdoor spaces in Africa. These are NOT studio recordings - ambient environmental sounds from ongoing activities nearby are completely normal and acceptable.
+    const getNoiseDescription = (level: number | null) => {
+      if (level === null) return "Not rated";
+      if (level <= 10) return "Excellent (minimal/no noise)";
+      if (level <= 30) return "Good (light background noise)";
+      if (level <= 50) return "Fair (moderate noise)";
+      if (level <= 70) return "Poor (significant noise)";
+      return "Very Poor (mostly noise)";
+    };
+
+    const systemPrompt = `You are assessing audio recordings for a field genealogy interview project conducted in open outdoor spaces in Africa. These are NOT studio recordings - some ambient environmental sounds are expected.
 
 KEY PROJECT STANDARDS:
 - Family Story recording should be at least 10 minutes (600 seconds)
 - Pedigree Segment recording should be at least 15 minutes (900 seconds)
-- Continuous dialogue is expected throughout - extended silent periods indicate potential issues
-- Background ambient sounds do NOT affect quality rating
+- Duration is the PRIMARY quality indicator
+- Noise level is manually rated by the reviewer (lower is better)
+- Silence level is auto-calculated (high silence >20% indicates potential issues like long pauses or gaps)
 
-IMPORTANT: Base your assessment ONLY on recording duration. Do not comment on noise levels.`;
+QUALITY RATING GUIDELINES:
+- Excellent: Both durations meet requirements, noise levels 1-2, silence under 15%
+- Good: Both durations meet requirements, noise levels acceptable (up to 3), minor silence issues
+- Fair: One recording below duration OR significant noise (level 4) OR high silence
+- Poor: Both recordings below duration OR very poor noise (level 5) OR both recordings have issues`;
 
     const prompt = `Assess these two field interview recordings:
 
-Family Story Recording: ${formatDuration(familyStoryDuration)} (${familyStoryDuration} seconds)
+**Family Story Recording:**
+- Duration: ${formatDuration(familyStoryDuration)} (${familyStoryDuration} seconds)
 - Minimum required: 10:00 (600 seconds)
+- Noise Level: ${familyNoiseLevel !== null ? `${familyNoiseLevel}% - ${getNoiseDescription(familyNoiseLevel)}` : 'Not rated'}
+- Silence Level: ${familySilenceLevel !== null ? `${familySilenceLevel}%` : 'Not available'}
 
-Pedigree Segment Recording: ${formatDuration(pedigreeDuration)} (${pedigreeDuration} seconds)
+**Pedigree Segment Recording:**
+- Duration: ${formatDuration(pedigreeDuration)} (${pedigreeDuration} seconds)
 - Minimum required: 15:00 (900 seconds)
+- Noise Level: ${pedigreeNoiseLevel !== null ? `${pedigreeNoiseLevel}% - ${getNoiseDescription(pedigreeNoiseLevel)}` : 'Not rated'}
+- Silence Level: ${pedigreeSilenceLevel !== null ? `${pedigreeSilenceLevel}%` : 'Not available'}
 
-Provide a brief quality assessment (2-3 sentences) with an overall rating:
-- Excellent: Both recordings meet or exceed duration requirements
-- Good: Both recordings close to requirements (within 10% below minimum)
-- Fair: One recording significantly below requirement
-- Poor: Both recordings significantly below requirements`;
+Provide a brief quality assessment (2-3 sentences) covering:
+1. Whether durations meet requirements
+2. Impact of the noise levels on audio clarity
+3. Any concerns from silence levels (if high)
+
+End with an overall rating: Excellent, Good, Fair, or Poor.`;
 
     console.log("Calling Lovable AI to regenerate summary...");
 
