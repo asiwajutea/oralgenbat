@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, ChevronRight, ChevronLeft, ClipboardCheck } from "lucide-react";
+import { CheckCircle, XCircle, ChevronRight, ChevronLeft, ClipboardCheck, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -117,12 +117,13 @@ const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
 
 interface AuditChecklistProps {
   auditId: string;
+  interviewId?: string;
   onComplete: (hasFailures: boolean, failureComments: string) => void;
   isCompleted: boolean;
   initialProgress?: ChecklistProgress | null;
 }
 
-export const AuditChecklist = ({ auditId, onComplete, isCompleted, initialProgress }: AuditChecklistProps) => {
+export const AuditChecklist = ({ auditId, interviewId, onComplete, isCompleted, initialProgress }: AuditChecklistProps) => {
   const { user } = useAuth();
   const [items, setItems] = useState<ChecklistItem[]>(() => {
     if (initialProgress?.items && Array.isArray(initialProgress.items)) {
@@ -307,46 +308,25 @@ export const AuditChecklist = ({ auditId, onComplete, isCompleted, initialProgre
 
     return (
       <Card className="border-border bg-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <ClipboardCheck className="h-5 w-5 text-primary" />
-            Audit Checklist Complete
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1.5">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>{passedItems.length} Passed</span>
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">Checklist Complete</span>
             </div>
-            {failedItems.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <XCircle className="h-4 w-4 text-destructive" />
-                <span>{failedItems.length} Failed</span>
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1">
+                <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                <span>{passedItems.length} Passed</span>
               </div>
-            )}
-          </div>
-
-          {failedItems.length > 0 && (
-            <div className="space-y-2 pt-2 border-t border-border">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Failed Items:
-              </p>
-              {failedItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="text-sm p-2 bg-destructive/5 border border-destructive/20 rounded-md"
-                >
-                  <p className="font-medium text-destructive">Q{item.id}: {item.question}</p>
-                  {item.comment && (
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Comment: {item.comment}
-                    </p>
-                  )}
+              {failedItems.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <XCircle className="h-3.5 w-3.5 text-destructive" />
+                  <span>{failedItems.length} Failed</span>
                 </div>
-              ))}
+              )}
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
     );
@@ -354,113 +334,114 @@ export const AuditChecklist = ({ auditId, onComplete, isCompleted, initialProgre
 
   return (
     <Card className="border-border bg-card">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <ClipboardCheck className="h-5 w-5 text-primary" />
-            Audit Review Checklist
-          </CardTitle>
-          <Badge variant="outline" className="font-normal">
-            {currentIndex + 1} of {totalItems}
-          </Badge>
+      <CardContent className="py-3 px-4 space-y-3">
+        {/* Compact header row */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <ClipboardCheck className="h-4 w-4 text-primary flex-shrink-0" />
+            {interviewId && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                <FileText className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{interviewId}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Badge
+              variant="outline"
+              className={cn("text-xs px-1.5 py-0", getCategoryColor(currentItem.category))}
+            >
+              {currentItem.category}
+            </Badge>
+            <Badge variant="outline" className="text-xs font-normal px-1.5 py-0">
+              {currentIndex + 1}/{totalItems}
+            </Badge>
+          </div>
         </div>
-        {/* Progress bar */}
-        <div className="h-1.5 bg-muted rounded-full mt-3 overflow-hidden">
+
+        {/* Thin progress bar */}
+        <div className="h-1 bg-muted rounded-full overflow-hidden">
           <div
             className="h-full bg-primary transition-all duration-300 rounded-full"
             style={{ width: `${(answeredCount / totalItems) * 100}%` }}
           />
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-4">
-        {/* Navigation and Category badge */}
-        <div className="flex items-center justify-between">
+        {/* Question - compact */}
+        <p className="text-xs leading-relaxed">
+          <span className="font-medium">Q{currentItem.id}:</span> {currentItem.question}
+        </p>
+
+        {/* Answer options and navigation */}
+        <div className="flex items-center justify-between gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={handlePrevious}
             disabled={currentIndex === 0}
-            className="gap-1"
+            className="h-7 px-2 text-xs gap-1"
           >
-            <ChevronLeft className="h-4 w-4" />
-            Previous
+            <ChevronLeft className="h-3 w-3" />
+            Prev
           </Button>
-          <Badge
-            variant="outline"
-            className={cn("font-medium", getCategoryColor(currentItem.category))}
-          >
-            {currentItem.category}. {currentItem.categoryLabel}
-          </Badge>
-        </div>
-
-        {/* Question */}
-        <div className="space-y-4">
-          <p className="text-sm font-medium leading-relaxed">
-            Q{currentItem.id}: {currentItem.question}
-          </p>
-
-          {/* Answer options */}
+          
           <RadioGroup
             value={currentItem.answer || ""}
             onValueChange={(value) => handleAnswer(value as "yes" | "no")}
-            className="flex gap-4"
+            className="flex gap-3"
           >
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="yes" id="yes" />
+            <div className="flex items-center space-x-1.5">
+              <RadioGroupItem value="yes" id="yes" className="h-3.5 w-3.5" />
               <Label
                 htmlFor="yes"
-                className="cursor-pointer flex items-center gap-1.5"
+                className="cursor-pointer flex items-center gap-1 text-xs"
               >
-                <CheckCircle className="h-4 w-4 text-green-500" />
+                <CheckCircle className="h-3 w-3 text-green-500" />
                 Yes
               </Label>
             </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="no" id="no" />
+            <div className="flex items-center space-x-1.5">
+              <RadioGroupItem value="no" id="no" className="h-3.5 w-3.5" />
               <Label
                 htmlFor="no"
-                className="cursor-pointer flex items-center gap-1.5"
+                className="cursor-pointer flex items-center gap-1 text-xs"
               >
-                <XCircle className="h-4 w-4 text-destructive" />
+                <XCircle className="h-3 w-3 text-destructive" />
                 No
               </Label>
             </div>
           </RadioGroup>
-
-          {/* Comment box for "No" answers */}
-          {showCommentBox && (
-            <div className="space-y-3 pt-2 border-t border-border">
-              <Label htmlFor="comment" className="text-sm text-muted-foreground">
-                Please provide details about this issue (optional):
-              </Label>
-              <Textarea
-                id="comment"
-                placeholder="Describe what was wrong or missing..."
-                value={currentComment}
-                onChange={(e) => setCurrentComment(e.target.value)}
-                className="min-h-[80px] text-sm"
-              />
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleCommentSubmit(true)}
-                >
-                  Skip
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => handleCommentSubmit(false)}
-                  className="gap-1"
-                >
-                  Continue
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Comment box for "No" answers - more compact */}
+        {showCommentBox && (
+          <div className="space-y-2 pt-2 border-t border-border">
+            <Textarea
+              placeholder="Describe what was wrong (optional)..."
+              value={currentComment}
+              onChange={(e) => setCurrentComment(e.target.value)}
+              className="min-h-[50px] text-xs"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleCommentSubmit(true)}
+                className="h-7 text-xs"
+              >
+                Skip
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleCommentSubmit(false)}
+                className="h-7 text-xs gap-1"
+              >
+                Continue
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
