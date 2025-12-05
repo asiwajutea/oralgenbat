@@ -2,7 +2,7 @@ import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, FileCheck } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { MetadataPanel } from "@/components/review/MetadataPanel";
@@ -30,6 +30,27 @@ const ReviewInterview = () => {
   const [hasChecklistFailures, setHasChecklistFailures] = useState(false);
   const [checklistComments, setChecklistComments] = useState("");
   const isAuditor = userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin';
+
+  // Sticky detection
+  const [isSticky, setIsSticky] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Intersection Observer to detect when sticky is activated
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // When sentinel is NOT visible, the sticky content is "stuck"
+        setIsSticky(!entry.isIntersecting);
+      },
+      { threshold: 0, rootMargin: "-1px 0px 0px 0px" }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
 
   const { data: audit, isLoading: auditLoading } = useQuery({
     queryKey: ["audit", auditId],
@@ -153,15 +174,19 @@ const ReviewInterview = () => {
           </div>
         </div>
 
+        {/* Sentinel for sticky detection - placed just before sticky section */}
+        <div ref={sentinelRef} className="h-0 flex-shrink-0" />
+
         {/* Sticky Section - Checklist & Actions only */}
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background border-b border-border shadow-sm">
           {/* Audit Checklist for auditors on unreviewed interviews */}
           {isAuditor && !isReviewed && (
-            <div className="p-3">
+            <div className="p-4">
               <AuditChecklist
                 auditId={auditId!}
                 interviewId={audit.file_name}
                 initialProgress={checklistProgress}
+                isSticky={isSticky}
                 onComplete={(hasFailures, comments) => {
                   setChecklistCompleted(true);
                   setHasChecklistFailures(hasFailures);
