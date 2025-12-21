@@ -4,6 +4,7 @@ import { FilterSidebar, FilterState } from "@/components/FilterSidebar";
 import { AuditTable } from "@/components/AuditTable";
 import { UploadDialog } from "@/components/UploadDialog";
 import { AuditPagination } from "@/components/AuditPagination";
+import { AuditorStatsCard } from "@/components/AuditorStatsCard";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -144,6 +145,9 @@ const Index = () => {
 
         {/* Table Content */}
         <main className="flex-1 p-6 flex flex-col">
+          {/* Auditor Stats Cards */}
+          <AuditorStatsCard />
+          
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <p className="text-muted-foreground">Loading audits...</p>

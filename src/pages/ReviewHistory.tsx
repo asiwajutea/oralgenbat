@@ -1,0 +1,254 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { format } from "date-fns";
+import { History, Search, ChevronLeft, ChevronRight, Clock, MessageSquare, ExternalLink } from "lucide-react";
+
+interface ReviewedAudit {
+  id: string;
+  file_name: string;
+  status: string;
+  reviewed_at: string;
+  review_comment: string | null;
+  action_plan: string | null;
+  is_re_audit: boolean;
+  re_audit_count: number;
+  review_duration_seconds: number | null;
+}
+
+const ITEMS_PER_PAGE = 15;
+
+const ReviewHistory = () => {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["review-history", profile?.full_name, currentPage, statusFilter, searchTerm],
+    queryFn: async () => {
+      if (!profile?.full_name) return { audits: [], totalCount: 0 };
+
+      let query = supabase
+        .from("audits")
+        .select("id, file_name, status, reviewed_at, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds", { count: "exact" })
+        .eq("reviewed_by", profile.full_name)
+        .not("reviewed_at", "is", null)
+        .order("reviewed_at", { ascending: false });
+
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+      }
+
+      if (searchTerm) {
+        query = query.ilike("file_name", `%${searchTerm}%`);
+      }
+
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      const { data: audits, count, error } = await query.range(from, to);
+
+      if (error) throw error;
+
+      return {
+        audits: (audits || []) as ReviewedAudit[],
+        totalCount: count || 0,
+      };
+    },
+    enabled: !!profile?.full_name,
+  });
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return "-";
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    }
+    return `${secs}s`;
+  };
+
+  const totalPages = Math.ceil((data?.totalCount || 0) / ITEMS_PER_PAGE);
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-6 space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-[500px] w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <History className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold">My Review History</h1>
+            <p className="text-sm text-muted-foreground">
+              {data?.totalCount || 0} reviews completed
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by interview ID..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="pl-10"
+          />
+        </div>
+        <Select
+          value={statusFilter}
+          onValueChange={(value) => {
+            setStatusFilter(value);
+            setCurrentPage(1);
+          }}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="Audit Passed">Passed</SelectItem>
+            <SelectItem value="Audit Failed">Failed</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          {data?.audits.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No reviews found
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Interview ID</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Review Date</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Re-audit</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead className="w-10"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data?.audits.map((audit) => (
+                    <TableRow
+                      key={audit.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/review/${audit.id}`)}
+                    >
+                      <TableCell className="font-medium font-mono text-sm">
+                        {audit.file_name}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={audit.status === "Audit Passed" ? "default" : "destructive"}
+                        >
+                          {audit.status === "Audit Passed" ? "Passed" : "Failed"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {audit.reviewed_at && format(new Date(audit.reviewed_at), "PPp")}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {formatDuration(audit.review_duration_seconds)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {audit.is_re_audit ? (
+                          <Badge variant="outline" className="text-xs">
+                            #{audit.re_audit_count}
+                          </Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-[200px]">
+                        {audit.review_comment || audit.action_plan ? (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <MessageSquare className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate text-xs">
+                              {audit.review_comment || audit.action_plan}
+                            </span>
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ReviewHistory;

@@ -76,7 +76,23 @@ const Header = () => {
               >
                 Analytics
               </NavLink>
+              <NavLink 
+                to="/admin/review-history"
+                className="text-sm font-medium transition-colors hover:text-primary"
+                activeClassName="text-primary"
+              >
+                All Reviews
+              </NavLink>
             </>
+          )}
+          {(userRole === 'auditor') && (
+            <NavLink 
+              to="/review-history"
+              className="text-sm font-medium transition-colors hover:text-primary"
+              activeClassName="text-primary"
+            >
+              My Reviews
+            </NavLink>
           )}
         </nav>
         

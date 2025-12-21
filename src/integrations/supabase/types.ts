@@ -122,6 +122,7 @@ export type Database = {
           original_status: Database["public"]["Enums"]["audit_status"] | null
           re_audit_count: number | null
           review_comment: string | null
+          review_duration_seconds: number | null
           reviewed_at: string | null
           reviewed_by: string | null
           status: Database["public"]["Enums"]["audit_status"]
@@ -139,6 +140,7 @@ export type Database = {
           original_status?: Database["public"]["Enums"]["audit_status"] | null
           re_audit_count?: number | null
           review_comment?: string | null
+          review_duration_seconds?: number | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
@@ -156,6 +158,7 @@ export type Database = {
           original_status?: Database["public"]["Enums"]["audit_status"] | null
           re_audit_count?: number | null
           review_comment?: string | null
+          review_duration_seconds?: number | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
