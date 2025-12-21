@@ -40,7 +40,13 @@ const ReviewInterview = () => {
   const isAuditor = userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin';
 
   // Interview locking
-  const { isLocked, lockedByOther, acquireLock, releaseLock, isLoading: lockLoading } = useInterviewLock(auditId);
+  const {
+    isLocked,
+    lockedByOther,
+    acquireLock,
+    releaseLock,
+    isLoading: lockLoading
+  } = useInterviewLock(auditId);
 
   // Sticky detection
   const [isSticky, setIsSticky] = useState(false);
@@ -48,7 +54,10 @@ const ReviewInterview = () => {
 
   // Review timer - active for auditors on unreviewed interviews
   const [isTimerActive, setIsTimerActive] = useState(false);
-  const { elapsedSeconds, Timer } = useReviewTimer(isTimerActive);
+  const {
+    elapsedSeconds,
+    Timer
+  } = useReviewTimer(isTimerActive);
 
   // Intersection Observer to detect when sticky is activated
   useEffect(() => {
@@ -159,8 +168,7 @@ const ReviewInterview = () => {
       setChecklistComments(checklistProgress.failure_comments || "");
     }
   }, [checklistProgress]);
-
-  const isLoading = auditLoading || metadataLoading || photosLoading || lockLoading || (isAuditor && checklistLoading);
+  const isLoading = auditLoading || metadataLoading || photosLoading || lockLoading || isAuditor && checklistLoading;
   const isReviewed = audit?.status === "Audit Passed" || audit?.status === "Audit Failed";
 
   // Acquire lock and start timer for auditors on unreviewed interviews when data loads
@@ -235,7 +243,6 @@ const ReviewInterview = () => {
         </div>
       </div>;
   }
-
   return <div className="h-screen flex">
       {/* Left Panel - Metadata & Media */}
       <div className="w-1/2 border-r border-border bg-background h-screen flex flex-col">
@@ -268,18 +275,7 @@ const ReviewInterview = () => {
             </div>}
           
           {/* Review Actions */}
-          <ReviewActions 
-            auditId={auditId!} 
-            currentStatus={audit.status} 
-            currentFileName={audit.file_name}
-            nextAuditId={nextAudit?.id}
-            checklistCompleted={checklistCompleted}
-            hasChecklistFailures={hasChecklistFailures}
-            checklistFailureComments={checklistComments}
-            reviewDurationSeconds={elapsedSeconds}
-            onAbandonReview={handleAbandonReview}
-            onReleaseLock={releaseLock}
-          />
+          
         </div>
 
         {/* Scrollable Content Section */}
