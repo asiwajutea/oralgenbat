@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { useStatusCounts } from "@/hooks/useStatusCounts";
 
 interface FilterSidebarProps {
   onFilterChange: (filters: FilterState) => void;
@@ -27,12 +28,6 @@ export interface FilterState {
   endDate: string;
 }
 
-const statusOptions = [
-  { value: "Pending", label: "Awaiting Review" },
-  { value: "Audit Passed", label: "Audit Passed" },
-  { value: "Audit Failed", label: "Audit Failed" },
-];
-
 export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) => {
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
@@ -43,6 +38,14 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
     endDate: "",
   });
   const [reviewers, setReviewers] = useState<string[]>([]);
+  const { data: statusCounts } = useStatusCounts();
+
+  const statusOptions = [
+    { value: "Pending", label: `Awaiting Review (${statusCounts?.Pending || 0})` },
+    { value: "In Progress", label: `In Progress (${statusCounts?.["In Progress"] || 0})` },
+    { value: "Audit Passed", label: `Audit Passed (${statusCounts?.["Audit Passed"] || 0})` },
+    { value: "Audit Failed", label: `Audit Failed (${statusCounts?.["Audit Failed"] || 0})` },
+  ];
 
   useEffect(() => {
     const fetchReviewers = async () => {

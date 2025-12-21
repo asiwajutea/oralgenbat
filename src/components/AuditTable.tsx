@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { format } from "date-fns";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Audit {
   id: string;
@@ -29,6 +30,8 @@ interface Audit {
   is_re_audit: boolean;
   re_audit_count: number;
   original_status: "Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review" | null;
+  locked_by: string | null;
+  locked_at: string | null;
 }
 
 interface AuditTableProps {
@@ -39,7 +42,16 @@ interface AuditTableProps {
   hideReviewButton?: boolean;
 }
 
-const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false) => {
+const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false, isInProgress: boolean = false) => {
+  if (isInProgress) {
+    return (
+      <Badge className="flex items-center gap-1 bg-blue-100 text-blue-700 hover:bg-blue-100/90">
+        <Lock className="h-3 w-3" />
+        In Progress
+      </Badge>
+    );
+  }
+
   if (status === "Awaiting Review" && isReAudit) {
     return (
       <Badge className="flex items-center gap-1 bg-red-100 text-red-700 hover:bg-red-100/90">
@@ -86,6 +98,22 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [uploadingAudits, setUploadingAudits] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  // Helper to check if an audit is locked by someone else
+  const isLockedByOther = (audit: Audit) => {
+    return audit.locked_by && 
+           audit.locked_at && 
+           audit.locked_at > oneHourAgo && 
+           audit.locked_by !== currentUserId;
+  };
+
+  // Helper to check if an audit is in progress (locked by anyone)
+  const isInProgress = (audit: Audit) => {
+    return audit.locked_by && audit.locked_at && audit.locked_at > oneHourAgo;
+  };
 
   const toggleRow = (id: string) => {
     const newExpanded = new Set(expandedRows);
@@ -406,7 +434,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                     <TableCell className="font-mono text-sm">
                       {audit.file_name}
                     </TableCell>
-                    <TableCell>{getStatusBadge(audit.status, audit.is_re_audit)}</TableCell>
+                    <TableCell>{getStatusBadge(audit.status, audit.is_re_audit, isInProgress(audit))}</TableCell>
                     <TableCell>
                       {format(new Date(audit.last_modified), "dd MMM yyyy")}
                     </TableCell>
@@ -451,9 +479,9 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                         e.stopPropagation();
                                         navigate(`/review/${audit.id}`);
                                       }}
-                                      disabled={audit.status === "Audit Passed"}
+                                      disabled={audit.status === "Audit Passed" || isLockedByOther(audit)}
                                     >
-                                      REVIEW INTERVIEW
+                                      {isLockedByOther(audit) ? "IN REVIEW" : "REVIEW INTERVIEW"}
                                     </Button>
                                   )}
                                 </>
