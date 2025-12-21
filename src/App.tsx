@@ -22,6 +22,8 @@ import TeamApprovals from "./pages/TeamApprovals";
 import FieldManagerDashboard from "./pages/FieldManagerDashboard";
 import ContractorDashboard from "./pages/ContractorDashboard";
 import AgentFraudAnalysis from "./pages/AgentFraudAnalysis";
+import ReviewHistory from "./pages/ReviewHistory";
+import AdminReviewHistory from "./pages/AdminReviewHistory";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -130,6 +132,26 @@ const App = () => (
                     <TeamApprovals />
                   </ApproverRoute>
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/review-history"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ReviewHistory />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/review-history"
+              element={
+                <AdminRoute>
+                  <Layout>
+                    <AdminReviewHistory />
+                  </Layout>
+                </AdminRoute>
               }
             />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

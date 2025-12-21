@@ -29,6 +29,7 @@ interface ReviewActionsProps {
   checklistCompleted?: boolean;
   hasChecklistFailures?: boolean;
   checklistFailureComments?: string;
+  reviewDurationSeconds?: number;
 }
 
 export const ReviewActions = ({ 
@@ -39,6 +40,7 @@ export const ReviewActions = ({
   checklistCompleted = false,
   hasChecklistFailures = false,
   checklistFailureComments = "",
+  reviewDurationSeconds,
 }: ReviewActionsProps) => {
   const [showFailDialog, setShowFailDialog] = useState(false);
   const [showPassDialog, setShowPassDialog] = useState(false);
@@ -71,6 +73,7 @@ export const ReviewActions = ({
           status: "Audit Passed",
           reviewed_at: new Date().toISOString(),
           reviewed_by: profile?.full_name || "Unknown",
+          review_duration_seconds: reviewDurationSeconds || null,
         })
         .eq("id", auditId);
 
@@ -149,6 +152,7 @@ export const ReviewActions = ({
           action_plan: actionPlan,
           reviewed_at: new Date().toISOString(),
           reviewed_by: profile?.full_name || "Unknown",
+          review_duration_seconds: reviewDurationSeconds || null,
         })
         .eq("id", auditId);
 

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { CheckCircle2, XCircle, Calendar, FileText, Edit2, Save, X, Lock } from "lucide-react";
+import { CheckCircle2, XCircle, Calendar, FileText, Edit2, Save, X, Lock, CalendarDays } from "lucide-react";
 import { z } from "zod";
 
 const profileSchema = z.object({
@@ -43,6 +43,7 @@ interface ReviewStats {
   passed: number;
   failed: number;
   monthly: number;
+  weekly: number;
 }
 
 const UserProfile = () => {
@@ -50,7 +51,7 @@ const UserProfile = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [recentActivities, setRecentActivities] = useState<AuditActivity[]>([]);
-  const [stats, setStats] = useState<ReviewStats>({ total: 0, passed: 0, failed: 0, monthly: 0 });
+  const [stats, setStats] = useState<ReviewStats>({ total: 0, passed: 0, failed: 0, monthly: 0, weekly: 0 });
   const [loading, setLoading] = useState(true);
   
   // Profile editing state
@@ -111,11 +112,23 @@ const UserProfile = () => {
           .eq("reviewed_by", profile.full_name)
           .gte("reviewed_at", startOfMonth.toISOString());
 
+        // Get start of current week (Sunday)
+        const startOfWeek = new Date();
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const { count: weeklyReviews } = await supabase
+          .from("audits")
+          .select("*", { count: "exact", head: true })
+          .eq("reviewed_by", profile.full_name)
+          .gte("reviewed_at", startOfWeek.toISOString());
+
         setStats({
           total: totalReviews || 0,
           passed: passedReviews || 0,
           failed: failedReviews || 0,
           monthly: monthlyReviews || 0,
+          weekly: weeklyReviews || 0,
         });
       } catch (error) {
         console.error("Error fetching profile data:", error);
@@ -422,7 +435,19 @@ const UserProfile = () => {
       </Card>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">This Week</p>
+                <p className="text-3xl font-bold text-primary">{stats.weekly}</p>
+              </div>
+              <CalendarDays className="h-8 w-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">

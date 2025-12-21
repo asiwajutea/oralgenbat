@@ -17,6 +17,7 @@ import { ReviewActions } from "@/components/review/ReviewActions";
 import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
+import { useReviewTimer } from "@/components/review/ReviewTimer";
 import { useAuth } from "@/contexts/AuthContext";
 const ReviewInterview = () => {
   const {
@@ -39,6 +40,10 @@ const ReviewInterview = () => {
   // Sticky detection
   const [isSticky, setIsSticky] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Review timer - active for auditors on unreviewed interviews
+  const [isTimerActive, setIsTimerActive] = useState(false);
+  const { elapsedSeconds, Timer } = useReviewTimer(isTimerActive);
 
   // Intersection Observer to detect when sticky is activated
   useEffect(() => {
@@ -149,7 +154,16 @@ const ReviewInterview = () => {
       setChecklistComments(checklistProgress.failure_comments || "");
     }
   }, [checklistProgress]);
+
   const isLoading = auditLoading || metadataLoading || photosLoading || isAuditor && checklistLoading;
+  const isReviewed = audit?.status === "Audit Passed" || audit?.status === "Audit Failed";
+
+  // Start timer for auditors on unreviewed interviews when data loads
+  useEffect(() => {
+    if (audit && isAuditor && !isReviewed) {
+      setIsTimerActive(true);
+    }
+  }, [audit, isAuditor, isReviewed]);
   const handleAnalyzePDF = async () => {
     if (!auditId) return;
     setIsAnalyzingPDF(true);
@@ -187,13 +201,15 @@ const ReviewInterview = () => {
         </div>
       </div>;
   }
-  const isReviewed = audit.status === "Audit Passed" || audit.status === "Audit Failed";
   return <div className="h-screen flex">
       {/* Left Panel - Metadata & Media */}
       <div className="w-1/2 border-r border-border bg-background h-screen flex flex-col">
         {/* Non-sticky Header - Navigation & Title */}
         <div className="flex-shrink-0 p-4 pb-3 border-b border-border">
-          <ReviewNavigation nextAuditId={nextAudit?.id} />
+          <div className="flex items-center justify-between">
+            <ReviewNavigation nextAuditId={nextAudit?.id} />
+            {isAuditor && !isReviewed && Timer}
+          </div>
           <div className="mt-4">
             <h1 className="text-xl font-bold">Interview Review</h1>
             <p className="text-xs mt-0.5 text-muted-foreground font-medium">
@@ -216,7 +232,17 @@ const ReviewInterview = () => {
           }} isCompleted={checklistCompleted} />
             </div>}
           
-          
+          {/* Review Actions */}
+          <ReviewActions 
+            auditId={auditId!} 
+            currentStatus={audit.status} 
+            currentFileName={audit.file_name}
+            nextAuditId={nextAudit?.id}
+            checklistCompleted={checklistCompleted}
+            hasChecklistFailures={hasChecklistFailures}
+            checklistFailureComments={checklistComments}
+            reviewDurationSeconds={elapsedSeconds}
+          />
         </div>
 
         {/* Scrollable Content Section */}
