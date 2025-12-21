@@ -10,18 +10,24 @@ interface ReviewCommentsPanelProps {
   reviewComment: string | null;
   actionPlan: string | null;
   reviewedAt: string | null;
+  isReAudit?: boolean;
 }
 
 export const ReviewCommentsPanel = ({ 
   status, 
   reviewComment, 
   actionPlan, 
-  reviewedAt 
+  reviewedAt,
+  isReAudit = false,
 }: ReviewCommentsPanelProps) => {
   const [isOpen, setIsOpen] = useState(true);
 
-  // Only show for failed interviews
-  if (status !== "Audit Failed" || !reviewComment || !actionPlan) {
+  // Show for failed interviews OR for re-audits with previous comments
+  if (status !== "Audit Failed" && !isReAudit) {
+    return null;
+  }
+
+  if (!reviewComment && !actionPlan) {
     return null;
   }
 

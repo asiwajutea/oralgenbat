@@ -23,6 +23,8 @@ interface Audit {
   is_re_audit: boolean;
   re_audit_count: number;
   original_status: "Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review" | null;
+  locked_by: string | null;
+  locked_at: string | null;
 }
 
 const Index = () => {
@@ -51,9 +53,27 @@ const Index = () => {
         .from("audits")
         .select("*", { count: "exact" });
 
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
       // Apply filters to query
       if (filters.statuses.length > 0) {
-        query = query.in("status", filters.statuses as Array<Audit["status"]>);
+        // Handle "In Progress" filter separately
+        if (filters.statuses.includes("In Progress")) {
+          const otherStatuses = filters.statuses.filter(s => s !== "In Progress");
+          if (otherStatuses.length > 0) {
+            // Complex OR filter: In Progress OR other statuses
+            query = query.or(
+              `and(locked_by.not.is.null,locked_at.gte.${oneHourAgo}),status.in.(${otherStatuses.join(",")})`
+            );
+          } else {
+            // Only In Progress filter
+            query = query
+              .not("locked_by", "is", null)
+              .gte("locked_at", oneHourAgo);
+          }
+        } else {
+          query = query.in("status", filters.statuses as Array<Audit["status"]>);
+        }
       }
       if (filters.interviewId) {
         query = query.ilike("file_name", `%${filters.interviewId}%`);

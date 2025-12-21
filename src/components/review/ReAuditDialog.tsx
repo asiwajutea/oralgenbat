@@ -43,10 +43,11 @@ export const ReAuditDialog = ({
   const handleSubmit = async () => {
     if (!session?.user) return;
     
-    if (!replacePdf && !replaceZip && !comment.trim()) {
+    // Require at least one file replacement
+    if (!replacePdf && !replaceZip) {
       toast({
-        title: "Validation Error",
-        description: "Please provide a comment or upload at least one file.",
+        title: "File Required",
+        description: "You must replace at least one file (PDF or ZIP) to submit for re-audit.",
         variant: "destructive",
       });
       return;

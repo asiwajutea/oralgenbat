@@ -117,6 +117,8 @@ export type Database = {
           id: string
           is_re_audit: boolean | null
           last_modified: string
+          locked_at: string | null
+          locked_by: string | null
           mobile_zip_uploaded_at: string | null
           mobile_zip_url: string | null
           original_status: Database["public"]["Enums"]["audit_status"] | null
@@ -135,6 +137,8 @@ export type Database = {
           id?: string
           is_re_audit?: boolean | null
           last_modified?: string
+          locked_at?: string | null
+          locked_by?: string | null
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
           original_status?: Database["public"]["Enums"]["audit_status"] | null
@@ -153,6 +157,8 @@ export type Database = {
           id?: string
           is_re_audit?: boolean | null
           last_modified?: string
+          locked_at?: string | null
+          locked_by?: string | null
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
           original_status?: Database["public"]["Enums"]["audit_status"] | null

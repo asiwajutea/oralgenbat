@@ -1,7 +1,7 @@
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileCheck } from "lucide-react";
+import { Loader2, FileCheck, AlertCircle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
 import { useReviewTimer } from "@/components/review/ReviewTimer";
+import { useInterviewLock } from "@/hooks/useInterviewLock";
 import { useAuth } from "@/contexts/AuthContext";
 const ReviewInterview = () => {
   const {
@@ -25,6 +26,7 @@ const ReviewInterview = () => {
   } = useParams<{
     auditId: string;
   }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const {
     userRole
@@ -36,6 +38,9 @@ const ReviewInterview = () => {
   const [hasChecklistFailures, setHasChecklistFailures] = useState(false);
   const [checklistComments, setChecklistComments] = useState("");
   const isAuditor = userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin';
+
+  // Interview locking
+  const { isLocked, lockedByOther, acquireLock, releaseLock, isLoading: lockLoading } = useInterviewLock(auditId);
 
   // Sticky detection
   const [isSticky, setIsSticky] = useState(false);
@@ -155,15 +160,28 @@ const ReviewInterview = () => {
     }
   }, [checklistProgress]);
 
-  const isLoading = auditLoading || metadataLoading || photosLoading || isAuditor && checklistLoading;
+  const isLoading = auditLoading || metadataLoading || photosLoading || lockLoading || (isAuditor && checklistLoading);
   const isReviewed = audit?.status === "Audit Passed" || audit?.status === "Audit Failed";
 
-  // Start timer for auditors on unreviewed interviews when data loads
+  // Acquire lock and start timer for auditors on unreviewed interviews when data loads
   useEffect(() => {
-    if (audit && isAuditor && !isReviewed) {
-      setIsTimerActive(true);
-    }
-  }, [audit, isAuditor, isReviewed]);
+    const initLock = async () => {
+      if (audit && isAuditor && !isReviewed && !lockedByOther) {
+        const acquired = await acquireLock();
+        if (acquired) {
+          setIsTimerActive(true);
+        }
+      }
+    };
+    initLock();
+  }, [audit, isAuditor, isReviewed, lockedByOther, acquireLock]);
+
+  // Handle abandon review
+  const handleAbandonReview = async () => {
+    await releaseLock();
+    toast.success("Review abandoned. Interview is now available to other auditors.");
+    navigate("/");
+  };
   const handleAnalyzePDF = async () => {
     if (!auditId) return;
     setIsAnalyzingPDF(true);
@@ -201,6 +219,23 @@ const ReviewInterview = () => {
         </div>
       </div>;
   }
+
+  // Show blocked message if locked by another user
+  if (lockedByOther && !isReviewed) {
+    return <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <AlertCircle className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+          <h2 className="text-2xl font-semibold mb-2">Interview In Progress</h2>
+          <p className="text-muted-foreground mb-4">
+            This interview is currently being reviewed by another auditor. Please try again later or select a different interview.
+          </p>
+          <Button onClick={() => navigate("/")}>
+            Return to Dashboard
+          </Button>
+        </div>
+      </div>;
+  }
+
   return <div className="h-screen flex">
       {/* Left Panel - Metadata & Media */}
       <div className="w-1/2 border-r border-border bg-background h-screen flex flex-col">
@@ -242,13 +277,15 @@ const ReviewInterview = () => {
             hasChecklistFailures={hasChecklistFailures}
             checklistFailureComments={checklistComments}
             reviewDurationSeconds={elapsedSeconds}
+            onAbandonReview={handleAbandonReview}
+            onReleaseLock={releaseLock}
           />
         </div>
 
         {/* Scrollable Content Section */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Show review comments for failed interviews */}
-          <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} />
+          {/* Show review comments for failed interviews or re-audits */}
+          <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} />
           
           {/* Show re-audit history if exists */}
           {audit.is_re_audit && <ReAuditHistory auditId={auditId!} />}
