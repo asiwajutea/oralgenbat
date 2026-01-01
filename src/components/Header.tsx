@@ -83,6 +83,13 @@ const Header = () => {
               >
                 All Reviews
               </NavLink>
+              <NavLink 
+                to="/admin/locked-interviews"
+                className="text-sm font-medium transition-colors hover:text-primary"
+                activeClassName="text-primary"
+              >
+                Locks
+              </NavLink>
             </>
           )}
           {(userRole === 'auditor') && (
