@@ -24,6 +24,7 @@ import ContractorDashboard from "./pages/ContractorDashboard";
 import AgentFraudAnalysis from "./pages/AgentFraudAnalysis";
 import ReviewHistory from "./pages/ReviewHistory";
 import AdminReviewHistory from "./pages/AdminReviewHistory";
+import LockedInterviews from "./pages/LockedInterviews";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -151,6 +152,14 @@ const App = () => (
                   <Layout>
                     <AdminReviewHistory />
                   </Layout>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/locked-interviews"
+              element={
+                <AdminRoute>
+                  <LockedInterviews />
                 </AdminRoute>
               }
             />

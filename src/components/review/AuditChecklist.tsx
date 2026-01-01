@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, ChevronRight, ChevronLeft, ClipboardCheck } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { CheckCircle, XCircle, ChevronRight, ChevronLeft, ClipboardCheck, ChevronDown, ChevronUp, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -122,9 +123,20 @@ interface AuditChecklistProps {
   isCompleted: boolean;
   initialProgress?: ChecklistProgress | null;
   isSticky?: boolean;
+  onAbandonReview?: () => void;
+  isAbandoning?: boolean;
 }
 
-export const AuditChecklist = ({ auditId, interviewId, onComplete, isCompleted, initialProgress, isSticky = false }: AuditChecklistProps) => {
+export const AuditChecklist = ({ 
+  auditId, 
+  interviewId, 
+  onComplete, 
+  isCompleted, 
+  initialProgress, 
+  isSticky = false,
+  onAbandonReview,
+  isAbandoning = false,
+}: AuditChecklistProps) => {
   const { user } = useAuth();
   const [items, setItems] = useState<ChecklistItem[]>(() => {
     if (initialProgress?.items && Array.isArray(initialProgress.items)) {
@@ -135,6 +147,7 @@ export const AuditChecklist = ({ auditId, interviewId, onComplete, isCompleted, 
   const [currentIndex, setCurrentIndex] = useState(() => initialProgress?.current_index ?? 0);
   const [currentComment, setCurrentComment] = useState("");
   const [showCommentBox, setShowCommentBox] = useState(false);
+  const [isOpen, setIsOpen] = useState(!isCompleted);
 
   // Initialize from saved progress when it loads
   useEffect(() => {
@@ -142,9 +155,10 @@ export const AuditChecklist = ({ auditId, interviewId, onComplete, isCompleted, 
       setItems(initialProgress.items as ChecklistItem[]);
       setCurrentIndex(initialProgress.current_index);
       
-      // If already completed, call onComplete
+      // If already completed, call onComplete and collapse
       if (initialProgress.is_completed) {
         onComplete(initialProgress.has_failures, initialProgress.failure_comments || "");
+        setIsOpen(false);
       }
     }
   }, [initialProgress]);
@@ -284,6 +298,7 @@ export const AuditChecklist = ({ auditId, interviewId, onComplete, isCompleted, 
       // Save completed progress
       saveProgress(updatedItems, currentIndex, true, hasFailures, failureComments);
       onComplete(hasFailures, failureComments);
+      setIsOpen(false); // Collapse when completed
     }
   };
 
@@ -309,144 +324,194 @@ export const AuditChecklist = ({ auditId, interviewId, onComplete, isCompleted, 
 
     return (
       <Card className="border-border bg-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <ClipboardCheck className="h-5 w-5 text-primary" />
-            {isSticky && interviewId ? (
-              <span className="truncate font-medium">{interviewId}</span>
-            ) : (
-              "Checklist Complete"
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1.5">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>{passedItems.length} Passed</span>
-            </div>
-            {failedItems.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <XCircle className="h-4 w-4 text-destructive" />
-                <span>{failedItems.length} Failed</span>
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardCheck className="h-5 w-5 text-primary" />
+                {isSticky && interviewId ? (
+                  <span className="truncate font-medium">{interviewId}</span>
+                ) : (
+                  "Checklist Complete"
+                )}
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {onAbandonReview && (
+                  <Button
+                    onClick={onAbandonReview}
+                    disabled={isAbandoning}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-muted-foreground hover:text-destructive"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Abandon
+                  </Button>
+                )}
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
               </div>
-            )}
-          </div>
-        </CardContent>
+            </div>
+          </CardHeader>
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>{passedItems.length} Passed</span>
+                </div>
+                {failedItems.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <XCircle className="h-4 w-4 text-destructive" />
+                    <span>{failedItems.length} Failed</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </Card>
     );
   }
 
   return (
     <Card className="border-border bg-card">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ClipboardCheck className="h-5 w-5 text-primary" />
-          {isSticky && interviewId ? (
-            <span className="truncate font-medium">{interviewId}</span>
-          ) : (
-            "Audit Review Checklist"
-          )}
-        </CardTitle>
-      </CardHeader>
-      
-      <CardContent className="pt-0 space-y-4">
-        {/* Category badge and progress */}
-        <div className="flex items-center justify-between">
-          <Badge
-            variant="outline"
-            className={cn("text-xs", getCategoryColor(currentItem.category))}
-          >
-            Section {currentItem.category}: {currentItem.categoryLabel}
-          </Badge>
-          <Badge variant="outline" className="text-xs font-normal">
-            {currentIndex + 1} of {totalItems}
-          </Badge>
-        </div>
-
-        {/* Progress bar */}
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary transition-all duration-300 rounded-full"
-            style={{ width: `${(answeredCount / totalItems) * 100}%` }}
-          />
-        </div>
-
-        {/* Question */}
-        <p className="text-sm leading-relaxed">
-          <span className="font-semibold">Q{currentItem.id}:</span> {currentItem.question}
-        </p>
-
-        {/* Answer options and navigation */}
-        <div className="flex items-center justify-between gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handlePrevious}
-            disabled={currentIndex === 0}
-            className="gap-1"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Previous
-          </Button>
-          
-          <RadioGroup
-            value={currentItem.answer || ""}
-            onValueChange={(value) => handleAnswer(value as "yes" | "no")}
-            className="flex gap-4"
-          >
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="yes" id="yes" />
-              <Label
-                htmlFor="yes"
-                className="cursor-pointer flex items-center gap-1.5 text-sm"
-              >
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                Yes
-              </Label>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ClipboardCheck className="h-5 w-5 text-primary" />
+              {isSticky && interviewId ? (
+                <span className="truncate font-medium">{interviewId}</span>
+              ) : (
+                "Audit Review Checklist"
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {onAbandonReview && (
+                <Button
+                  onClick={onAbandonReview}
+                  disabled={isAbandoning}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-muted-foreground hover:text-destructive"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Abandon
+                </Button>
+              )}
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </CollapsibleTrigger>
             </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="no" id="no" />
-              <Label
-                htmlFor="no"
-                className="cursor-pointer flex items-center gap-1.5 text-sm"
+          </div>
+        </CardHeader>
+        
+        <CollapsibleContent>
+          <CardContent className="pt-0 space-y-4">
+            {/* Category badge and progress */}
+            <div className="flex items-center justify-between">
+              <Badge
+                variant="outline"
+                className={cn("text-xs", getCategoryColor(currentItem.category))}
               >
-                <XCircle className="h-4 w-4 text-destructive" />
-                No
-              </Label>
+                Section {currentItem.category}: {currentItem.categoryLabel}
+              </Badge>
+              <Badge variant="outline" className="text-xs font-normal">
+                {currentIndex + 1} of {totalItems}
+              </Badge>
             </div>
-          </RadioGroup>
-        </div>
 
-        {/* Comment box for "No" answers */}
-        {showCommentBox && (
-          <div className="space-y-3 pt-3 border-t border-border">
-            <Textarea
-              placeholder="Describe what was wrong (optional)..."
-              value={currentComment}
-              onChange={(e) => setCurrentComment(e.target.value)}
-              className="min-h-[80px] text-sm"
-            />
-            <div className="flex gap-2 justify-end">
+            {/* Progress bar */}
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300 rounded-full"
+                style={{ width: `${(answeredCount / totalItems) * 100}%` }}
+              />
+            </div>
+
+            {/* Question */}
+            <p className="text-sm leading-relaxed">
+              <span className="font-semibold">Q{currentItem.id}:</span> {currentItem.question}
+            </p>
+
+            {/* Answer options and navigation */}
+            <div className="flex items-center justify-between gap-4">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleCommentSubmit(true)}
-              >
-                Skip
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => handleCommentSubmit(false)}
+                onClick={handlePrevious}
+                disabled={currentIndex === 0}
                 className="gap-1"
               >
-                Continue
-                <ChevronRight className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4" />
+                Previous
               </Button>
+              
+              <RadioGroup
+                value={currentItem.answer || ""}
+                onValueChange={(value) => handleAnswer(value as "yes" | "no")}
+                className="flex gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="yes" id="yes" />
+                  <Label
+                    htmlFor="yes"
+                    className="cursor-pointer flex items-center gap-1.5 text-sm"
+                  >
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    Yes
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="no" id="no" />
+                  <Label
+                    htmlFor="no"
+                    className="cursor-pointer flex items-center gap-1.5 text-sm"
+                  >
+                    <XCircle className="h-4 w-4 text-destructive" />
+                    No
+                  </Label>
+                </div>
+              </RadioGroup>
             </div>
-          </div>
-        )}
-      </CardContent>
+
+            {/* Comment box for "No" answers */}
+            {showCommentBox && (
+              <div className="space-y-3 pt-3 border-t border-border">
+                <Textarea
+                  placeholder="Describe what was wrong (optional)..."
+                  value={currentComment}
+                  onChange={(e) => setCurrentComment(e.target.value)}
+                  className="min-h-[80px] text-sm"
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCommentSubmit(true)}
+                  >
+                    Skip
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleCommentSubmit(false)}
+                    className="gap-1"
+                  >
+                    Continue
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 };

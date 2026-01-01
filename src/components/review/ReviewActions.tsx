@@ -16,9 +16,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Loader2, Upload, LogOut } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Upload } from "lucide-react";
 import { ReAuditDialog } from "./ReAuditDialog";
 
 interface ReviewActionsProps {
@@ -30,7 +29,6 @@ interface ReviewActionsProps {
   hasChecklistFailures?: boolean;
   checklistFailureComments?: string;
   reviewDurationSeconds?: number;
-  onAbandonReview?: () => void;
   onReleaseLock?: () => Promise<void>;
 }
 
@@ -43,7 +41,6 @@ export const ReviewActions = ({
   hasChecklistFailures = false,
   checklistFailureComments = "",
   reviewDurationSeconds,
-  onAbandonReview,
   onReleaseLock,
 }: ReviewActionsProps) => {
   const [showFailDialog, setShowFailDialog] = useState(false);
@@ -52,7 +49,6 @@ export const ReviewActions = ({
   const [reviewComment, setReviewComment] = useState(checklistFailureComments);
   const [actionPlan, setActionPlan] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isAbandoning, setIsAbandoning] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile, userRole } = useAuth();
@@ -260,19 +256,6 @@ export const ReviewActions = ({
                   </span>
                 )}
               </>
-            )}
-
-            {/* Abandon Review button */}
-            {onAbandonReview && (
-              <Button
-                onClick={onAbandonReview}
-                disabled={isSubmitting}
-                variant="outline"
-                className="gap-2 ml-auto"
-              >
-                <LogOut className="h-4 w-4" />
-                Abandon Review
-              </Button>
             )}
           </>
         )}
