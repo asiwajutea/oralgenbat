@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { History, Search, ChevronLeft, ChevronRight, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar } from "lucide-react";
+import { History, Search, ChevronLeft, ChevronRight, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users } from "lucide-react";
 
 interface ReviewedAudit {
   id: string;
@@ -51,39 +51,59 @@ const AdminReviewHistory = () => {
     },
   });
 
-  // Fetch summary stats
+  // Fetch summary stats with total names
   const { data: stats } = useQuery({
     queryKey: ["admin-review-stats"],
     queryFn: async () => {
-      const { count: totalReviews } = await supabase
+      // Get all reviewed audits with metadata
+      const { data: allReviewed } = await supabase
         .from("audits")
-        .select("*", { count: "exact", head: true })
+        .select("status, reviewed_at, interview_metadata(total_names)")
         .not("reviewed_at", "is", null);
-
-      const { count: passedReviews } = await supabase
-        .from("audits")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "Audit Passed");
-
-      const { count: failedReviews } = await supabase
-        .from("audits")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "Audit Failed");
 
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
 
-      const { count: monthlyReviews } = await supabase
-        .from("audits")
-        .select("*", { count: "exact", head: true })
-        .gte("reviewed_at", startOfMonth.toISOString());
+      let totalReviews = 0;
+      let totalNames = 0;
+      let passedReviews = 0;
+      let passedNames = 0;
+      let failedReviews = 0;
+      let failedNames = 0;
+      let monthlyReviews = 0;
+      let monthlyNames = 0;
+
+      allReviewed?.forEach((audit) => {
+        const meta = audit.interview_metadata as { total_names: number | null }[] | null;
+        const names = meta?.[0]?.total_names || 0;
+
+        totalReviews++;
+        totalNames += names;
+
+        if (audit.status === "Audit Passed") {
+          passedReviews++;
+          passedNames += names;
+        } else if (audit.status === "Audit Failed") {
+          failedReviews++;
+          failedNames += names;
+        }
+
+        if (audit.reviewed_at && new Date(audit.reviewed_at) >= startOfMonth) {
+          monthlyReviews++;
+          monthlyNames += names;
+        }
+      });
 
       return {
-        total: totalReviews || 0,
-        passed: passedReviews || 0,
-        failed: failedReviews || 0,
-        monthly: monthlyReviews || 0,
+        total: totalReviews,
+        passed: passedReviews,
+        failed: failedReviews,
+        monthly: monthlyReviews,
+        totalNames,
+        passedNames,
+        failedNames,
+        monthlyNames,
       };
     },
   });
@@ -174,6 +194,10 @@ const AdminReviewHistory = () => {
               <div>
                 <p className="text-xs text-muted-foreground">Total Reviews</p>
                 <p className="text-2xl font-bold">{stats?.total || 0}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{(stats?.totalNames || 0).toLocaleString()} names</span>
+                </div>
               </div>
               <History className="h-6 w-6 text-muted-foreground" />
             </div>
@@ -185,6 +209,10 @@ const AdminReviewHistory = () => {
               <div>
                 <p className="text-xs text-muted-foreground">Passed</p>
                 <p className="text-2xl font-bold text-green-600">{stats?.passed || 0}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{(stats?.passedNames || 0).toLocaleString()} names</span>
+                </div>
               </div>
               <CheckCircle2 className="h-6 w-6 text-green-600" />
             </div>
@@ -196,6 +224,10 @@ const AdminReviewHistory = () => {
               <div>
                 <p className="text-xs text-muted-foreground">Failed</p>
                 <p className="text-2xl font-bold text-red-600">{stats?.failed || 0}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{(stats?.failedNames || 0).toLocaleString()} names</span>
+                </div>
               </div>
               <XCircle className="h-6 w-6 text-red-600" />
             </div>
@@ -207,6 +239,10 @@ const AdminReviewHistory = () => {
               <div>
                 <p className="text-xs text-muted-foreground">This Month</p>
                 <p className="text-2xl font-bold">{stats?.monthly || 0}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{(stats?.monthlyNames || 0).toLocaleString()} names</span>
+                </div>
               </div>
               <Calendar className="h-6 w-6 text-muted-foreground" />
             </div>

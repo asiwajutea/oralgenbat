@@ -380,7 +380,11 @@ const ReviewInterview = () => {
               )}
               
               {metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null ? (
-                <PDFAnalysisPanel metadata={metadata} />
+                <PDFAnalysisPanel 
+                  metadata={metadata} 
+                  auditId={auditId!}
+                  onRefresh={() => queryClient.invalidateQueries({ queryKey: ["interview-metadata", auditId] })}
+                />
               ) : (
                 <div className="border border-dashed border-border rounded-lg p-6 text-center">
                   <FileCheck className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />

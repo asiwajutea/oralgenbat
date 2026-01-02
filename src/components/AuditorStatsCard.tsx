@@ -3,13 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, XCircle, Calendar, CalendarDays } from "lucide-react";
+import { CheckCircle2, XCircle, Calendar, CalendarDays, Users } from "lucide-react";
 
 interface AuditorStats {
   weekly: number;
   passed: number;
   failed: number;
   monthly: number;
+  weeklyNames: number;
+  passedNames: number;
+  failedNames: number;
+  monthlyNames: number;
 }
 
 export const AuditorStatsCard = () => {
@@ -21,7 +25,7 @@ export const AuditorStatsCard = () => {
     queryKey: ["auditor-stats", profile?.full_name],
     queryFn: async (): Promise<AuditorStats> => {
       if (!profile?.full_name) {
-        return { weekly: 0, passed: 0, failed: 0, monthly: 0 };
+        return { weekly: 0, passed: 0, failed: 0, monthly: 0, weeklyNames: 0, passedNames: 0, failedNames: 0, monthlyNames: 0 };
       }
 
       // Get start of current week (Sunday)
@@ -34,39 +38,67 @@ export const AuditorStatsCard = () => {
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
 
-      // Fetch weekly reviews
-      const { count: weeklyReviews } = await supabase
+      // Fetch weekly reviews with total names
+      const { data: weeklyData } = await supabase
         .from("audits")
-        .select("*", { count: "exact", head: true })
+        .select("id, interview_metadata(total_names)")
         .eq("reviewed_by", profile.full_name)
         .gte("reviewed_at", startOfWeek.toISOString());
 
-      // Fetch passed reviews (all-time)
-      const { count: passedReviews } = await supabase
+      const weeklyReviews = weeklyData?.length || 0;
+      const weeklyNames = weeklyData?.reduce((sum, a) => {
+        const meta = a.interview_metadata as { total_names: number | null }[] | null;
+        return sum + (meta?.[0]?.total_names || 0);
+      }, 0) || 0;
+
+      // Fetch passed reviews with total names
+      const { data: passedData } = await supabase
         .from("audits")
-        .select("*", { count: "exact", head: true })
+        .select("id, interview_metadata(total_names)")
         .eq("reviewed_by", profile.full_name)
         .eq("status", "Audit Passed");
 
-      // Fetch failed reviews (all-time)
-      const { count: failedReviews } = await supabase
+      const passedReviews = passedData?.length || 0;
+      const passedNames = passedData?.reduce((sum, a) => {
+        const meta = a.interview_metadata as { total_names: number | null }[] | null;
+        return sum + (meta?.[0]?.total_names || 0);
+      }, 0) || 0;
+
+      // Fetch failed reviews with total names
+      const { data: failedData } = await supabase
         .from("audits")
-        .select("*", { count: "exact", head: true })
+        .select("id, interview_metadata(total_names)")
         .eq("reviewed_by", profile.full_name)
         .eq("status", "Audit Failed");
 
-      // Fetch monthly reviews
-      const { count: monthlyReviews } = await supabase
+      const failedReviews = failedData?.length || 0;
+      const failedNames = failedData?.reduce((sum, a) => {
+        const meta = a.interview_metadata as { total_names: number | null }[] | null;
+        return sum + (meta?.[0]?.total_names || 0);
+      }, 0) || 0;
+
+      // Fetch monthly reviews with total names
+      const { data: monthlyData } = await supabase
         .from("audits")
-        .select("*", { count: "exact", head: true })
+        .select("id, interview_metadata(total_names)")
         .eq("reviewed_by", profile.full_name)
         .gte("reviewed_at", startOfMonth.toISOString());
 
+      const monthlyReviews = monthlyData?.length || 0;
+      const monthlyNames = monthlyData?.reduce((sum, a) => {
+        const meta = a.interview_metadata as { total_names: number | null }[] | null;
+        return sum + (meta?.[0]?.total_names || 0);
+      }, 0) || 0;
+
       return {
-        weekly: weeklyReviews || 0,
-        passed: passedReviews || 0,
-        failed: failedReviews || 0,
-        monthly: monthlyReviews || 0,
+        weekly: weeklyReviews,
+        passed: passedReviews,
+        failed: failedReviews,
+        monthly: monthlyReviews,
+        weeklyNames,
+        passedNames,
+        failedNames,
+        monthlyNames,
       };
     },
     enabled: !!profile?.full_name && isAuditor,
@@ -88,6 +120,7 @@ export const AuditorStatsCard = () => {
     {
       label: "This Week",
       value: stats?.weekly || 0,
+      names: stats?.weeklyNames || 0,
       icon: CalendarDays,
       color: "text-primary",
       iconColor: "text-primary",
@@ -95,6 +128,7 @@ export const AuditorStatsCard = () => {
     {
       label: "Passed",
       value: stats?.passed || 0,
+      names: stats?.passedNames || 0,
       icon: CheckCircle2,
       color: "text-green-600",
       iconColor: "text-green-600",
@@ -102,6 +136,7 @@ export const AuditorStatsCard = () => {
     {
       label: "Failed",
       value: stats?.failed || 0,
+      names: stats?.failedNames || 0,
       icon: XCircle,
       color: "text-red-600",
       iconColor: "text-red-600",
@@ -109,6 +144,7 @@ export const AuditorStatsCard = () => {
     {
       label: "This Month",
       value: stats?.monthly || 0,
+      names: stats?.monthlyNames || 0,
       icon: Calendar,
       color: "text-foreground",
       iconColor: "text-muted-foreground",
@@ -124,6 +160,10 @@ export const AuditorStatsCard = () => {
               <div>
                 <p className="text-xs text-muted-foreground">{stat.label}</p>
                 <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{stat.names.toLocaleString()} names</span>
+                </div>
               </div>
               <stat.icon className={`h-6 w-6 ${stat.iconColor}`} />
             </div>
