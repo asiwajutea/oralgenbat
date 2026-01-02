@@ -1,7 +1,12 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { FileCheck, PenTool } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { FileCheck, PenTool, RefreshCw, Loader2, Edit2, Save, X } from "lucide-react";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface PDFAnalysisPanelProps {
   metadata: {
@@ -10,9 +15,17 @@ interface PDFAnalysisPanelProps {
     pdf_quality_feedback?: string | null;
     pdf_analyzed_at?: string | null;
   };
+  auditId: string;
+  onRefresh: () => void;
 }
 
-export const PDFAnalysisPanel = ({ metadata }: PDFAnalysisPanelProps) => {
+export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPanelProps) => {
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editClarityScore, setEditClarityScore] = useState(metadata.pdf_clarity_score ?? 0);
+  const [editLegibilityScore, setEditLegibilityScore] = useState(metadata.pdf_handwriting_legibility ?? 0);
+
   const clarityScore = metadata.pdf_clarity_score ?? 0;
   const legibilityScore = metadata.pdf_handwriting_legibility ?? 0;
   const feedback = metadata.pdf_quality_feedback;
@@ -32,13 +45,121 @@ export const PDFAnalysisPanel = ({ metadata }: PDFAnalysisPanelProps) => {
     return "Poor";
   };
 
+  const handleReanalyze = async () => {
+    setIsReanalyzing(true);
+    try {
+      const { error } = await supabase.functions.invoke('analyze-pdf', {
+        body: { auditId }
+      });
+      if (error) throw error;
+      toast.success('PDF re-analyzed successfully');
+      onRefresh();
+    } catch (error) {
+      console.error('PDF re-analysis error:', error);
+      toast.error('Failed to re-analyze PDF. Please try again.');
+    } finally {
+      setIsReanalyzing(false);
+    }
+  };
+
+  const handleEditMode = () => {
+    setEditClarityScore(clarityScore);
+    setEditLegibilityScore(legibilityScore);
+    setIsEditMode(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+    setEditClarityScore(clarityScore);
+    setEditLegibilityScore(legibilityScore);
+  };
+
+  const handleSaveScores = async () => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('interview_metadata')
+        .update({
+          pdf_clarity_score: editClarityScore,
+          pdf_handwriting_legibility: editLegibilityScore,
+        })
+        .eq('audit_id', auditId);
+
+      if (error) throw error;
+      toast.success('Scores updated successfully');
+      setIsEditMode(false);
+      onRefresh();
+    } catch (error) {
+      console.error('Error saving scores:', error);
+      toast.error('Failed to save scores. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <FileCheck className="h-5 w-5" />
-          PDF Quality Analysis
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileCheck className="h-5 w-5" />
+            PDF Quality Analysis
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {!isEditMode ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEditMode}
+                  className="gap-1.5 h-8"
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                  Edit Scores
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReanalyze}
+                  disabled={isReanalyzing}
+                  className="gap-1.5 h-8"
+                >
+                  {isReanalyzing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Re-analyze
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancelEdit}
+                  className="gap-1.5 h-8"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveScores}
+                  disabled={isSaving}
+                  className="gap-1.5 h-8"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  Save
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Clarity Score */}
@@ -52,16 +173,28 @@ export const PDFAnalysisPanel = ({ metadata }: PDFAnalysisPanelProps) => {
               </p>
             </div>
             <div className="text-right flex-shrink-0">
-              <span className="text-xl font-bold">{clarityScore}%</span>
+              <span className="text-xl font-bold">
+                {isEditMode ? editClarityScore : clarityScore}%
+              </span>
               <p className="text-xs text-muted-foreground">
-                {getScoreLabel(clarityScore)}
+                {getScoreLabel(isEditMode ? editClarityScore : clarityScore)}
               </p>
             </div>
           </div>
-          <Progress 
-            value={clarityScore} 
-            className="h-2"
-          />
+          {isEditMode ? (
+            <Slider
+              value={[editClarityScore]}
+              onValueChange={([value]) => setEditClarityScore(value)}
+              max={100}
+              step={1}
+              className="mt-2"
+            />
+          ) : (
+            <Progress 
+              value={clarityScore} 
+              className="h-2"
+            />
+          )}
         </div>
 
         {/* Handwriting Legibility */}
@@ -75,16 +208,28 @@ export const PDFAnalysisPanel = ({ metadata }: PDFAnalysisPanelProps) => {
               </p>
             </div>
             <div className="text-right flex-shrink-0">
-              <span className="text-xl font-bold">{legibilityScore}%</span>
+              <span className="text-xl font-bold">
+                {isEditMode ? editLegibilityScore : legibilityScore}%
+              </span>
               <p className="text-xs text-muted-foreground">
-                {getScoreLabel(legibilityScore)}
+                {getScoreLabel(isEditMode ? editLegibilityScore : legibilityScore)}
               </p>
             </div>
           </div>
-          <Progress 
-            value={legibilityScore} 
-            className="h-2"
-          />
+          {isEditMode ? (
+            <Slider
+              value={[editLegibilityScore]}
+              onValueChange={([value]) => setEditLegibilityScore(value)}
+              max={100}
+              step={1}
+              className="mt-2"
+            />
+          ) : (
+            <Progress 
+              value={legibilityScore} 
+              className="h-2"
+            />
+          )}
         </div>
 
         {/* AI Feedback */}

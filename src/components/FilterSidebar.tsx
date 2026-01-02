@@ -41,10 +41,10 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
   const { data: statusCounts } = useStatusCounts();
 
   const statusOptions = [
-    { value: "Pending", label: `Awaiting Review (${statusCounts?.Pending || 0})` },
-    { value: "In Progress", label: `In Progress (${statusCounts?.["In Progress"] || 0})` },
-    { value: "Audit Passed", label: `Audit Passed (${statusCounts?.["Audit Passed"] || 0})` },
-    { value: "Audit Failed", label: `Audit Failed (${statusCounts?.["Audit Failed"] || 0})` },
+    { value: "Pending", label: `Awaiting Review (${statusCounts?.counts?.Pending || 0})` },
+    { value: "In Progress", label: `In Progress (${statusCounts?.counts?.["In Progress"] || 0})` },
+    { value: "Audit Passed", label: `Audit Passed (${statusCounts?.counts?.["Audit Passed"] || 0})` },
+    { value: "Audit Failed", label: `Audit Failed (${statusCounts?.counts?.["Audit Failed"] || 0})` },
   ];
 
   useEffect(() => {

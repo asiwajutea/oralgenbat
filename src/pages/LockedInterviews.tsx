@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,16 @@ const LockedInterviews = () => {
   const [filter, setFilter] = useState<"all" | "active" | "expired">("active");
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const [confirmUnlock, setConfirmUnlock] = useState<LockedInterview | null>(null);
+  
+  // Tick state to force re-render every second for countdown
+  const [, setTick] = useState(0);
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch locked interviews with reviewer names
   const { data: lockedInterviews, isLoading, refetch } = useQuery({

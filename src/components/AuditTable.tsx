@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,14 +42,39 @@ interface AuditTableProps {
   hideReviewButton?: boolean;
 }
 
-const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false, isInProgress: boolean = false) => {
-  if (isInProgress) {
-    return (
-      <Badge className="flex items-center gap-1 bg-blue-100 text-blue-700 hover:bg-blue-100/90">
-        <Lock className="h-3 w-3" />
-        In Progress
-      </Badge>
-    );
+// Component to display countdown timer in badge
+const LockCountdownBadge = ({ lockedAt }: { lockedAt: string }) => {
+  const [remainingSeconds, setRemainingSeconds] = useState(() => {
+    const lockExpiry = new Date(lockedAt).getTime() + 60 * 60 * 1000;
+    return Math.max(0, Math.floor((lockExpiry - Date.now()) / 1000));
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const lockExpiry = new Date(lockedAt).getTime() + 60 * 60 * 1000;
+      const remaining = Math.max(0, Math.floor((lockExpiry - Date.now()) / 1000));
+      setRemainingSeconds(remaining);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockedAt]);
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <Badge className="flex items-center gap-1 bg-blue-100 text-blue-700 hover:bg-blue-100/90">
+      <Lock className="h-3 w-3" />
+      In Progress ({remainingSeconds > 0 ? formatTime(remainingSeconds) : "EXPIRED"})
+    </Badge>
+  );
+};
+
+const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false, isInProgress: boolean = false, lockedAt: string | null = null) => {
+  if (isInProgress && lockedAt) {
+    return <LockCountdownBadge lockedAt={lockedAt} />;
   }
 
   if (status === "Awaiting Review" && isReAudit) {
@@ -434,7 +459,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                     <TableCell className="font-mono text-sm">
                       {audit.file_name}
                     </TableCell>
-                    <TableCell>{getStatusBadge(audit.status, audit.is_re_audit, isInProgress(audit))}</TableCell>
+                    <TableCell>{getStatusBadge(audit.status, audit.is_re_audit, isInProgress(audit), audit.locked_at)}</TableCell>
                     <TableCell>
                       {format(new Date(audit.last_modified), "dd MMM yyyy")}
                     </TableCell>
