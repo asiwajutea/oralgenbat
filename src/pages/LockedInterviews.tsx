@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuditPagination } from "@/components/AuditPagination";
 import { Lock, Unlock, RefreshCw, Loader2, Clock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -58,6 +59,8 @@ const LockedInterviews = () => {
   const [filter, setFilter] = useState<"all" | "active" | "expired">("active");
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const [confirmUnlock, setConfirmUnlock] = useState<LockedInterview | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   
   // Tick state to force re-render every second for countdown
   const [, setTick] = useState(0);
@@ -152,6 +155,23 @@ const LockedInterviews = () => {
 
   const activeCount = lockedInterviews?.filter(i => !isExpired(i.locked_at)).length || 0;
   const expiredCount = lockedInterviews?.filter(i => isExpired(i.locked_at)).length || 0;
+  
+  // Paginate filtered interviews
+  const totalCount = filteredInterviews.length;
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  const paginatedInterviews = filteredInterviews.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
 
   return (
     <Layout>
@@ -197,7 +217,7 @@ const LockedInterviews = () => {
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
-            ) : filteredInterviews.length === 0 ? (
+            ) : paginatedInterviews.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Lock className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No locked interviews found</p>
@@ -215,7 +235,7 @@ const LockedInterviews = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredInterviews.map((interview) => {
+                  {paginatedInterviews.map((interview) => {
                     const remaining = calculateRemainingSeconds(interview.locked_at);
                     const expired = remaining <= 0;
 
@@ -267,6 +287,18 @@ const LockedInterviews = () => {
               </Table>
             )}
           </CardContent>
+          
+          {/* Pagination */}
+          <div className="px-6 pb-4">
+            <AuditPagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalCount={totalCount}
+              itemsPerPage={itemsPerPage}
+              onPageChange={handlePageChange}
+              onItemsPerPageChange={handleItemsPerPageChange}
+            />
+          </div>
         </Card>
 
         {/* Confirmation Dialog */}

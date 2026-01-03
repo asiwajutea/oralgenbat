@@ -1,10 +1,22 @@
-import { FileText } from "lucide-react";
+import { FileText, ChevronDown } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Link, useLocation } from "react-router-dom";
 
 const Header = () => {
   const { userRole } = useAuth();
+  const location = useLocation();
+  
+  // Check if we're on any "All Reviews" submenu page
+  const isReviewsActive = location.pathname.startsWith('/admin/review-history') || 
+                          location.pathname.startsWith('/admin/team-assignments');
 
   return (
     <header className="border-b bg-card sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-card/95">
@@ -76,13 +88,27 @@ const Header = () => {
               >
                 Analytics
               </NavLink>
-              <NavLink 
-                to="/admin/review-history"
-                className="text-sm font-medium transition-colors hover:text-primary"
-                activeClassName="text-primary"
-              >
-                All Reviews
-              </NavLink>
+              
+              {/* All Reviews Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-primary ${isReviewsActive ? 'text-primary' : ''}`}>
+                  All Reviews
+                  <ChevronDown className="h-4 w-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center">
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin/review-history" className="cursor-pointer">
+                      Review History
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin/team-assignments" className="cursor-pointer">
+                      Team Assignments
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
               <NavLink 
                 to="/admin/locked-interviews"
                 className="text-sm font-medium transition-colors hover:text-primary"

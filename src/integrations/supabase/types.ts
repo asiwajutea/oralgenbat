@@ -172,6 +172,78 @@ export type Database = {
         }
         Relationships: []
       }
+      data_entry_teams: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
+      interview_assignments: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          audit_id: string
+          id: string
+          notes: string | null
+          team_id: string
+          total_names: number | null
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          audit_id: string
+          id?: string
+          notes?: string | null
+          team_id: string
+          total_names?: number | null
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          audit_id?: string
+          id?: string
+          notes?: string | null
+          team_id?: string
+          total_names?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_assignments_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: true
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_assignments_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "data_entry_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       interview_metadata: {
         Row: {
           audio_quality_summary: string | null
@@ -206,6 +278,7 @@ export type Database = {
           pdf_clarity_score: number | null
           pdf_handwriting_legibility: number | null
           pdf_quality_feedback: string | null
+          pdf_scores_manually_adjusted: boolean | null
           pedigree_segment_audio_url: string | null
           pedigree_segment_duration: number | null
           pedigree_segment_noise_level: number | null
@@ -246,6 +319,7 @@ export type Database = {
           pdf_clarity_score?: number | null
           pdf_handwriting_legibility?: number | null
           pdf_quality_feedback?: string | null
+          pdf_scores_manually_adjusted?: boolean | null
           pedigree_segment_audio_url?: string | null
           pedigree_segment_duration?: number | null
           pedigree_segment_noise_level?: number | null
@@ -286,6 +360,7 @@ export type Database = {
           pdf_clarity_score?: number | null
           pdf_handwriting_legibility?: number | null
           pdf_quality_feedback?: string | null
+          pdf_scores_manually_adjusted?: boolean | null
           pedigree_segment_audio_url?: string | null
           pedigree_segment_duration?: number | null
           pedigree_segment_noise_level?: number | null
