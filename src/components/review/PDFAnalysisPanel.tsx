@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { Badge } from "@/components/ui/badge";
 import { FileCheck, PenTool, RefreshCw, Loader2, Edit2, Save, X } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +15,7 @@ interface PDFAnalysisPanelProps {
     pdf_handwriting_legibility?: number | null;
     pdf_quality_feedback?: string | null;
     pdf_analyzed_at?: string | null;
+    pdf_scores_manually_adjusted?: boolean | null;
   };
   auditId: string;
   onRefresh: () => void;
@@ -82,6 +84,7 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
         .update({
           pdf_clarity_score: editClarityScore,
           pdf_handwriting_legibility: editLegibilityScore,
+          pdf_scores_manually_adjusted: true,
         })
         .eq('audit_id', auditId);
 
@@ -97,14 +100,24 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
     }
   };
 
+  const isManuallyAdjusted = metadata.pdf_scores_manually_adjusted;
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <FileCheck className="h-5 w-5" />
-            PDF Quality Analysis
-          </CardTitle>
+          <div className="flex items-center gap-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <FileCheck className="h-5 w-5" />
+              PDF Quality Analysis
+            </CardTitle>
+            {isManuallyAdjusted && (
+              <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                <Edit2 className="h-3 w-3 mr-1" />
+                Manually Adjusted
+              </Badge>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {!isEditMode ? (
               <>

@@ -25,6 +25,7 @@ import AgentFraudAnalysis from "./pages/AgentFraudAnalysis";
 import ReviewHistory from "./pages/ReviewHistory";
 import AdminReviewHistory from "./pages/AdminReviewHistory";
 import LockedInterviews from "./pages/LockedInterviews";
+import TeamAssignments from "./pages/TeamAssignments";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -160,6 +161,16 @@ const App = () => (
               element={
                 <AdminRoute>
                   <LockedInterviews />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/team-assignments"
+              element={
+                <AdminRoute>
+                  <Layout>
+                    <TeamAssignments />
+                  </Layout>
                 </AdminRoute>
               }
             />

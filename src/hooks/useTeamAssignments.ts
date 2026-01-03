@@ -1,0 +1,235 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  is_active: boolean;
+}
+
+export interface UnassignedInterview {
+  id: string;
+  file_name: string;
+  reviewed_at: string;
+  interviewer_code: string | null;
+  contractor_id: string | null;
+  total_names: number;
+}
+
+export interface Assignment {
+  id: string;
+  audit_id: string;
+  team_id: string;
+  assigned_by: string | null;
+  assigned_at: string;
+  total_names: number | null;
+  notes: string | null;
+  audit?: {
+    id: string;
+    file_name: string;
+  };
+  team?: {
+    id: string;
+    name: string;
+    description: string | null;
+    is_active: boolean;
+  };
+}
+
+export const useTeams = () => {
+  return useQuery({
+    queryKey: ["data-entry-teams"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("data_entry_teams")
+        .select("*")
+        .eq("is_active", true)
+        .order("name");
+
+      if (error) throw error;
+      return data as Team[];
+    },
+  });
+};
+
+export const useUnassignedInterviews = () => {
+  return useQuery({
+    queryKey: ["unassigned-interviews"],
+    queryFn: async () => {
+      // Get all passed audits
+      const { data: passedAudits, error: auditsError } = await supabase
+        .from("audits")
+        .select("id, file_name, reviewed_at")
+        .eq("status", "Audit Passed")
+        .order("reviewed_at", { ascending: false });
+
+      if (auditsError) throw auditsError;
+
+      // Get all already assigned audit IDs
+      const { data: assignments, error: assignError } = await supabase
+        .from("interview_assignments")
+        .select("audit_id");
+
+      if (assignError) throw assignError;
+
+      const assignedIds = new Set(assignments?.map((a) => a.audit_id) || []);
+
+      // Filter unassigned
+      const unassignedAuditIds = passedAudits
+        ?.filter((a) => !assignedIds.has(a.id))
+        .map((a) => a.id) || [];
+
+      if (unassignedAuditIds.length === 0) {
+        return [];
+      }
+
+      // Get metadata for unassigned audits
+      const { data: metadata, error: metaError } = await supabase
+        .from("interview_metadata")
+        .select("audit_id, interviewer_code, contractor_id, total_names")
+        .in("audit_id", unassignedAuditIds);
+
+      if (metaError) throw metaError;
+
+      const metaMap = new Map(metadata?.map((m) => [m.audit_id, m]) || []);
+
+      // Combine data
+      return passedAudits
+        ?.filter((a) => !assignedIds.has(a.id))
+        .map((audit) => {
+          const meta = metaMap.get(audit.id);
+          return {
+            id: audit.id,
+            file_name: audit.file_name,
+            reviewed_at: audit.reviewed_at,
+            interviewer_code: meta?.interviewer_code || null,
+            contractor_id: meta?.contractor_id || null,
+            total_names: meta?.total_names || 0,
+          };
+        }) as UnassignedInterview[];
+    },
+  });
+};
+
+export const useAssignments = () => {
+  return useQuery({
+    queryKey: ["interview-assignments"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("interview_assignments")
+        .select(`
+          *,
+          data_entry_teams (id, name, description, is_active)
+        `)
+        .order("assigned_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Get audit details for each assignment
+      const auditIds = data?.map((a) => a.audit_id) || [];
+      if (auditIds.length === 0) return [];
+
+      const { data: audits, error: auditsError } = await supabase
+        .from("audits")
+        .select("id, file_name")
+        .in("id", auditIds);
+
+      if (auditsError) throw auditsError;
+
+      const auditMap = new Map(audits?.map((a) => [a.id, a]) || []);
+
+      return data?.map((assignment) => ({
+        ...assignment,
+        audit: auditMap.get(assignment.audit_id),
+        team: assignment.data_entry_teams,
+      })) as Assignment[];
+    },
+  });
+};
+
+export const useCreateTeam = () => {
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ name, description }: { name: string; description?: string }) => {
+      const { data, error } = await supabase
+        .from("data_entry_teams")
+        .insert({
+          name,
+          description: description || null,
+          created_by: session?.user?.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["data-entry-teams"] });
+      toast.success("Team created successfully");
+    },
+    onError: (error) => {
+      console.error("Error creating team:", error);
+      toast.error("Failed to create team");
+    },
+  });
+};
+
+export const useAssignInterviews = () => {
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+
+  return useMutation({
+    mutationFn: async (assignments: { auditId: string; teamId: string; totalNames: number }[]) => {
+      const insertData = assignments.map((a) => ({
+        audit_id: a.auditId,
+        team_id: a.teamId,
+        assigned_by: session?.user?.id,
+        total_names: a.totalNames,
+      }));
+
+      const { error } = await supabase.from("interview_assignments").insert(insertData);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["unassigned-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      toast.success("Interviews assigned successfully");
+    },
+    onError: (error) => {
+      console.error("Error assigning interviews:", error);
+      toast.error("Failed to assign interviews");
+    },
+  });
+};
+
+export const useDeleteTeam = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (teamId: string) => {
+      const { error } = await supabase
+        .from("data_entry_teams")
+        .update({ is_active: false })
+        .eq("id", teamId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["data-entry-teams"] });
+      toast.success("Team deleted successfully");
+    },
+    onError: (error) => {
+      console.error("Error deleting team:", error);
+      toast.error("Failed to delete team");
+    },
+  });
+};
