@@ -208,6 +208,8 @@ export type Database = {
           notes: string | null
           team_id: string
           total_names: number | null
+          typing_completed_at: string | null
+          typing_status: string | null
         }
         Insert: {
           assigned_at?: string | null
@@ -217,6 +219,8 @@ export type Database = {
           notes?: string | null
           team_id: string
           total_names?: number | null
+          typing_completed_at?: string | null
+          typing_status?: string | null
         }
         Update: {
           assigned_at?: string | null
@@ -226,6 +230,8 @@ export type Database = {
           notes?: string | null
           team_id?: string
           total_names?: number | null
+          typing_completed_at?: string | null
+          typing_status?: string | null
         }
         Relationships: [
           {

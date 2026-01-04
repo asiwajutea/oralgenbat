@@ -3,12 +3,15 @@ import { NavLink } from "@/components/NavLink";
 import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "@/components/ui/navigation-menu";
 import { Link, useLocation } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 const Header = () => {
   const { userRole } = useAuth();
@@ -89,25 +92,47 @@ const Header = () => {
                 Analytics
               </NavLink>
               
-              {/* All Reviews Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger className={`flex items-center gap-1 text-sm font-medium transition-colors hover:text-primary ${isReviewsActive ? 'text-primary' : ''}`}>
-                  All Reviews
-                  <ChevronDown className="h-4 w-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="center">
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin/review-history" className="cursor-pointer">
-                      Review History
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin/team-assignments" className="cursor-pointer">
-                      Team Assignments
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* All Reviews Dropdown with Hover */}
+              <NavigationMenu>
+                <NavigationMenuList>
+                  <NavigationMenuItem>
+                    <NavigationMenuTrigger 
+                      className={cn(
+                        "h-auto px-0 py-0 bg-transparent hover:bg-transparent focus:bg-transparent data-[state=open]:bg-transparent text-sm font-medium",
+                        isReviewsActive ? "text-primary" : "text-foreground hover:text-primary"
+                      )}
+                    >
+                      All Reviews
+                    </NavigationMenuTrigger>
+                    <NavigationMenuContent>
+                      <div className="w-48 p-2">
+                        <NavigationMenuLink asChild>
+                          <Link 
+                            to="/admin/review-history" 
+                            className={cn(
+                              "block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+                              location.pathname === '/admin/review-history' && "bg-accent text-accent-foreground"
+                            )}
+                          >
+                            Review History
+                          </Link>
+                        </NavigationMenuLink>
+                        <NavigationMenuLink asChild>
+                          <Link 
+                            to="/admin/team-assignments" 
+                            className={cn(
+                              "block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+                              location.pathname === '/admin/team-assignments' && "bg-accent text-accent-foreground"
+                            )}
+                          >
+                            Team Assignments
+                          </Link>
+                        </NavigationMenuLink>
+                      </div>
+                    </NavigationMenuContent>
+                  </NavigationMenuItem>
+                </NavigationMenuList>
+              </NavigationMenu>
               
               <NavLink 
                 to="/admin/locked-interviews"
