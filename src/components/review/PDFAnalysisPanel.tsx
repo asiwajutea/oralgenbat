@@ -54,6 +54,13 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
         body: { auditId }
       });
       if (error) throw error;
+      
+      // Reset manually adjusted flag since AI has re-analyzed
+      await supabase
+        .from('interview_metadata')
+        .update({ pdf_scores_manually_adjusted: false })
+        .eq('audit_id', auditId);
+      
       toast.success('PDF re-analyzed successfully');
       onRefresh();
     } catch (error) {

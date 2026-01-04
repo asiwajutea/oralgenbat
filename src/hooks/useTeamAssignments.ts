@@ -29,6 +29,8 @@ export interface Assignment {
   assigned_at: string;
   total_names: number | null;
   notes: string | null;
+  typing_status: 'typing_in_progress' | 'typing_completed';
+  typing_completed_at: string | null;
   audit?: {
     id: string;
     file_name: string;
@@ -145,6 +147,7 @@ export const useAssignments = () => {
 
       return data?.map((assignment) => ({
         ...assignment,
+        typing_status: assignment.typing_status || 'typing_in_progress',
         audit: auditMap.get(assignment.audit_id),
         team: assignment.data_entry_teams,
       })) as Assignment[];
@@ -193,6 +196,7 @@ export const useAssignInterviews = () => {
         team_id: a.teamId,
         assigned_by: session?.user?.id,
         total_names: a.totalNames,
+        typing_status: 'typing_in_progress',
       }));
 
       const { error } = await supabase.from("interview_assignments").insert(insertData);
@@ -207,6 +211,63 @@ export const useAssignInterviews = () => {
     onError: (error) => {
       console.error("Error assigning interviews:", error);
       toast.error("Failed to assign interviews");
+    },
+  });
+};
+
+export const useUnassignInterview = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (assignmentId: string) => {
+      const { error } = await supabase
+        .from("interview_assignments")
+        .delete()
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["unassigned-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      toast.success("Interview unassigned successfully");
+    },
+    onError: (error) => {
+      console.error("Error unassigning interview:", error);
+      toast.error("Failed to unassign interview");
+    },
+  });
+};
+
+export const useUpdateTypingStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ assignmentId, status }: { assignmentId: string; status: 'typing_in_progress' | 'typing_completed' }) => {
+      const updateData: Record<string, unknown> = {
+        typing_status: status,
+      };
+      
+      if (status === 'typing_completed') {
+        updateData.typing_completed_at = new Date().toISOString();
+      } else {
+        updateData.typing_completed_at = null;
+      }
+
+      const { error } = await supabase
+        .from("interview_assignments")
+        .update(updateData)
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      toast.success("Status updated successfully");
+    },
+    onError: (error) => {
+      console.error("Error updating status:", error);
+      toast.error("Failed to update status");
     },
   });
 };

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditPagination } from "@/components/AuditPagination";
@@ -37,15 +47,27 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  Undo2,
+  CheckCircle2,
+  Clock,
+  Download,
+  Loader2,
 } from "lucide-react";
 import {
   useTeams,
   useUnassignedInterviews,
   useAssignments,
   useAssignInterviews,
+  useUnassignInterview,
+  useUpdateTypingStatus,
   UnassignedInterview,
+  Assignment,
+  Team,
 } from "@/hooks/useTeamAssignments";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import JSZip from "jszip";
 
 const TeamAssignments = () => {
   const [activeTab, setActiveTab] = useState("unassigned");
@@ -62,14 +84,45 @@ const TeamAssignments = () => {
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showAIAssign, setShowAIAssign] = useState(false);
   const [showManageTeams, setShowManageTeams] = useState(false);
+  const [unassignDialog, setUnassignDialog] = useState<{ open: boolean; assignment: Assignment | null }>({ open: false, assignment: null });
+  const [exportingTeamId, setExportingTeamId] = useState<string | null>(null);
   
   // Expanded team sections for By Team view
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
 
+  const queryClient = useQueryClient();
   const { data: teams = [], isLoading: teamsLoading } = useTeams();
   const { data: unassignedInterviews = [], isLoading: unassignedLoading } = useUnassignedInterviews();
   const { data: assignments = [], isLoading: assignmentsLoading } = useAssignments();
   const assignInterviews = useAssignInterviews();
+  const unassignInterview = useUnassignInterview();
+  const updateTypingStatus = useUpdateTypingStatus();
+
+  // Real-time subscription for assignment notifications
+  useEffect(() => {
+    const channel = supabase
+      .channel('assignment-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'interview_assignments',
+        },
+        (payload) => {
+          toast.info('New interview assigned to a team!', {
+            description: 'The assignments list has been updated.',
+          });
+          queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+          queryClient.invalidateQueries({ queryKey: ["unassigned-interviews"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   // Get unique contractors for filter
   const contractors = useMemo(() => {
@@ -173,6 +226,19 @@ const TeamAssignments = () => {
     ]);
   };
 
+  const handleUnassign = async () => {
+    if (!unassignDialog.assignment) return;
+    await unassignInterview.mutateAsync(unassignDialog.assignment.id);
+    setUnassignDialog({ open: false, assignment: null });
+  };
+
+  const handleTypingStatusChange = async (assignment: Assignment, newStatus: 'typing_in_progress' | 'typing_completed') => {
+    await updateTypingStatus.mutateAsync({
+      assignmentId: assignment.id,
+      status: newStatus,
+    });
+  };
+
   const toggleTeamExpanded = (teamId: string) => {
     const newExpanded = new Set(expandedTeams);
     if (newExpanded.has(teamId)) {
@@ -190,6 +256,73 @@ const TeamAssignments = () => {
       setSortBy(field);
       setSortOrder("desc");
     }
+  };
+
+  const handleExportTeamPDFs = async (team: Team) => {
+    setExportingTeamId(team.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('export-team-pdfs', {
+        body: { teamId: team.id, teamName: team.name }
+      });
+
+      if (error) throw error;
+      if (!data.files || data.files.length === 0) {
+        toast.error('No PDF files found for this team');
+        return;
+      }
+
+      toast.info(`Downloading ${data.files.length} PDFs...`);
+
+      const zip = new JSZip();
+      
+      // Download and add each PDF to the zip
+      for (const file of data.files) {
+        try {
+          const response = await fetch(file.url);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(file.fileName, blob);
+          }
+        } catch (err) {
+          console.error(`Failed to download ${file.fileName}:`, err);
+        }
+      }
+
+      // Generate and download the zip
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${team.name.replace(/\s+/g, '_')}_PDFs.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Downloaded ${data.files.length} PDFs`);
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export PDFs');
+    } finally {
+      setExportingTeamId(null);
+    }
+  };
+
+  const getTypingStatusBadge = (status: string) => {
+    if (status === 'typing_completed') {
+      return (
+        <Badge className="bg-success text-success-foreground gap-1">
+          <CheckCircle2 className="h-3 w-3" />
+          Completed
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="outline" className="gap-1 text-orange-600 border-orange-300">
+        <Clock className="h-3 w-3" />
+        In Progress
+      </Badge>
+    );
   };
 
   const isLoading = teamsLoading || unassignedLoading || assignmentsLoading;
@@ -444,7 +577,9 @@ const TeamAssignments = () => {
                       <TableHead>Interview</TableHead>
                       <TableHead>Team</TableHead>
                       <TableHead>Names</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Assigned Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -462,9 +597,43 @@ const TeamAssignments = () => {
                             {(assignment.total_names || 0).toLocaleString()}
                           </div>
                         </TableCell>
+                        <TableCell>
+                          <Select
+                            value={assignment.typing_status}
+                            onValueChange={(v) => handleTypingStatusChange(assignment, v as 'typing_in_progress' | 'typing_completed')}
+                          >
+                            <SelectTrigger className="w-[140px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="typing_in_progress">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  In Progress
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="typing_completed">
+                                <div className="flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Completed
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell className="text-sm">
                           {assignment.assigned_at &&
                             format(new Date(assignment.assigned_at), "MMM d, yyyy")}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setUnassignDialog({ open: true, assignment })}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -487,6 +656,7 @@ const TeamAssignments = () => {
             teams.map((team) => {
               const teamAssignments = assignmentsByTeam.get(team.id) || [];
               const teamNames = teamAssignments.reduce((sum, a) => sum + (a.total_names || 0), 0);
+              const completedCount = teamAssignments.filter((a) => a.typing_status === 'typing_completed').length;
               const isExpanded = expandedTeams.has(team.id);
 
               return (
@@ -499,14 +669,31 @@ const TeamAssignments = () => {
                       <div>
                         <CardTitle className="text-lg">{team.name}</CardTitle>
                         <CardDescription>
-                          {teamAssignments.length} interviews • {teamNames.toLocaleString()} names
+                          {teamAssignments.length} interviews • {teamNames.toLocaleString()} names • {completedCount}/{teamAssignments.length} completed
                         </CardDescription>
                       </div>
-                      {isExpanded ? (
-                        <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                      )}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExportTeamPDFs(team);
+                          }}
+                          disabled={exportingTeamId === team.id || teamAssignments.length === 0}
+                        >
+                          {exportingTeamId === team.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                        </Button>
+                        {isExpanded ? (
+                          <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   {isExpanded && (
@@ -521,7 +708,9 @@ const TeamAssignments = () => {
                             <TableRow>
                               <TableHead>Interview</TableHead>
                               <TableHead>Names</TableHead>
+                              <TableHead>Status</TableHead>
                               <TableHead>Assigned Date</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -533,9 +722,25 @@ const TeamAssignments = () => {
                                 <TableCell>
                                   {(assignment.total_names || 0).toLocaleString()}
                                 </TableCell>
+                                <TableCell>
+                                  {getTypingStatusBadge(assignment.typing_status)}
+                                </TableCell>
                                 <TableCell className="text-sm">
                                   {assignment.assigned_at &&
                                     format(new Date(assignment.assigned_at), "MMM d, yyyy")}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setUnassignDialog({ open: true, assignment });
+                                    }}
+                                    className="text-muted-foreground hover:text-destructive"
+                                  >
+                                    <Undo2 className="h-4 w-4" />
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -560,6 +765,25 @@ const TeamAssignments = () => {
         unassignedInterviews={unassignedInterviews}
       />
       <ManageTeamsDialog open={showManageTeams} onOpenChange={setShowManageTeams} teams={teams} />
+      
+      {/* Unassign Confirmation Dialog */}
+      <AlertDialog open={unassignDialog.open} onOpenChange={(open) => setUnassignDialog({ open, assignment: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unassign Interview</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to unassign "{unassignDialog.assignment?.audit?.file_name}" from {unassignDialog.assignment?.team?.name}? 
+              This will move it back to the unassigned pool.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleUnassign} disabled={unassignInterview.isPending}>
+              Unassign
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

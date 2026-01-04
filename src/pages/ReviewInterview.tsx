@@ -323,7 +323,17 @@ const ReviewInterview = () => {
             </div>}
           
           {/* Review Actions */}
-          
+          <ReviewActions
+            auditId={auditId!}
+            currentStatus={audit.status}
+            currentFileName={audit.file_name}
+            nextAuditId={nextAudit?.id}
+            checklistCompleted={checklistCompleted}
+            hasChecklistFailures={hasChecklistFailures}
+            checklistFailureComments={checklistComments}
+            reviewDurationSeconds={elapsedSeconds}
+            onReleaseLock={releaseLock}
+          />
         </div>
 
         {/* Scrollable Content Section */}

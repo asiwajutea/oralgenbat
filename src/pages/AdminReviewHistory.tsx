@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditPagination } from "@/components/AuditPagination";
 import { format } from "date-fns";
-import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users } from "lucide-react";
+import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList } from "lucide-react";
 
 interface ReviewedAudit {
   id: string;
@@ -23,6 +23,12 @@ interface ReviewedAudit {
   is_re_audit: boolean;
   re_audit_count: number;
   review_duration_seconds: number | null;
+}
+
+interface AssignmentInfo {
+  audit_id: string;
+  team_name: string;
+  typing_status: string;
 }
 
 const AdminReviewHistory = () => {
@@ -141,6 +147,62 @@ const AdminReviewHistory = () => {
       };
     },
   });
+
+  // Fetch assignment info for passed audits
+  const passedAuditIds = data?.audits.filter(a => a.status === "Audit Passed").map(a => a.id) || [];
+  const { data: assignments = [] } = useQuery({
+    queryKey: ["review-history-assignments", passedAuditIds],
+    queryFn: async () => {
+      if (passedAuditIds.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from("interview_assignments")
+        .select(`
+          audit_id,
+          typing_status,
+          data_entry_teams (name)
+        `)
+        .in("audit_id", passedAuditIds);
+      
+      if (error) throw error;
+      
+      return data?.map(a => ({
+        audit_id: a.audit_id,
+        team_name: (a.data_entry_teams as { name: string })?.name || 'Unknown',
+        typing_status: a.typing_status || 'typing_in_progress',
+      })) || [];
+    },
+    enabled: passedAuditIds.length > 0,
+  });
+
+  const assignmentMap = new Map<string, AssignmentInfo>(assignments.map(a => [a.audit_id, a]));
+
+  const getAssignmentBadge = (audit: ReviewedAudit) => {
+    if (audit.status !== "Audit Passed") return null;
+    
+    const assignment = assignmentMap.get(audit.id);
+    if (!assignment) {
+      return (
+        <Badge variant="outline" className="text-xs text-muted-foreground">
+          Unassigned
+        </Badge>
+      );
+    }
+    
+    return (
+      <Badge 
+        variant="outline" 
+        className={`text-xs gap-1 ${
+          assignment.typing_status === 'typing_completed' 
+            ? 'bg-green-50 text-green-700 border-green-200' 
+            : 'bg-blue-50 text-blue-700 border-blue-200'
+        }`}
+      >
+        <ClipboardList className="h-3 w-3" />
+        {assignment.team_name}
+      </Badge>
+    );
+  };
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return "-";
@@ -324,6 +386,7 @@ const AdminReviewHistory = () => {
                     <TableHead>Interview ID</TableHead>
                     <TableHead>Reviewer</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Assignment</TableHead>
                     <TableHead>Review Date</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead>Re-audit</TableHead>
@@ -352,6 +415,9 @@ const AdminReviewHistory = () => {
                         >
                           {audit.status === "Audit Passed" ? "Passed" : "Failed"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {getAssignmentBadge(audit) || <span className="text-muted-foreground text-sm">-</span>}
                       </TableCell>
                       <TableCell className="text-sm">
                         {audit.reviewed_at && format(new Date(audit.reviewed_at), "PPp")}

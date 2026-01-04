@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye, Lock } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye, Lock, ClipboardList } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
 
 interface Audit {
   id: string;
@@ -32,6 +33,12 @@ interface Audit {
   original_status: "Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review" | null;
   locked_by: string | null;
   locked_at: string | null;
+}
+
+interface Assignment {
+  audit_id: string;
+  team_name: string;
+  typing_status: string;
 }
 
 interface AuditTableProps {
@@ -118,6 +125,30 @@ const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false, isI
   }
 };
 
+const getAssignmentBadge = (assignment: Assignment | undefined) => {
+  if (!assignment) {
+    return (
+      <Badge variant="outline" className="text-xs text-muted-foreground">
+        Unassigned
+      </Badge>
+    );
+  }
+  
+  return (
+    <Badge 
+      variant="outline" 
+      className={`text-xs gap-1 ${
+        assignment.typing_status === 'typing_completed' 
+          ? 'bg-green-50 text-green-700 border-green-200' 
+          : 'bg-blue-50 text-blue-700 border-blue-200'
+      }`}
+    >
+      <ClipboardList className="h-3 w-3" />
+      {assignment.team_name}
+    </Badge>
+  );
+};
+
 export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hideReviewButton = false }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
@@ -126,6 +157,35 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  // Fetch assignments for passed audits to show assignment status
+  const passedAuditIds = audits.filter(a => a.status === "Audit Passed").map(a => a.id);
+  const { data: assignments = [] } = useQuery({
+    queryKey: ["audit-assignments", passedAuditIds],
+    queryFn: async () => {
+      if (passedAuditIds.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from("interview_assignments")
+        .select(`
+          audit_id,
+          typing_status,
+          data_entry_teams (name)
+        `)
+        .in("audit_id", passedAuditIds);
+      
+      if (error) throw error;
+      
+      return data?.map(a => ({
+        audit_id: a.audit_id,
+        team_name: (a.data_entry_teams as { name: string })?.name || 'Unknown',
+        typing_status: a.typing_status || 'typing_in_progress',
+      })) || [];
+    },
+    enabled: passedAuditIds.length > 0,
+  });
+
+  const assignmentMap = new Map(assignments.map(a => [a.audit_id, a]));
 
   // Helper to check if an audit is locked by someone else
   const isLockedByOther = (audit: Audit) => {
@@ -419,19 +479,21 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
             <TableHead className="w-12"></TableHead>
             <TableHead>Interview ID</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Assignment</TableHead>
             <TableHead>Last Modified</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {audits.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                 No audits found. Upload PDFs to get started.
               </TableCell>
             </TableRow>
           ) : (
             audits.map((audit) => {
               const isExpanded = expandedRows.has(audit.id);
+              const assignment = audit.status === "Audit Passed" ? assignmentMap.get(audit.id) : undefined;
               return (
                 <>
                   <TableRow 
@@ -461,12 +523,15 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                     </TableCell>
                     <TableCell>{getStatusBadge(audit.status, audit.is_re_audit, isInProgress(audit), audit.locked_at)}</TableCell>
                     <TableCell>
+                      {audit.status === "Audit Passed" ? getAssignmentBadge(assignment) : <span className="text-muted-foreground text-sm">-</span>}
+                    </TableCell>
+                    <TableCell>
                       {format(new Date(audit.last_modified), "dd MMM yyyy")}
                     </TableCell>
                   </TableRow>
                   {isExpanded && (
                     <TableRow className="animate-accordion-down">
-                      <TableCell colSpan={4} className="bg-muted/10 p-0">
+                      <TableCell colSpan={5} className="bg-muted/10 p-0">
                         <div className="p-4 transition-all duration-600">
                           {/* Header with title and actions */}
                           <div className="flex items-center justify-between mb-4">
