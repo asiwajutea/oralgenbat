@@ -157,7 +157,7 @@ serve(async (req) => {
       
       // Log what's inside
       const fileList = Object.keys(zip.files);
-      console.log(`ZIP contains ${fileList.length} files:`, fileList.slice(0, 10));
+      console.log(`ZIP contains ${fileList.length} files:`, fileList);
     } catch (zipError) {
       console.error("JSZip loading failed with error:", zipError);
       console.error("Error name:", zipError instanceof Error ? zipError.name : 'unknown');
@@ -177,15 +177,79 @@ serve(async (req) => {
       
       throw new Error(`Failed to parse ZIP file: ${zipError instanceof Error ? zipError.message : 'Unknown error'}. The ZIP file may be corrupted, use an unsupported format (ZIP64), or be incomplete. Please verify the file can be opened locally.`);
     }
+
+    // Detect base path - files may be nested in a folder matching the ZIP name
+    const allFiles = Object.keys(zip.files);
+    let basePath = '';
+    
+    // Check if all files are nested in a single root folder
+    const nonEmptyFiles = allFiles.filter(f => !f.endsWith('/'));
+    if (nonEmptyFiles.length > 0) {
+      const firstSlashIndex = nonEmptyFiles[0].indexOf('/');
+      if (firstSlashIndex > 0) {
+        const potentialRoot = nonEmptyFiles[0].substring(0, firstSlashIndex + 1);
+        const allInSameRoot = nonEmptyFiles.every(f => f.startsWith(potentialRoot));
+        if (allInSameRoot) {
+          basePath = potentialRoot;
+          console.log(`Detected nested structure with base path: "${basePath}"`);
+        }
+      }
+    }
+
+    // Helper function to find a file with flexible path matching
+    const findFile = (filename: string, subfolder?: string): any => {
+      const searchPaths = [];
+      
+      if (subfolder) {
+        // Try with subfolder
+        searchPaths.push(`${basePath}${subfolder}/${filename}`);
+        searchPaths.push(`${subfolder}/${filename}`);
+        searchPaths.push(`${basePath}${subfolder.toLowerCase()}/${filename}`);
+        searchPaths.push(`${subfolder.toLowerCase()}/${filename}`);
+      }
+      
+      // Try at base path level
+      searchPaths.push(`${basePath}${filename}`);
+      // Try at root level
+      searchPaths.push(filename);
+      // Try lowercase
+      searchPaths.push(`${basePath}${filename.toLowerCase()}`);
+      searchPaths.push(filename.toLowerCase());
+      
+      for (const path of searchPaths) {
+        const file = zip.file(path);
+        if (file) {
+          console.log(`Found file "${filename}" at path: "${path}"`);
+          return file;
+        }
+      }
+      
+      // Last resort: search all files for matching filename
+      const matchingFile = allFiles.find(f => {
+        const parts = f.split('/');
+        const name = parts[parts.length - 1];
+        return name.toLowerCase() === filename.toLowerCase();
+      });
+      
+      if (matchingFile) {
+        console.log(`Found file "${filename}" via search at: "${matchingFile}"`);
+        return zip.file(matchingFile);
+      }
+      
+      return null;
+    };
     
     // Read metadata.json
     let metadata: any = {};
     try {
-      const metadataFile = zip.file("metadata.json");
+      const metadataFile = findFile("metadata.json");
       if (metadataFile) {
         const metadataContent = await metadataFile.async("text");
         metadata = JSON.parse(metadataContent);
-        console.log("Parsed metadata:", metadata);
+        console.log("✓ Successfully parsed metadata.json:", JSON.stringify(metadata, null, 2));
+      } else {
+        console.warn("⚠️ metadata.json not found in ZIP. Searched paths but file was not located.");
+        console.warn("Available files:", allFiles);
       }
     } catch (error) {
       console.error("Error reading metadata.json:", error);
@@ -205,7 +269,8 @@ serve(async (req) => {
     for (let i = 0; i < photoOrder.length; i++) {
       const photoName = photoOrder[i];
       try {
-        const photoFile = zip.file(`photos/${photoName}`);
+        // Try to find photo in photos subfolder first, then at root
+        const photoFile = findFile(photoName, "photos");
         if (!photoFile) {
           console.log(`Photo not found: ${photoName}`);
           continue;
@@ -249,7 +314,7 @@ serve(async (req) => {
     let familyStoryAudioUrl: string | null = null;
     let pedigreeAudioUrl: string | null = null;
 
-    const familyStoryFile = zip.file("family_story.mp3");
+    const familyStoryFile = findFile("family_story.mp3");
     if (familyStoryFile) {
       const audioData = await familyStoryFile.async("uint8array");
       const storagePath = `${auditId}/family_story.mp3`;
@@ -270,9 +335,11 @@ serve(async (req) => {
         familyStoryAudioUrl = publicUrl;
         console.log("✓ Family story audio uploaded:", publicUrl);
       }
+    } else {
+      console.log("family_story.mp3 not found in ZIP");
     }
 
-    const pedigreeSegmentFile = zip.file("pedigree_segment.mp3");
+    const pedigreeSegmentFile = findFile("pedigree_segment.mp3");
     if (pedigreeSegmentFile) {
       const audioData = await pedigreeSegmentFile.async("uint8array");
       const storagePath = `${auditId}/pedigree_segment.mp3`;
@@ -293,6 +360,8 @@ serve(async (req) => {
         pedigreeAudioUrl = publicUrl;
         console.log("✓ Pedigree audio uploaded:", publicUrl);
       }
+    } else {
+      console.log("pedigree_segment.mp3 not found in ZIP");
     }
 
     // Analyze audio files (for initial estimates, will be manually verified)
