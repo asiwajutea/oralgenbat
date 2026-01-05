@@ -204,6 +204,8 @@ export type Database = {
           assigned_at: string | null
           assigned_by: string | null
           audit_id: string
+          export_batch_id: string | null
+          exported_at: string | null
           id: string
           notes: string | null
           team_id: string
@@ -215,6 +217,8 @@ export type Database = {
           assigned_at?: string | null
           assigned_by?: string | null
           audit_id: string
+          export_batch_id?: string | null
+          exported_at?: string | null
           id?: string
           notes?: string | null
           team_id: string
@@ -226,6 +230,8 @@ export type Database = {
           assigned_at?: string | null
           assigned_by?: string | null
           audit_id?: string
+          export_batch_id?: string | null
+          exported_at?: string | null
           id?: string
           notes?: string | null
           team_id?: string
