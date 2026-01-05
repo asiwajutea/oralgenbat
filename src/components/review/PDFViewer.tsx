@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,29 +17,35 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
   const [pageInput, setPageInput] = useState<string>("");
   const [isDocumentReady, setIsDocumentReady] = useState<boolean>(false);
   const [pageErrors, setPageErrors] = useState<Set<number>>(new Set());
+  const [documentKey, setDocumentKey] = useState<number>(0);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const isMountedRef = useRef<boolean>(true);
 
+  // Reset state when URL changes - use key to force Document remount
   useEffect(() => {
     isMountedRef.current = true;
+    setIsDocumentReady(false);
+    setNumPages(0);
+    setPageErrors(new Set());
+    setDocumentKey(prev => prev + 1);
+    
     return () => {
       isMountedRef.current = false;
-      setIsDocumentReady(false);
-      setNumPages(0);
     };
   }, [pdfUrl]);
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
     if (isMountedRef.current) {
       setNumPages(numPages);
+      setPageErrors(new Set());
       // Wait a brief moment for the worker to be fully ready
       setTimeout(() => {
         if (isMountedRef.current) {
           setIsDocumentReady(true);
         }
-      }, 100);
+      }, 150);
     }
-  };
+  }, []);
 
   const onPageLoadError = (pageNumber: number) => {
     console.error(`Failed to load page ${pageNumber}`);
@@ -118,6 +124,7 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
       <div className="flex-1 overflow-auto p-4">
         <div className="flex flex-col items-center gap-2">
           <Document
+            key={`doc_${documentKey}`}
             file={pdfUrl}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={
