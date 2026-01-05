@@ -112,6 +112,7 @@ export type Database = {
       audits: {
         Row: {
           action_plan: string | null
+          artifact_correction: string[] | null
           file_name: string
           file_url: string
           id: string
@@ -132,6 +133,7 @@ export type Database = {
         }
         Insert: {
           action_plan?: string | null
+          artifact_correction?: string[] | null
           file_name: string
           file_url: string
           id?: string
@@ -152,6 +154,7 @@ export type Database = {
         }
         Update: {
           action_plan?: string | null
+          artifact_correction?: string[] | null
           file_name?: string
           file_url?: string
           id?: string

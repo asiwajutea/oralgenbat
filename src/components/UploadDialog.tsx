@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -22,6 +24,9 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [visibleCount, setVisibleCount] = useState(5);
+
+  const MAX_VISIBLE_DEFAULT = 5;
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -32,6 +37,8 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
     }
     
     setSelectedFiles(pdfFiles);
+    // Reset visible count when new files are selected
+    setVisibleCount(Math.min(MAX_VISIBLE_DEFAULT, pdfFiles.length));
   };
 
   const uploadFileWithProgress = async (
@@ -154,6 +161,7 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
       
       setSelectedFiles([]);
       setUploadProgress({});
+      setVisibleCount(MAX_VISIBLE_DEFAULT);
       setIsOpen(false);
       onUploadComplete();
     } catch (error) {
@@ -164,6 +172,9 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
     }
   };
 
+  const visibleFiles = selectedFiles.slice(0, visibleCount);
+  const hiddenCount = selectedFiles.length - visibleCount;
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
@@ -172,7 +183,7 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
           UPLOAD PDF
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Upload PDF Files</DialogTitle>
           <DialogDescription>
@@ -207,8 +218,26 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
                   ? `Uploading ${Object.keys(uploadProgress).length} of ${selectedFiles.length} file(s)...`
                   : `Selected ${selectedFiles.length} file(s):`}
               </p>
-              <ul className="space-y-3">
-                {selectedFiles.map((file, index) => (
+
+              {/* Slider for controlling visible files when many are selected */}
+              {selectedFiles.length > MAX_VISIBLE_DEFAULT && (
+                <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                  <div className="flex items-center justify-between text-sm">
+                    <Label>Showing {visibleCount} of {selectedFiles.length} files</Label>
+                  </div>
+                  <Slider
+                    value={[visibleCount]}
+                    onValueChange={(v) => setVisibleCount(v[0])}
+                    min={1}
+                    max={selectedFiles.length}
+                    step={1}
+                    className="py-2"
+                  />
+                </div>
+              )}
+
+              <ul className="space-y-3 max-h-[200px] overflow-y-auto">
+                {visibleFiles.map((file, index) => (
                   <li key={index} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
                       <span className="truncate flex-1">{file.name}</span>
@@ -224,6 +253,12 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
                   </li>
                 ))}
               </ul>
+
+              {hiddenCount > 0 && (
+                <p className="text-sm text-muted-foreground text-center">
+                  +{hiddenCount} more file(s) not shown
+                </p>
+              )}
             </div>
           )}
 

@@ -301,8 +301,17 @@ export const useCriticalAgentsFraud = () => {
           
           if (!metadata || metadata.length === 0) continue;
           
+          // Filter out interviews without proper metadata (audio or names data)
+          const validMetadata = metadata.filter(m => 
+            m.total_names !== null || 
+            m.family_story_duration !== null || 
+            m.pedigree_segment_duration !== null
+          );
+          
+          if (validMetadata.length === 0) continue;
+          
           // Transform data
-          const interviews: InterviewData[] = metadata.map(m => {
+          const interviews: InterviewData[] = validMetadata.map(m => {
             const dateTimeStr = `${m.interview_date}T${m.interview_time}`;
             return {
               id: m.id,
@@ -424,8 +433,19 @@ export const useFraudAnalytics = (interviewerCode: string) => {
         throw new Error('No data found for this agent');
       }
       
+      // Filter out interviews without proper metadata (audio or names data)
+      const validMetadata = metadata.filter(m => 
+        m.total_names !== null || 
+        m.family_story_duration !== null || 
+        m.pedigree_segment_duration !== null
+      );
+      
+      if (validMetadata.length === 0) {
+        throw new Error('No interviews with parsed metadata found for this agent');
+      }
+      
       // Transform data
-      const interviews: InterviewData[] = metadata.map(m => {
+      const interviews: InterviewData[] = validMetadata.map(m => {
         const dateTimeStr = `${m.interview_date}T${m.interview_time}`;
         return {
           id: m.id,

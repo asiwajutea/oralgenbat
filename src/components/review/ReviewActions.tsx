@@ -16,8 +16,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Loader2, Upload } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone } from "lucide-react";
 import { ReAuditDialog } from "./ReAuditDialog";
 
 interface ReviewActionsProps {
@@ -48,6 +49,7 @@ export const ReviewActions = ({
   const [showReauditDialog, setShowReauditDialog] = useState(false);
   const [reviewComment, setReviewComment] = useState(checklistFailureComments);
   const [actionPlan, setActionPlan] = useState("");
+  const [artifactCorrection, setArtifactCorrection] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -114,11 +116,17 @@ export const ReviewActions = ({
       });
 
       setShowPassDialog(false);
+      
+      // Invalidate queries for proper refresh
       queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
       queryClient.invalidateQueries({ queryKey: ["status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["next-unreviewed-audit"] });
+      queryClient.invalidateQueries({ queryKey: ["audits"] });
       
       if (nextAuditId) {
         setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
+      } else {
+        setTimeout(() => navigate("/"), 500);
       }
     } catch (error) {
       console.error("Error passing interview:", error);
@@ -133,6 +141,15 @@ export const ReviewActions = ({
   };
 
   const handleFailSubmit = async () => {
+    if (artifactCorrection.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select at least one artifact that needs correction.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (reviewComment.trim().length < 10) {
       toast({
         title: "Validation Error",
@@ -159,6 +176,7 @@ export const ReviewActions = ({
           status: "Audit Failed",
           review_comment: reviewComment,
           action_plan: actionPlan,
+          artifact_correction: artifactCorrection,
           reviewed_at: new Date().toISOString(),
           reviewed_by: profile?.full_name || "Unknown",
           review_duration_seconds: reviewDurationSeconds || null,
@@ -192,11 +210,18 @@ export const ReviewActions = ({
       setShowFailDialog(false);
       setReviewComment("");
       setActionPlan("");
+      setArtifactCorrection([]);
+      
+      // Invalidate queries for proper refresh
       queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
       queryClient.invalidateQueries({ queryKey: ["status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["next-unreviewed-audit"] });
+      queryClient.invalidateQueries({ queryKey: ["audits"] });
       
       if (nextAuditId) {
         setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
+      } else {
+        setTimeout(() => navigate("/"), 500);
       }
     } catch (error) {
       console.error("Error failing interview:", error);
@@ -207,6 +232,14 @@ export const ReviewActions = ({
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const toggleArtifact = (artifact: string, checked: boolean) => {
+    if (checked) {
+      setArtifactCorrection([...artifactCorrection, artifact]);
+    } else {
+      setArtifactCorrection(artifactCorrection.filter(a => a !== artifact));
     }
   };
 
@@ -296,6 +329,39 @@ export const ReviewActions = ({
           </AlertDialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Artifact Correction Selection */}
+            <div className="space-y-3">
+              <Label>Which artifact(s) need correction? *</Label>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <Checkbox
+                    id="scanned-pdf"
+                    checked={artifactCorrection.includes('scanned_pdf')}
+                    onCheckedChange={(checked) => toggleArtifact('scanned_pdf', !!checked)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="scanned-pdf" className="cursor-pointer font-medium">
+                      Scanned PDF
+                    </Label>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <Checkbox
+                    id="mobile-metadata"
+                    checked={artifactCorrection.includes('mobile_metadata')}
+                    onCheckedChange={(checked) => toggleArtifact('mobile_metadata', !!checked)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Smartphone className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="mobile-metadata" className="cursor-pointer font-medium">
+                      Mobile Metadata
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="review-comment">Reason for Failure *</Label>
               <Textarea
@@ -374,6 +440,9 @@ export const ReviewActions = ({
           currentFileName={currentFileName}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+            queryClient.invalidateQueries({ queryKey: ["status-counts"] });
+            queryClient.invalidateQueries({ queryKey: ["next-unreviewed-audit"] });
+            queryClient.invalidateQueries({ queryKey: ["audits"] });
             toast({
               title: "Success",
               description: "Interview submitted for re-audit",

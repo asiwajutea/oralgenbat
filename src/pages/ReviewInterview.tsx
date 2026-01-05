@@ -184,11 +184,13 @@ const ReviewInterview = () => {
   const isReviewed = audit?.status === "Audit Passed" || audit?.status === "Audit Failed";
 
   // Acquire lock and start timer for auditors on unreviewed interviews when data loads
+  // Only start if metadata is available
   useEffect(() => {
     const initLock = async () => {
       // Don't acquire if abandoned
       if (hasAbandoned) return;
-      if (audit && isAuditor && !isReviewed && !lockedByOther) {
+      // Only acquire lock and start timer if metadata is uploaded
+      if (audit && isAuditor && !isReviewed && !lockedByOther && metadata) {
         const acquired = await acquireLock();
         if (acquired) {
           setIsTimerActive(true);
@@ -196,7 +198,7 @@ const ReviewInterview = () => {
       }
     };
     initLock();
-  }, [audit, isAuditor, isReviewed, lockedByOther, acquireLock, hasAbandoned]);
+  }, [audit, isAuditor, isReviewed, lockedByOther, acquireLock, hasAbandoned, metadata]);
 
   // Handle abandon review
   const handleAbandonReview = async () => {
@@ -313,14 +315,21 @@ const ReviewInterview = () => {
 
         {/* Sticky Section - Checklist & Actions only */}
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background border-b border-border shadow-sm">
-          {/* Audit Checklist for auditors on unreviewed interviews */}
-          {isAuditor && !isReviewed && <div className="p-4">
+          {/* Audit Checklist for auditors on unreviewed interviews - only show if metadata is uploaded */}
+          {isAuditor && !isReviewed && metadata && <div className="p-4">
               <AuditChecklist auditId={auditId!} interviewId={audit.file_name} initialProgress={checklistProgress} isSticky={isSticky} onComplete={(hasFailures, comments) => {
             setChecklistCompleted(true);
             setHasChecklistFailures(hasFailures);
             setChecklistComments(comments);
           }} isCompleted={checklistCompleted} onAbandonReview={handleAbandonReview} isAbandoning={isAbandoning} />
             </div>}
+          
+          {/* Message when metadata not uploaded */}
+          {isAuditor && !isReviewed && !metadata && (
+            <div className="p-4 text-center text-muted-foreground bg-muted/30 border-b">
+              <p className="text-sm">Upload mobile materials to begin the audit review</p>
+            </div>
+          )}
           
           {/* Review Actions */}
           <ReviewActions
@@ -339,7 +348,7 @@ const ReviewInterview = () => {
         {/* Scrollable Content Section */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Show review comments for failed interviews or re-audits */}
-          <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} />
+          <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} artifactCorrection={audit.artifact_correction} />
           
           {/* Show re-audit history if exists */}
           {audit.is_re_audit && <ReAuditHistory auditId={auditId!} />}
