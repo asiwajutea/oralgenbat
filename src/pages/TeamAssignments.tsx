@@ -267,7 +267,7 @@ const TeamAssignments = () => {
 
       if (error) throw error;
       if (!data.files || data.files.length === 0) {
-        toast.error('No PDF files found for this team');
+        toast.error('No new assignments to export for this team');
         return;
       }
 
@@ -288,12 +288,18 @@ const TeamAssignments = () => {
         }
       }
 
+      // Generate filename with date and time from export timestamp
+      const exportDate = data.exportTimestamp ? new Date(data.exportTimestamp) : new Date();
+      const dateStr = format(exportDate, 'yyyy-MM-dd_HH-mm');
+      const sanitizedTeamName = team.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
+      const fileName = `${sanitizedTeamName}_PDFs_${dateStr}.zip`;
+
       // Generate and download the zip
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${team.name.replace(/\s+/g, '_')}_PDFs.zip`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
