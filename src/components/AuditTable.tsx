@@ -365,7 +365,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
           .from('audits')
           .update({
             file_url: publicUrl,
-            file_name: file.name,
+            file_name: file.name.replace(/\.pdf$/i, ''),
           })
           .eq('id', auditId);
 

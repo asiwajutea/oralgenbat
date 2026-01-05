@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertCircle, ChevronDown } from "lucide-react";
+import { AlertCircle, ChevronDown, FileText, Smartphone } from "lucide-react";
 import { format } from "date-fns";
 
 interface ReviewCommentsPanelProps {
@@ -11,6 +11,7 @@ interface ReviewCommentsPanelProps {
   actionPlan: string | null;
   reviewedAt: string | null;
   isReAudit?: boolean;
+  artifactCorrection?: string[] | null;
 }
 
 export const ReviewCommentsPanel = ({ 
@@ -19,6 +20,7 @@ export const ReviewCommentsPanel = ({
   actionPlan, 
   reviewedAt,
   isReAudit = false,
+  artifactCorrection,
 }: ReviewCommentsPanelProps) => {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -30,6 +32,17 @@ export const ReviewCommentsPanel = ({
   if (!reviewComment && !actionPlan) {
     return null;
   }
+
+  const getArtifactLabel = (artifact: string) => {
+    switch (artifact) {
+      case 'scanned_pdf':
+        return { label: 'Scanned PDF', icon: FileText };
+      case 'mobile_metadata':
+        return { label: 'Mobile Metadata', icon: Smartphone };
+      default:
+        return { label: artifact, icon: FileText };
+    }
+  };
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -60,6 +73,24 @@ export const ReviewCommentsPanel = ({
         
         <CollapsibleContent>
           <CardContent className="space-y-4 pt-0">
+            {/* Artifact Correction Display */}
+            {artifactCorrection && artifactCorrection.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-sm mb-2">Artifacts Requiring Correction</h4>
+                <div className="flex flex-wrap gap-2">
+                  {artifactCorrection.map((artifact) => {
+                    const { label, icon: Icon } = getArtifactLabel(artifact);
+                    return (
+                      <Badge key={artifact} variant="outline" className="gap-1.5 py-1">
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
             <div>
               <h4 className="font-semibold text-sm mb-2">Reason for Failure</h4>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">
