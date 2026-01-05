@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 
 interface UserProfile {
@@ -33,6 +33,8 @@ const AdminDashboard = () => {
   const [filter, setFilter] = useState<"all" | "pending" | "approved">("all");
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
+  const [showClearStorageDialog, setShowClearStorageDialog] = useState(false);
+  const [clearingStorage, setClearingStorage] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -207,6 +209,31 @@ const AdminDashboard = () => {
     }
   };
 
+  const clearAllStorage = async () => {
+    setClearingStorage(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('clear-storage');
+
+      if (error) throw error;
+
+      toast({
+        title: "Storage Cleared",
+        description: `Successfully deleted ${data.totalDeleted} files from storage buckets`,
+      });
+
+      setShowClearStorageDialog(false);
+    } catch (error) {
+      console.error("Error clearing storage:", error);
+      toast({
+        title: "Error",
+        description: "Failed to clear storage. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setClearingStorage(false);
+    }
+  };
+
   const formatRole = (role: string) => {
     return role.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
   };
@@ -231,11 +258,23 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
       <div className="container py-8">
         <Card>
-          <CardHeader>
-            <CardTitle>User Management</CardTitle>
-            <CardDescription>
-              Manage user accounts and approve pending registrations
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>User Management</CardTitle>
+              <CardDescription>
+                Manage user accounts and approve pending registrations
+              </CardDescription>
+            </div>
+            {userRole === 'super_admin' && (
+              <Button
+                variant="destructive"
+                onClick={() => setShowClearStorageDialog(true)}
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Clear All Storage
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
@@ -374,6 +413,41 @@ const AdminDashboard = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={revokeUserAccess} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Revoke Access
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showClearStorageDialog} onOpenChange={setShowClearStorageDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Storage?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete ALL files from storage buckets:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>audit-pdfs</li>
+                <li>mobile-zips</li>
+                <li>interview-photos</li>
+                <li>interview-audio</li>
+              </ul>
+              <p className="mt-3 font-semibold text-destructive">This action cannot be undone!</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingStorage}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={clearAllStorage} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={clearingStorage}
+            >
+              {clearingStorage ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Clearing...
+                </>
+              ) : (
+                'Clear All Storage'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
