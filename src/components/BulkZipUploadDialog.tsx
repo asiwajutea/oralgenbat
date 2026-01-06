@@ -76,20 +76,36 @@ export const BulkZipUploadDialog = ({
       return;
     }
 
-    const auditMap = new Map(matchingAudits?.map(a => [a.file_name, a]) || []);
+    const auditMap = new Map(matchingAudits?.map(a => [a.file_name, { 
+      id: a.id, 
+      file_name: a.file_name, 
+      hasMetadata: !!a.mobile_zip_url 
+    }]) || []);
 
     const processedFiles: ZipFile[] = zipFilesOnly.map(file => {
       const fileName = file.name.replace(/\.zip$/i, '');
       const matchedAudit = auditMap.get(fileName);
+      
+      // Determine status: skip if no match or if metadata already exists
+      let status: ZipFile["status"] = "pending";
+      let errorMessage: string | undefined;
+      
+      if (!matchedAudit) {
+        status = "skipped";
+        errorMessage = "No matching PDF found";
+      } else if (matchedAudit.hasMetadata) {
+        status = "skipped";
+        errorMessage = "Metadata already uploaded";
+      }
       
       return {
         file,
         fileName,
         matchedAuditId: matchedAudit?.id || null,
         matchedAuditName: matchedAudit?.file_name || null,
-        status: matchedAudit ? "pending" : "skipped",
+        status,
         progress: 0,
-        errorMessage: matchedAudit ? undefined : "No matching PDF found",
+        errorMessage,
       };
     });
 
@@ -111,17 +127,6 @@ export const BulkZipUploadDialog = ({
       ));
 
       const filePath = `${zipFile.matchedAuditId}/${zipFile.file.name}`;
-
-      // Check if file already exists and delete it
-      const { data: existingFiles } = await supabase.storage
-        .from("mobile-zips")
-        .list(zipFile.matchedAuditId);
-
-      if (existingFiles?.some(f => f.name === zipFile.file.name)) {
-        await supabase.storage.from("mobile-zips").remove([filePath]);
-        await supabase.from('interview_photos').delete().eq('audit_id', zipFile.matchedAuditId);
-        await supabase.from('interview_metadata').delete().eq('audit_id', zipFile.matchedAuditId);
-      }
 
       // Upload file
       const { error: uploadError } = await supabase.storage
