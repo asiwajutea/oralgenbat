@@ -1,11 +1,19 @@
 import { useState, useEffect } from "react";
-import { Filter } from "lucide-react";
+import { Filter, Upload, ChevronDown, FileText, FileArchive, Files } from "lucide-react";
 import { FilterSidebar, FilterState } from "@/components/FilterSidebar";
 import { AuditTable } from "@/components/AuditTable";
 import { UploadDialog } from "@/components/UploadDialog";
+import { BulkZipUploadDialog } from "@/components/BulkZipUploadDialog";
+import { CombinedUploadDialog } from "@/components/CombinedUploadDialog";
 import { AuditPagination } from "@/components/AuditPagination";
 import { AuditorStatsCard } from "@/components/AuditorStatsCard";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,6 +51,9 @@ const Index = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [pdfUploadOpen, setPdfUploadOpen] = useState(false);
+  const [bulkZipOpen, setBulkZipOpen] = useState(false);
+  const [combinedUploadOpen, setCombinedUploadOpen] = useState(false);
   
   const hideReviewButton = userRole === 'field_manager' || userRole === 'contractor';
 
@@ -159,7 +170,46 @@ const Index = () => {
                 </p>
               </div>
             </div>
-            <UploadDialog onUploadComplete={fetchAudits} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="gap-2">
+                  <Upload className="h-4 w-4" />
+                  UPLOAD
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setPdfUploadOpen(true)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Upload PDFs Only
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setCombinedUploadOpen(true)}>
+                  <Files className="h-4 w-4 mr-2" />
+                  Upload PDFs + Metadata
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setBulkZipOpen(true)}>
+                  <FileArchive className="h-4 w-4 mr-2" />
+                  Bulk Upload ZIPs
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Upload Dialogs */}
+            <UploadDialog 
+              onUploadComplete={fetchAudits} 
+              open={pdfUploadOpen}
+              onOpenChange={setPdfUploadOpen}
+            />
+            <BulkZipUploadDialog 
+              onUploadComplete={fetchAudits}
+              open={bulkZipOpen}
+              onOpenChange={setBulkZipOpen}
+            />
+            <CombinedUploadDialog 
+              onUploadComplete={fetchAudits}
+              open={combinedUploadOpen}
+              onOpenChange={setCombinedUploadOpen}
+            />
           </div>
         </div>
 

@@ -17,14 +17,25 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface UploadDialogProps {
   onUploadComplete: () => void;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+export const UploadDialog = ({ 
+  onUploadComplete, 
+  trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange
+}: UploadDialogProps) => {
+  const [internalOpen, setInternalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [visibleCount, setVisibleCount] = useState(5);
+
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setIsOpen = controlledOnOpenChange || setInternalOpen;
 
   const MAX_VISIBLE_DEFAULT = 5;
 
@@ -177,12 +188,7 @@ export const UploadDialog = ({ onUploadComplete }: UploadDialogProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Upload className="h-4 w-4" />
-          UPLOAD PDF
-        </Button>
-      </DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Upload PDF Files</DialogTitle>

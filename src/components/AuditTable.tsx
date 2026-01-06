@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Clock, Upload, Trash2, Info, Eye, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
@@ -127,6 +128,23 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
   const { session } = useAuth();
   const currentUserId = session?.user?.id;
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  // Get audit IDs for metadata status query
+  const auditIds = useMemo(() => audits.map(a => a.id), [audits]);
+
+  // Query to check which audits have metadata uploaded
+  const { data: metadataMap } = useQuery({
+    queryKey: ["audit-metadata-status", auditIds],
+    queryFn: async () => {
+      if (auditIds.length === 0) return new Set<string>();
+      const { data } = await supabase
+        .from("interview_metadata")
+        .select("audit_id")
+        .in("audit_id", auditIds);
+      return new Set(data?.map(m => m.audit_id) || []);
+    },
+    enabled: auditIds.length > 0,
+  });
 
   // Helper to check if an audit is locked by someone else
   const isLockedByOther = (audit: Audit) => {
@@ -305,7 +323,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
           console.error("Error processing ZIP:", processError);
           toast({
             title: "Warning",
-            description: "ZIP uploaded but processing failed. Please try again.",
+            description: `ZIP uploaded but processing failed for "${audit.file_name}.zip". Please try again.`,
             variant: "destructive",
           });
         } else {
@@ -458,7 +476,21 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                       </Button>
                     </TableCell>
                     <TableCell className="font-mono text-sm">
-                      {audit.file_name}
+                      <div className="flex items-center gap-1.5">
+                        {audit.file_name}
+                        {metadataMap?.has(audit.id) && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>PDF and metadata uploaded</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{getStatusBadge(audit.status, audit.is_re_audit, isInProgress(audit), audit.locked_at)}</TableCell>
                     <TableCell>
