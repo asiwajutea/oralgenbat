@@ -64,6 +64,7 @@ export const ReviewActions = ({
 
   const isAuditor = userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin';
   const isFieldManagerOrContractor = userRole === 'field_manager' || userRole === 'contractor';
+  const canSubmitReaudit = userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin';
 
   const isReviewed = currentStatus === "Audit Passed" || currentStatus === "Audit Failed";
 
@@ -300,7 +301,7 @@ export const ReviewActions = ({
         )}
 
         {/* Field Managers/Contractors see SEND FOR RE-AUDIT button for failed audits */}
-        {isFieldManagerOrContractor && currentStatus === "Audit Failed" && (
+        {canSubmitReaudit && currentStatus === "Audit Failed" && (
           <Button
             onClick={() => setShowReauditDialog(true)}
             disabled={isSubmitting}
@@ -432,7 +433,7 @@ export const ReviewActions = ({
       </AlertDialog>
 
       {/* Re-Audit Dialog for Field Managers/Contractors */}
-      {isFieldManagerOrContractor && (
+      {canSubmitReaudit && (
         <ReAuditDialog
           open={showReauditDialog}
           onOpenChange={setShowReauditDialog}
