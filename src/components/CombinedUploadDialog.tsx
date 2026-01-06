@@ -123,6 +123,132 @@ export const CombinedUploadDialog = ({
     return new Set(existingAudits?.map(a => a.file_name) || []);
   };
 
+  const CONCURRENT_UPLOADS = 5;
+
+  const processFilePair = async (pair: FilePair, existingNames: Set<string>): Promise<{ success: boolean; skipped: boolean }> => {
+    if (existingNames.has(pair.fileName)) {
+      setFilePairs(prev => prev.map(p => 
+        p.fileName === pair.fileName 
+          ? { ...p, status: "error" as const, errorMessage: "Interview already exists" }
+          : p
+      ));
+      return { success: false, skipped: true };
+    }
+
+    if (!pair.pdfFile) return { success: false, skipped: false };
+
+    try {
+      // Upload PDF
+      setFilePairs(prev => prev.map(p => 
+        p.fileName === pair.fileName 
+          ? { ...p, status: "uploading-pdf" as const, progress: 10 }
+          : p
+      ));
+
+      const timestamp = Date.now();
+      const pdfStoragePath = `${pair.fileName}_${timestamp}.pdf`;
+
+      const { error: pdfUploadError } = await supabase.storage
+        .from("audit-pdfs")
+        .upload(pdfStoragePath, pair.pdfFile);
+
+      if (pdfUploadError) throw pdfUploadError;
+
+      const { data: { publicUrl: pdfPublicUrl } } = supabase.storage
+        .from("audit-pdfs")
+        .getPublicUrl(pdfStoragePath);
+
+      setFilePairs(prev => prev.map(p => 
+        p.fileName === pair.fileName 
+          ? { ...p, progress: 30 }
+          : p
+      ));
+
+      // Create audit record
+      const { data: auditRecord, error: dbError } = await supabase
+        .from("audits")
+        .insert({
+          file_name: pair.fileName,
+          file_url: pdfPublicUrl,
+          status: "Pending",
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // If ZIP exists, upload and process it
+      if (pair.zipFile) {
+        setFilePairs(prev => prev.map(p => 
+          p.fileName === pair.fileName 
+            ? { ...p, status: "uploading-zip" as const, progress: 50 }
+            : p
+        ));
+
+        const zipFilePath = `${auditRecord.id}/${pair.zipFile.name}`;
+
+        const { error: zipUploadError } = await supabase.storage
+          .from("mobile-zips")
+          .upload(zipFilePath, pair.zipFile, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: 'application/zip',
+          });
+
+        if (zipUploadError) throw zipUploadError;
+
+        const { data: { publicUrl: zipPublicUrl } } = supabase.storage
+          .from("mobile-zips")
+          .getPublicUrl(zipFilePath);
+
+        // Update audit with ZIP URL
+        await supabase
+          .from('audits')
+          .update({
+            mobile_zip_url: zipPublicUrl,
+            mobile_zip_uploaded_at: new Date().toISOString(),
+          })
+          .eq('id', auditRecord.id);
+
+        setFilePairs(prev => prev.map(p => 
+          p.fileName === pair.fileName 
+            ? { ...p, status: "processing" as const, progress: 70 }
+            : p
+        ));
+
+        // Process the ZIP (no artificial delay)
+        const { error: processError } = await supabase.functions.invoke('process-mobile-zip', {
+          body: { auditId: auditRecord.id, mobileZipUrl: zipPublicUrl }
+        });
+
+        if (processError) {
+          console.error(`Error processing ZIP for ${pair.fileName}:`, processError);
+          toast.error(`ZIP processing failed for "${pair.fileName}.zip". PDF was uploaded successfully.`);
+        }
+      }
+
+      setFilePairs(prev => prev.map(p => 
+        p.fileName === pair.fileName 
+          ? { ...p, status: "success" as const, progress: 100 }
+          : p
+      ));
+      return { success: true, skipped: false };
+
+    } catch (error) {
+      console.error(`Error uploading ${pair.fileName}:`, error);
+      setFilePairs(prev => prev.map(p => 
+        p.fileName === pair.fileName 
+          ? { 
+              ...p, 
+              status: "error" as const, 
+              errorMessage: error instanceof Error ? error.message : "Upload failed"
+            }
+          : p
+      ));
+      return { success: false, skipped: false };
+    }
+  };
+
   const handleUpload = async () => {
     const pairsToUpload = filePairs.filter(p => p.pdfFile); // Must have PDF at minimum
     
@@ -142,132 +268,27 @@ export const CombinedUploadDialog = ({
       let errorCount = 0;
       let skippedCount = 0;
 
-      for (const pair of pairsToUpload) {
-        if (existingNames.has(pair.fileName)) {
-          setFilePairs(prev => prev.map(p => 
-            p.fileName === pair.fileName 
-              ? { ...p, status: "error" as const, errorMessage: "Interview already exists" }
-              : p
-          ));
-          skippedCount++;
-          continue;
-        }
+      // Process in batches of CONCURRENT_UPLOADS
+      for (let i = 0; i < pairsToUpload.length; i += CONCURRENT_UPLOADS) {
+        const batch = pairsToUpload.slice(i, i + CONCURRENT_UPLOADS);
+        
+        const results = await Promise.allSettled(
+          batch.map(pair => processFilePair(pair, existingNames))
+        );
 
-        if (!pair.pdfFile) continue;
-
-        try {
-          // Upload PDF
-          setFilePairs(prev => prev.map(p => 
-            p.fileName === pair.fileName 
-              ? { ...p, status: "uploading-pdf" as const, progress: 10 }
-              : p
-          ));
-
-          const timestamp = Date.now();
-          const pdfStoragePath = `${pair.fileName}_${timestamp}.pdf`;
-
-          const { error: pdfUploadError } = await supabase.storage
-            .from("audit-pdfs")
-            .upload(pdfStoragePath, pair.pdfFile);
-
-          if (pdfUploadError) throw pdfUploadError;
-
-          const { data: { publicUrl: pdfPublicUrl } } = supabase.storage
-            .from("audit-pdfs")
-            .getPublicUrl(pdfStoragePath);
-
-          setFilePairs(prev => prev.map(p => 
-            p.fileName === pair.fileName 
-              ? { ...p, progress: 30 }
-              : p
-          ));
-
-          // Create audit record
-          const { data: auditRecord, error: dbError } = await supabase
-            .from("audits")
-            .insert({
-              file_name: pair.fileName,
-              file_url: pdfPublicUrl,
-              status: "Pending",
-            })
-            .select()
-            .single();
-
-          if (dbError) throw dbError;
-
-          // If ZIP exists, upload and process it
-          if (pair.zipFile) {
-            setFilePairs(prev => prev.map(p => 
-              p.fileName === pair.fileName 
-                ? { ...p, status: "uploading-zip" as const, progress: 50 }
-                : p
-            ));
-
-            const zipFilePath = `${auditRecord.id}/${pair.zipFile.name}`;
-
-            const { error: zipUploadError } = await supabase.storage
-              .from("mobile-zips")
-              .upload(zipFilePath, pair.zipFile, {
-                cacheControl: '3600',
-                upsert: true,
-                contentType: 'application/zip',
-              });
-
-            if (zipUploadError) throw zipUploadError;
-
-            const { data: { publicUrl: zipPublicUrl } } = supabase.storage
-              .from("mobile-zips")
-              .getPublicUrl(zipFilePath);
-
-            // Update audit with ZIP URL
-            await supabase
-              .from('audits')
-              .update({
-                mobile_zip_url: zipPublicUrl,
-                mobile_zip_uploaded_at: new Date().toISOString(),
-              })
-              .eq('id', auditRecord.id);
-
-            setFilePairs(prev => prev.map(p => 
-              p.fileName === pair.fileName 
-                ? { ...p, status: "processing" as const, progress: 70 }
-                : p
-            ));
-
-            // Wait for storage to finalize
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            // Process the ZIP
-            const { error: processError } = await supabase.functions.invoke('process-mobile-zip', {
-              body: { auditId: auditRecord.id, mobileZipUrl: zipPublicUrl }
-            });
-
-            if (processError) {
-              console.error(`Error processing ZIP for ${pair.fileName}:`, processError);
-              toast.error(`ZIP processing failed for "${pair.fileName}.zip". PDF was uploaded successfully.`);
+        results.forEach(result => {
+          if (result.status === "fulfilled") {
+            if (result.value.success) {
+              successCount++;
+            } else if (result.value.skipped) {
+              skippedCount++;
+            } else {
+              errorCount++;
             }
+          } else {
+            errorCount++;
           }
-
-          setFilePairs(prev => prev.map(p => 
-            p.fileName === pair.fileName 
-              ? { ...p, status: "success" as const, progress: 100 }
-              : p
-          ));
-          successCount++;
-
-        } catch (error) {
-          console.error(`Error uploading ${pair.fileName}:`, error);
-          setFilePairs(prev => prev.map(p => 
-            p.fileName === pair.fileName 
-              ? { 
-                  ...p, 
-                  status: "error" as const, 
-                  errorMessage: error instanceof Error ? error.message : "Upload failed"
-                }
-              : p
-          ));
-          errorCount++;
-        }
+        });
       }
 
       if (successCount > 0) {
