@@ -147,7 +147,7 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
       if (functionError) {
         toast({
           title: "ZIP uploaded but processing failed",
-          description: "Please try again or contact support",
+          description: `Processing failed for "${expectedFileName}.zip". Please try again or contact support.`,
           variant: "destructive",
         });
         throw functionError;
@@ -162,7 +162,7 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
       console.error('Error uploading mobile materials:', error);
       toast({
         title: "Failed to upload mobile materials",
-        description: error instanceof Error ? error.message : "Please try again",
+        description: `Upload failed for "${expectedFileName}.zip". ${error instanceof Error ? error.message : "Please try again."}`,
         variant: "destructive",
       });
     } finally {
