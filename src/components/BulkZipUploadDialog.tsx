@@ -97,6 +97,103 @@ export const BulkZipUploadDialog = ({
     setVisibleCount(Math.min(MAX_VISIBLE_DEFAULT, processedFiles.length));
   };
 
+  const CONCURRENT_UPLOADS = 5;
+
+  const processZipFile = async (zipFile: ZipFile): Promise<boolean> => {
+    if (!zipFile.matchedAuditId) return false;
+
+    try {
+      // Update status to uploading
+      setZipFiles(prev => prev.map(f => 
+        f.fileName === zipFile.fileName 
+          ? { ...f, status: "uploading" as const }
+          : f
+      ));
+
+      const filePath = `${zipFile.matchedAuditId}/${zipFile.file.name}`;
+
+      // Check if file already exists and delete it
+      const { data: existingFiles } = await supabase.storage
+        .from("mobile-zips")
+        .list(zipFile.matchedAuditId);
+
+      if (existingFiles?.some(f => f.name === zipFile.file.name)) {
+        await supabase.storage.from("mobile-zips").remove([filePath]);
+        await supabase.from('interview_photos').delete().eq('audit_id', zipFile.matchedAuditId);
+        await supabase.from('interview_metadata').delete().eq('audit_id', zipFile.matchedAuditId);
+      }
+
+      // Upload file
+      const { error: uploadError } = await supabase.storage
+        .from("mobile-zips")
+        .upload(filePath, zipFile.file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: 'application/zip',
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Update progress
+      setZipFiles(prev => prev.map(f => 
+        f.fileName === zipFile.fileName 
+          ? { ...f, progress: 50 }
+          : f
+      ));
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("mobile-zips")
+        .getPublicUrl(filePath);
+
+      // Update audit record
+      await supabase
+        .from('audits')
+        .update({
+          mobile_zip_url: publicUrl,
+          mobile_zip_uploaded_at: new Date().toISOString(),
+        })
+        .eq('id', zipFile.matchedAuditId);
+
+      // Update status to processing
+      setZipFiles(prev => prev.map(f => 
+        f.fileName === zipFile.fileName 
+          ? { ...f, status: "processing" as const, progress: 75 }
+          : f
+      ));
+
+      // Process the ZIP (no artificial delay)
+      const { error: processError } = await supabase.functions.invoke('process-mobile-zip', {
+        body: { auditId: zipFile.matchedAuditId, mobileZipUrl: publicUrl }
+      });
+
+      if (processError) {
+        throw new Error(`Processing failed for "${zipFile.fileName}.zip"`);
+      }
+
+      // Success
+      setZipFiles(prev => prev.map(f => 
+        f.fileName === zipFile.fileName 
+          ? { ...f, status: "success" as const, progress: 100 }
+          : f
+      ));
+      return true;
+
+    } catch (error) {
+      console.error(`Error uploading ${zipFile.fileName}:`, error);
+      setZipFiles(prev => prev.map(f => 
+        f.fileName === zipFile.fileName 
+          ? { 
+              ...f, 
+              status: "error" as const, 
+              errorMessage: error instanceof Error ? error.message : "Upload failed"
+            }
+          : f
+      ));
+      return false;
+    }
+  };
+
   const handleUpload = async () => {
     const filesToUpload = zipFiles.filter(f => f.status === "pending");
     
@@ -110,102 +207,21 @@ export const BulkZipUploadDialog = ({
     let successCount = 0;
     let errorCount = 0;
 
-    for (const zipFile of filesToUpload) {
-      if (!zipFile.matchedAuditId) continue;
+    // Process in batches of CONCURRENT_UPLOADS
+    for (let i = 0; i < filesToUpload.length; i += CONCURRENT_UPLOADS) {
+      const batch = filesToUpload.slice(i, i + CONCURRENT_UPLOADS);
+      
+      const results = await Promise.allSettled(
+        batch.map(zipFile => processZipFile(zipFile))
+      );
 
-      try {
-        // Update status to uploading
-        setZipFiles(prev => prev.map(f => 
-          f.fileName === zipFile.fileName 
-            ? { ...f, status: "uploading" as const }
-            : f
-        ));
-
-        const filePath = `${zipFile.matchedAuditId}/${zipFile.file.name}`;
-
-        // Check if file already exists and delete it
-        const { data: existingFiles } = await supabase.storage
-          .from("mobile-zips")
-          .list(zipFile.matchedAuditId);
-
-        if (existingFiles?.some(f => f.name === zipFile.file.name)) {
-          await supabase.storage.from("mobile-zips").remove([filePath]);
-          await supabase.from('interview_photos').delete().eq('audit_id', zipFile.matchedAuditId);
-          await supabase.from('interview_metadata').delete().eq('audit_id', zipFile.matchedAuditId);
+      results.forEach(result => {
+        if (result.status === "fulfilled" && result.value) {
+          successCount++;
+        } else {
+          errorCount++;
         }
-
-        // Upload file
-        const { error: uploadError } = await supabase.storage
-          .from("mobile-zips")
-          .upload(filePath, zipFile.file, {
-            cacheControl: '3600',
-            upsert: true,
-            contentType: 'application/zip',
-          });
-
-        if (uploadError) throw uploadError;
-
-        // Update progress
-        setZipFiles(prev => prev.map(f => 
-          f.fileName === zipFile.fileName 
-            ? { ...f, progress: 50 }
-            : f
-        ));
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from("mobile-zips")
-          .getPublicUrl(filePath);
-
-        // Update audit record
-        await supabase
-          .from('audits')
-          .update({
-            mobile_zip_url: publicUrl,
-            mobile_zip_uploaded_at: new Date().toISOString(),
-          })
-          .eq('id', zipFile.matchedAuditId);
-
-        // Update status to processing
-        setZipFiles(prev => prev.map(f => 
-          f.fileName === zipFile.fileName 
-            ? { ...f, status: "processing" as const, progress: 75 }
-            : f
-        ));
-
-        // Wait for storage to finalize
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // Process the ZIP
-        const { error: processError } = await supabase.functions.invoke('process-mobile-zip', {
-          body: { auditId: zipFile.matchedAuditId, mobileZipUrl: publicUrl }
-        });
-
-        if (processError) {
-          throw new Error(`Processing failed for "${zipFile.fileName}.zip"`);
-        }
-
-        // Success
-        setZipFiles(prev => prev.map(f => 
-          f.fileName === zipFile.fileName 
-            ? { ...f, status: "success" as const, progress: 100 }
-            : f
-        ));
-        successCount++;
-
-      } catch (error) {
-        console.error(`Error uploading ${zipFile.fileName}:`, error);
-        setZipFiles(prev => prev.map(f => 
-          f.fileName === zipFile.fileName 
-            ? { 
-                ...f, 
-                status: "error" as const, 
-                errorMessage: error instanceof Error ? error.message : "Upload failed"
-              }
-            : f
-        ));
-        errorCount++;
-      }
+      });
     }
 
     setIsUploading(false);
