@@ -119,6 +119,12 @@ export const ReAuditDialog = ({
 
       if (reauditError) throw reauditError;
 
+      // Delete previous checklist progress so next auditor starts fresh
+      await supabase
+        .from("audit_checklist_progress")
+        .delete()
+        .eq("audit_id", auditId);
+
       toast({
         title: "Success",
         description: "Interview has been submitted for re-audit.",
