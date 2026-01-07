@@ -8,9 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock, Trash2, AlertTriangle, X } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Trash2, Bell, X } from "lucide-react";
 import { format } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -290,31 +291,6 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
       <div className="container py-8 space-y-6">
-        {/* AI Credit Notifications for Admins */}
-        {notifications.length > 0 && (
-          <div className="space-y-2">
-            {notifications.map((notification: { id: string; type: string; message: string; created_at: string }) => (
-              <Alert key={notification.id} variant="destructive" className="relative">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>AI Service Alert</AlertTitle>
-                <AlertDescription className="pr-8">
-                  {notification.message}
-                  <span className="ml-2 text-xs opacity-70">
-                    {format(new Date(notification.created_at), 'MMM d, h:mm a')}
-                  </span>
-                </AlertDescription>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute top-2 right-2 h-6 w-6 p-0"
-                  onClick={() => dismissNotification(notification.id)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </Alert>
-            ))}
-          </div>
-        )}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -323,16 +299,73 @@ const AdminDashboard = () => {
                 Manage user accounts and approve pending registrations
               </CardDescription>
             </div>
-            {userRole === 'super_admin' && (
-              <Button
-                variant="destructive"
-                onClick={() => setShowClearStorageDialog(true)}
-                className="gap-2"
-              >
-                <Trash2 className="h-4 w-4" />
-                Clear All Storage
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Compact Notification Bell */}
+              {(userRole === 'admin' || userRole === 'super_admin') && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon" className="relative">
+                      <Bell className="h-4 w-4" />
+                      {notifications.length > 0 && (
+                        <Badge 
+                          variant="destructive" 
+                          className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                        >
+                          {notifications.length}
+                        </Badge>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 p-0">
+                    <div className="p-3 border-b">
+                      <h4 className="font-semibold text-sm">Notifications</h4>
+                    </div>
+                    {notifications.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        No new notifications
+                      </div>
+                    ) : (
+                      <ScrollArea className="max-h-64">
+                        <div className="divide-y">
+                          {notifications.map((notification: { id: string; type: string; message: string; created_at: string }) => (
+                            <div key={notification.id} className="p-3 hover:bg-muted/50 relative group">
+                              <div className="pr-6">
+                                <p className="text-sm font-medium text-destructive">AI Service Alert</p>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {notification.message}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(notification.created_at), 'MMM d, h:mm a')}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="absolute top-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => dismissNotification(notification.id)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              )}
+              
+              {userRole === 'super_admin' && (
+                <Button
+                  variant="destructive"
+                  onClick={() => setShowClearStorageDialog(true)}
+                  className="gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Clear All Storage
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>

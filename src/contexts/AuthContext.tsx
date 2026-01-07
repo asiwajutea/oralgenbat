@@ -83,6 +83,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(session?.user ?? null);
 
         if (session?.user) {
+          // Keep loading true while we fetch the profile
+          // This prevents race condition where isApproved is checked before profile loads
+          setLoading(true);
           // CRITICAL: Defer Supabase calls to prevent auth deadlock
           // Making async Supabase calls inside onAuthStateChange can cause
           // infinite token refresh loops leading to 429 rate limit errors
@@ -104,6 +107,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        // Keep loading true while we fetch the profile
+        setLoading(true);
         // Also defer here for consistency
         setTimeout(() => {
           fetchProfileAndRole(session.user.id);
