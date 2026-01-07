@@ -86,6 +86,7 @@ export const ReviewActions = ({
           review_duration_seconds: reviewDurationSeconds || null,
           locked_by: null,
           locked_at: null,
+          review_started_at: null, // Clear timer on completion
         })
         .eq("id", auditId);
 
@@ -189,6 +190,7 @@ export const ReviewActions = ({
           review_duration_seconds: reviewDurationSeconds || null,
           locked_by: null,
           locked_at: null,
+          review_started_at: null, // Clear timer on completion
         })
         .eq("id", auditId);
 

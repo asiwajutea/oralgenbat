@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          metadata: Json | null
+          read: boolean | null
+          type: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          metadata?: Json | null
+          read?: boolean | null
+          type: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          metadata?: Json | null
+          read?: boolean | null
+          type?: string
+        }
+        Relationships: []
+      }
       audit_checklist_progress: {
         Row: {
           audit_id: string
@@ -126,6 +153,7 @@ export type Database = {
           re_audit_count: number | null
           review_comment: string | null
           review_duration_seconds: number | null
+          review_started_at: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           status: Database["public"]["Enums"]["audit_status"]
@@ -147,6 +175,7 @@ export type Database = {
           re_audit_count?: number | null
           review_comment?: string | null
           review_duration_seconds?: number | null
+          review_started_at?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
@@ -168,6 +197,7 @@ export type Database = {
           re_audit_count?: number | null
           review_comment?: string | null
           review_duration_seconds?: number | null
+          review_started_at?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]

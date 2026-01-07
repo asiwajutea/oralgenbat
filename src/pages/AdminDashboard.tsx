@@ -8,9 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock, Trash2 } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Trash2, AlertTriangle, X } from "lucide-react";
 import { format } from "date-fns";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface UserProfile {
   id: string;
@@ -28,6 +30,7 @@ interface UserProfile {
 
 const AdminDashboard = () => {
   const { user: currentUser, userRole } = useAuth();
+  const queryClient = useQueryClient();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending" | "approved">("all");
@@ -35,6 +38,36 @@ const AdminDashboard = () => {
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [showClearStorageDialog, setShowClearStorageDialog] = useState(false);
   const [clearingStorage, setClearingStorage] = useState(false);
+
+  // Fetch admin notifications (AI credit warnings)
+  const { data: notifications = [] } = useQuery({
+    queryKey: ["admin-notifications"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("admin_notifications")
+        .select("*")
+        .eq("read", false)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      
+      if (error) {
+        console.error("Error fetching notifications:", error);
+        return [];
+      }
+      return data || [];
+    },
+    enabled: userRole === 'admin' || userRole === 'super_admin',
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  const dismissNotification = async (notificationId: string) => {
+    await supabase
+      .from("admin_notifications")
+      .update({ read: true })
+      .eq("id", notificationId);
+    
+    queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -256,7 +289,32 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
-      <div className="container py-8">
+      <div className="container py-8 space-y-6">
+        {/* AI Credit Notifications for Admins */}
+        {notifications.length > 0 && (
+          <div className="space-y-2">
+            {notifications.map((notification: { id: string; type: string; message: string; created_at: string }) => (
+              <Alert key={notification.id} variant="destructive" className="relative">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>AI Service Alert</AlertTitle>
+                <AlertDescription className="pr-8">
+                  {notification.message}
+                  <span className="ml-2 text-xs opacity-70">
+                    {format(new Date(notification.created_at), 'MMM d, h:mm a')}
+                  </span>
+                </AlertDescription>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-2 right-2 h-6 w-6 p-0"
+                  onClick={() => dismissNotification(notification.id)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </Alert>
+            ))}
+          </div>
+        )}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -397,61 +455,61 @@ const AdminDashboard = () => {
             </Tabs>
           </CardContent>
         </Card>
+
+        <AlertDialog open={showRevokeDialog} onOpenChange={setShowRevokeDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revoke User Access?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will revoke access for <strong>{selectedUser?.full_name}</strong>.
+                They will no longer be able to access the system until re-approved.
+                This action can be reversed by approving them again.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={revokeUserAccess} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Revoke Access
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showClearStorageDialog} onOpenChange={setShowClearStorageDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clear All Storage?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete ALL files from storage buckets:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>audit-pdfs</li>
+                  <li>mobile-zips</li>
+                  <li>interview-photos</li>
+                  <li>interview-audio</li>
+                </ul>
+                <p className="mt-3 font-semibold text-destructive">This action cannot be undone!</p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={clearingStorage}>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={clearAllStorage} 
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={clearingStorage}
+              >
+                {clearingStorage ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Clearing...
+                  </>
+                ) : (
+                  'Clear All Storage'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      <AlertDialog open={showRevokeDialog} onOpenChange={setShowRevokeDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revoke User Access?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will revoke access for <strong>{selectedUser?.full_name}</strong>.
-              They will no longer be able to access the system until re-approved.
-              This action can be reversed by approving them again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={revokeUserAccess} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Revoke Access
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showClearStorageDialog} onOpenChange={setShowClearStorageDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear All Storage?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete ALL files from storage buckets:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>audit-pdfs</li>
-                <li>mobile-zips</li>
-                <li>interview-photos</li>
-                <li>interview-audio</li>
-              </ul>
-              <p className="mt-3 font-semibold text-destructive">This action cannot be undone!</p>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={clearingStorage}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={clearAllStorage} 
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={clearingStorage}
-            >
-              {clearingStorage ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Clearing...
-                </>
-              ) : (
-                'Clear All Storage'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

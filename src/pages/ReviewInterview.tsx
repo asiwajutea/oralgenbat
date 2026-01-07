@@ -18,7 +18,7 @@ import { ReviewActions } from "@/components/review/ReviewActions";
 import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
-import { useReviewTimer } from "@/components/review/ReviewTimer";
+import { ReviewTimer } from "@/components/review/ReviewTimer";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -61,7 +61,8 @@ const ReviewInterview = () => {
     releaseLock,
     isLoading: lockLoading,
     hasAbandoned,
-    setAbandoned
+    setAbandoned,
+    reviewStartedAt
   } = useInterviewLock(auditId);
 
   // Sticky detection and checklist ref
@@ -71,10 +72,21 @@ const ReviewInterview = () => {
 
   // Review timer - active for auditors on unreviewed interviews
   const [isTimerActive, setIsTimerActive] = useState(false);
-  const {
-    elapsedSeconds,
-    Timer
-  } = useReviewTimer(isTimerActive);
+  
+  // Calculate initial elapsed time from review_started_at
+  const initialElapsedSeconds = reviewStartedAt 
+    ? Math.max(0, Math.floor((Date.now() - reviewStartedAt.getTime()) / 1000))
+    : 0;
+  
+  const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds);
+  
+  // Update elapsedSeconds when reviewStartedAt changes
+  useEffect(() => {
+    if (reviewStartedAt) {
+      const calculatedSeconds = Math.max(0, Math.floor((Date.now() - reviewStartedAt.getTime()) / 1000));
+      setElapsedSeconds(calculatedSeconds);
+    }
+  }, [reviewStartedAt]);
 
   // Intersection Observer to detect when sticky is activated
   useEffect(() => {
@@ -137,21 +149,41 @@ const ReviewInterview = () => {
     },
     enabled: !!auditId
   });
+  // Query for next available interview (with metadata, not locked by others)
   const {
     data: nextAudit
   } = useQuery({
-    queryKey: ["next-unreviewed-audit", auditId],
+    queryKey: ["next-unreviewed-audit", auditId, user?.id],
     queryFn: async () => {
-      const {
-        data,
-        error
-      } = await supabase.from("audits").select("id").or('status.in.(Pending,Awaiting Review),reviewed_by.is.null').neq("id", auditId).order("uploaded_at", {
-        ascending: true
-      }).limit(1).maybeSingle();
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      
+      // Get audits that have metadata uploaded and are not locked by others
+      const { data, error } = await supabase
+        .from("audits")
+        .select(`
+          id, 
+          locked_by, 
+          locked_at,
+          interview_metadata!inner(id)
+        `)
+        .or('status.in.(Pending,Awaiting Review),reviewed_by.is.null')
+        .neq("id", auditId)
+        .order("uploaded_at", { ascending: true });
+      
       if (error) throw error;
-      return data;
+      
+      // Filter in JS to find audits not locked by others
+      // Allow: not locked, lock expired, or locked by current user
+      const available = data?.find(audit => {
+        const isNotLocked = !audit.locked_at;
+        const isLockExpired = audit.locked_at && audit.locked_at < oneHourAgo;
+        const isMyLock = audit.locked_by === user?.id;
+        return isNotLocked || isLockExpired || isMyLock;
+      });
+      
+      return available ? { id: available.id } : null;
     },
-    enabled: !!auditId
+    enabled: !!auditId && !!user?.id
   });
 
   // Fetch checklist progress - only load if reviewer_id matches current user
@@ -312,7 +344,13 @@ const ReviewInterview = () => {
             <div className="flex items-center gap-3">
               {/* Lock countdown timer */}
               {isAuditor && !isReviewed && isLocked && !lockedByOther && remainingSeconds > 0}
-              {isAuditor && !isReviewed && Timer}
+              {isAuditor && !isReviewed && (
+                <ReviewTimer 
+                  isActive={isTimerActive} 
+                  initialSeconds={initialElapsedSeconds}
+                  onTimeUpdate={setElapsedSeconds}
+                />
+              )}
             </div>
           </div>
           <div className="mt-4">

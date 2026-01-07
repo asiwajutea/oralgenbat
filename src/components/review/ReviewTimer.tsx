@@ -4,18 +4,26 @@ import { Badge } from "@/components/ui/badge";
 
 interface ReviewTimerProps {
   isActive: boolean;
+  initialSeconds?: number;
   onTimeUpdate?: (seconds: number) => void;
 }
 
-export const ReviewTimer = ({ isActive, onTimeUpdate }: ReviewTimerProps) => {
-  const [seconds, setSeconds] = useState(0);
+export const ReviewTimer = ({ isActive, initialSeconds = 0, onTimeUpdate }: ReviewTimerProps) => {
+  const [seconds, setSeconds] = useState(initialSeconds);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const startTimeRef = useRef<Date | null>(null);
+  const initializedRef = useRef(false);
+
+  // Update seconds when initialSeconds changes (e.g., from database)
+  useEffect(() => {
+    if (initialSeconds > 0 && !initializedRef.current) {
+      setSeconds(initialSeconds);
+      onTimeUpdate?.(initialSeconds);
+      initializedRef.current = true;
+    }
+  }, [initialSeconds, onTimeUpdate]);
 
   useEffect(() => {
     if (isActive) {
-      startTimeRef.current = new Date();
-      
       intervalRef.current = setInterval(() => {
         setSeconds((prev) => {
           const newSeconds = prev + 1;
@@ -57,17 +65,18 @@ export const ReviewTimer = ({ isActive, onTimeUpdate }: ReviewTimerProps) => {
   );
 };
 
-export const useReviewTimer = (isActive: boolean) => {
+export const useReviewTimer = (isActive: boolean, reviewStartedAt?: Date | null) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Calculate initial seconds from reviewStartedAt
+  const initialSeconds = reviewStartedAt 
+    ? Math.floor((Date.now() - reviewStartedAt.getTime()) / 1000)
+    : 0;
 
   return {
     elapsedSeconds,
     setElapsedSeconds,
-    Timer: (
-      <ReviewTimer
-        isActive={isActive}
-        onTimeUpdate={setElapsedSeconds}
-      />
-    ),
+    initialSeconds,
+    TimerComponent: ReviewTimer,
   };
 };

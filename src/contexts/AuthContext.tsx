@@ -32,9 +32,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const navigate = useNavigate();
 
   const fetchProfileAndRole = async (userId: string) => {
+    // Prevent duplicate fetches that cause rate limiting
+    if (isFetchingProfile) return;
+    setIsFetchingProfile(true);
+    
     try {
       // Fetch profile
       const { data: profileData, error: profileError } = await supabase
@@ -65,6 +70,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.error("Error fetching profile and role:", error);
     } finally {
       setLoading(false);
+      setIsFetchingProfile(false);
     }
   };
 
@@ -72,12 +78,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        // Synchronous state updates only
         setSession(session);
         setUser(session?.user ?? null);
 
-      if (session?.user) {
-        fetchProfileAndRole(session.user.id);
-      } else {
+        if (session?.user) {
+          // CRITICAL: Defer Supabase calls to prevent auth deadlock
+          // Making async Supabase calls inside onAuthStateChange can cause
+          // infinite token refresh loops leading to 429 rate limit errors
+          setTimeout(() => {
+            fetchProfileAndRole(session.user.id);
+          }, 0);
+        } else {
           setProfile(null);
           setUserRole(null);
           setIsApproved(false);
@@ -92,7 +104,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchProfileAndRole(session.user.id);
+        // Also defer here for consistency
+        setTimeout(() => {
+          fetchProfileAndRole(session.user.id);
+        }, 0);
       } else {
         setLoading(false);
       }
