@@ -261,20 +261,23 @@ const ReviewInterview = () => {
     if (!auditId) return;
     setIsAnalyzingPDF(true);
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('analyze-pdf', {
-        body: {
-          auditId
-        }
+      const { data, error } = await supabase.functions.invoke('analyze-pdf', {
+        body: { auditId }
       });
       
-      // Check for AI credit errors - handle gracefully
+      // Check for AI credit/rate limit errors - handle gracefully
       if (error) {
-        const errorMessage = error.message || '';
-        if (errorMessage.includes('402') || errorMessage.includes('credits') || errorMessage.includes('Payment') || errorMessage.includes('429') || errorMessage.includes('rate') || errorMessage.includes('manual scoring')) {
-          // Silent for auditors - prompt them to use manual scoring
+        const errorMessage = error.message || JSON.stringify(error) || '';
+        const isAiUnavailable = 
+          errorMessage.includes('402') || 
+          errorMessage.includes('429') ||
+          errorMessage.includes('credits') || 
+          errorMessage.includes('Payment') || 
+          errorMessage.includes('rate') || 
+          errorMessage.includes('manual scoring') ||
+          errorMessage.includes('unavailable');
+          
+        if (isAiUnavailable) {
           console.log("AI credits exhausted - manual scoring available");
           toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
           return;
@@ -282,12 +285,27 @@ const ReviewInterview = () => {
         throw error;
       }
       
+      // Also check if data contains an error (for non-throwing error responses)
+      if (data?.error) {
+        const errorMsg = data.error;
+        if (errorMsg.includes('manual') || errorMsg.includes('unavailable')) {
+          toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
+          return;
+        }
+      }
+      
       toast.success('PDF analyzed successfully');
       queryClient.invalidateQueries({
         queryKey: ["interview-metadata", auditId]
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('PDF analysis error:', error);
+      // Final check for AI-related errors in catch block
+      const errStr = error?.message || JSON.stringify(error) || '';
+      if (errStr.includes('402') || errStr.includes('429') || errStr.includes('manual')) {
+        toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
+        return;
+      }
       toast.error('Failed to analyze PDF. Please try again.');
     } finally {
       setIsAnalyzingPDF(false);
