@@ -111,28 +111,15 @@ const Auth = () => {
       // Validate form data
       const validatedData = loginSchema.parse(loginData);
 
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: validatedData.email,
         password: validatedData.password,
       });
 
       if (error) throw error;
 
-      // Check if user is approved
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("is_approved")
-        .eq("id", data.user.id)
-        .single();
-
-      if (profileError) throw profileError;
-
-      if (!profile.is_approved) {
-        await supabase.auth.signOut();
-        toast.error("Your account is pending admin approval. Please contact an administrator.");
-        return;
-      }
-
+      // Don't check profile here - AuthContext handles it via onAuthStateChange
+      // The ProtectedRoute will redirect to /pending-approval if not approved
       toast.success("Logged in successfully!");
       navigate("/");
     } catch (error: any) {
