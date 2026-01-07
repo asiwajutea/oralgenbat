@@ -135,14 +135,23 @@ End with an overall rating: Excellent, Good, Fair, or Poor.`;
       console.error("Lovable AI error:", aiResponse.status, errorText);
       
       if (aiResponse.status === 402) {
+        // Insert admin notification about credit exhaustion
+        await supabase
+          .from("admin_notifications")
+          .insert({
+            type: "ai_credit_exhausted",
+            message: "AI credits exhausted. Audio summary could not be generated.",
+            metadata: { auditId, timestamp: new Date().toISOString() }
+          });
+        
         return new Response(
-          JSON.stringify({ error: 'AI credits exhausted. Please add credits to your Lovable workspace to continue using AI features.' }),
+          JSON.stringify({ error: 'AI analysis unavailable. Durations have been saved.' }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       if (aiResponse.status === 429) {
         return new Response(
-          JSON.stringify({ error: 'AI rate limit exceeded. Please wait a moment and try again.' }),
+          JSON.stringify({ error: 'AI service is busy. Please try again later.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

@@ -113,6 +113,31 @@ Respond ONLY with valid JSON in this exact format:
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error("AI API error:", aiResponse.status, errorText);
+      
+      // Handle AI credit exhaustion - log admin notification
+      if (aiResponse.status === 402) {
+        // Insert admin notification about credit exhaustion
+        await supabase
+          .from("admin_notifications")
+          .insert({
+            type: "ai_credit_exhausted",
+            message: "AI credits exhausted. PDF analysis could not be completed.",
+            metadata: { auditId, timestamp: new Date().toISOString() }
+          });
+        
+        return new Response(
+          JSON.stringify({ error: "AI analysis unavailable. Please use manual scoring." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      if (aiResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ error: "AI service is busy. Please try again later." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
       throw new Error(`AI analysis failed: ${aiResponse.status}`);
     }
 

@@ -14,6 +14,7 @@ interface UseLockResult {
   isLoading: boolean;
   hasAbandoned: boolean;
   setAbandoned: (abandoned: boolean) => void;
+  reviewStartedAt: Date | null;
 }
 
 const LOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour
@@ -27,6 +28,7 @@ export const useInterviewLock = (auditId: string | undefined): UseLockResult => 
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasAbandoned, setHasAbandonedState] = useState(false);
+  const [reviewStartedAt, setReviewStartedAt] = useState<Date | null>(null);
 
   const userId = session?.user?.id;
   const abandonedKey = `abandoned_review_${auditId}`;
@@ -65,7 +67,7 @@ export const useInterviewLock = (auditId: string | undefined): UseLockResult => 
     try {
       const { data, error } = await supabase
         .from("audits")
-        .select("locked_by, locked_at, status")
+        .select("locked_by, locked_at, status, review_started_at")
         .eq("id", auditId)
         .single();
 
@@ -78,7 +80,13 @@ export const useInterviewLock = (auditId: string | undefined): UseLockResult => 
         setLockOwnerId(null);
         setLockExpiresAt(null);
         setRemainingSeconds(0);
+        setReviewStartedAt(null);
         return;
+      }
+
+      // Set review started time if available
+      if (data.review_started_at) {
+        setReviewStartedAt(new Date(data.review_started_at));
       }
 
       const oneHourAgo = new Date(Date.now() - LOCK_DURATION_MS).toISOString();
@@ -121,7 +129,7 @@ export const useInterviewLock = (auditId: string | undefined): UseLockResult => 
       // First check current lock status
       const { data: audit, error: fetchError } = await supabase
         .from("audits")
-        .select("locked_by, locked_at, status")
+        .select("locked_by, locked_at, status, review_started_at")
         .eq("id", auditId)
         .single();
 
@@ -144,12 +152,24 @@ export const useInterviewLock = (auditId: string | undefined): UseLockResult => 
 
       // Acquire or refresh lock
       const now = new Date().toISOString();
+      
+      // Only set review_started_at if it's not already set (preserve original start time)
+      const updateData: Record<string, unknown> = {
+        locked_by: userId,
+        locked_at: now,
+      };
+      
+      // If no existing review_started_at, set it now
+      if (!audit.review_started_at) {
+        updateData.review_started_at = now;
+        setReviewStartedAt(new Date(now));
+      } else {
+        setReviewStartedAt(new Date(audit.review_started_at));
+      }
+
       const { error: updateError } = await supabase
         .from("audits")
-        .update({
-          locked_by: userId,
-          locked_at: now,
-        })
+        .update(updateData)
         .eq("id", auditId);
 
       if (updateError) throw updateError;
@@ -251,5 +271,6 @@ export const useInterviewLock = (auditId: string | undefined): UseLockResult => 
     isLoading,
     hasAbandoned,
     setAbandoned,
+    reviewStartedAt,
   };
 };

@@ -50,10 +50,21 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
   const handleReanalyze = async () => {
     setIsReanalyzing(true);
     try {
-      const { error } = await supabase.functions.invoke('analyze-pdf', {
+      const { data, error } = await supabase.functions.invoke('analyze-pdf', {
         body: { auditId }
       });
-      if (error) throw error;
+      
+      // Check for AI credit errors
+      if (error) {
+        const errorMessage = error.message || '';
+        if (errorMessage.includes('402') || errorMessage.includes('credits') || errorMessage.includes('Payment')) {
+          // Silent for auditors - don't show credit error
+          console.log("AI credits exhausted - manual scoring available");
+          toast.info("AI analysis unavailable. Please use manual scoring.");
+          return;
+        }
+        throw error;
+      }
       
       // Reset manually adjusted flag since AI has re-analyzed
       await supabase
