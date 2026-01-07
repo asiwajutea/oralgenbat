@@ -114,7 +114,7 @@ Respond ONLY with valid JSON in this exact format:
       const errorText = await aiResponse.text();
       console.error("AI API error:", aiResponse.status, errorText);
       
-      // Handle AI credit exhaustion - log admin notification
+      // Handle AI credit exhaustion - log admin notification and return graceful response
       if (aiResponse.status === 402) {
         // Insert admin notification about credit exhaustion
         await supabase
@@ -125,16 +125,26 @@ Respond ONLY with valid JSON in this exact format:
             metadata: { auditId, timestamp: new Date().toISOString() }
           });
         
+        // Return 200 with ai_unavailable flag for graceful client handling
         return new Response(
-          JSON.stringify({ error: "AI analysis unavailable. Please use manual scoring." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ 
+            success: false, 
+            ai_unavailable: true, 
+            message: "AI analysis unavailable. Please use manual scoring." 
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
       if (aiResponse.status === 429) {
+        // Return 200 with ai_unavailable flag for graceful client handling
         return new Response(
-          JSON.stringify({ error: "AI service is busy. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ 
+            success: false, 
+            ai_unavailable: true, 
+            message: "AI service is busy. Please try again later or use manual scoring." 
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       

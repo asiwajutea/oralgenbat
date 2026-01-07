@@ -265,48 +265,35 @@ const ReviewInterview = () => {
         body: { auditId }
       });
       
-      // Handle FunctionsHttpError (non-2xx responses)
+      // Handle any invoke errors
       if (error) {
-        // FunctionsHttpError contains status in context
-        const status = (error as any)?.context?.status;
-        if (status === 402 || status === 429) {
-          console.log("AI credits/rate limit - manual scoring available");
-          toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
-          return;
-        }
-        
-        // Check error message as fallback
-        const errorMessage = String(error?.message || '');
-        if (errorMessage.includes('402') || errorMessage.includes('429')) {
-          toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
-          return;
-        }
-        
-        throw error;
-      }
-      
-      // Check if data contains an error (edge function returned error in body)
-      if (data?.error) {
-        if (data.error.includes('manual') || data.error.includes('unavailable')) {
-          toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
-          return;
-        }
-        throw new Error(data.error);
-      }
-      
-      toast.success('PDF analyzed successfully');
-      queryClient.invalidateQueries({
-        queryKey: ["interview-metadata", auditId]
-      });
-    } catch (err) {
-      console.error('PDF analysis error:', err);
-      // Safe string conversion
-      const errStr = String(err?.message || err || '');
-      if (errStr.includes('402') || errStr.includes('429') || errStr.includes('manual') || errStr.includes('unavailable')) {
-        toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
+        console.error('PDF analysis invoke error:', error);
+        toast.error('Failed to analyze PDF. Please try again or use manual scoring.');
         return;
       }
-      toast.error('Failed to analyze PDF. Please try again.');
+      
+      // Check if AI is unavailable (graceful degradation)
+      if (data?.ai_unavailable) {
+        toast.info(data.message || "AI analysis unavailable. Please use Edit Scores for manual entry.");
+        return;
+      }
+      
+      // Check if there was an error in the response
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+      
+      // Success
+      if (data?.success) {
+        toast.success('PDF analyzed successfully');
+        queryClient.invalidateQueries({
+          queryKey: ["interview-metadata", auditId]
+        });
+      }
+    } catch (err) {
+      console.error('PDF analysis error:', err);
+      toast.error('Failed to analyze PDF. Please try again or use manual scoring.');
     } finally {
       setIsAnalyzingPDF(false);
     }
