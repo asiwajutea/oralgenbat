@@ -47,8 +47,12 @@ serve(async (req) => {
 
     if (!assignments || assignments.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'No new assignments to export for this team' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          success: false, 
+          files: [], 
+          message: 'No new assignments to export for this team' 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -72,8 +76,12 @@ serve(async (req) => {
 
     if (!audits || audits.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'No audit files found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          success: false, 
+          files: [], 
+          message: 'No audit files found for these assignments' 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

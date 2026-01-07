@@ -266,8 +266,9 @@ const TeamAssignments = () => {
       });
 
       if (error) throw error;
-      if (!data.files || data.files.length === 0) {
-        toast.error('No new assignments to export for this team');
+      
+      if (!data?.files || data.files.length === 0) {
+        toast.info(data?.message || 'No new assignments to export for this team');
         return;
       }
 
