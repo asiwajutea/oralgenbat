@@ -48,7 +48,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .eq("id", userId)
         .single();
 
-      if (profileError) throw profileError;
+      // Check for authentication-related errors (406, 401, etc.)
+      if (profileError) {
+        // 406 = Not Acceptable (often means corrupted/invalid token)
+        // PGRST301 = JWT expired or invalid
+        const isAuthError = 
+          profileError.code === '406' || 
+          profileError.code === 'PGRST301' ||
+          profileError.message?.includes('406') ||
+          profileError.message?.includes('JWT') ||
+          profileError.message?.includes('token');
+        
+        if (isAuthError) {
+          console.warn("Authentication error detected, clearing session:", profileError);
+          // Clear corrupted session and force re-login
+          await supabase.auth.signOut();
+          setProfile(null);
+          setUserRole(null);
+          setIsApproved(false);
+          setLoading(false);
+          setIsFetchingProfile(false);
+          return;
+        }
+        throw profileError;
+      }
 
       setProfile(profileData);
       setIsApproved(profileData?.is_approved || false);
@@ -68,6 +91,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     } catch (error) {
       console.error("Error fetching profile and role:", error);
+      // On any unexpected error, also clear session to prevent infinite loops
+      await supabase.auth.signOut();
+      setProfile(null);
+      setUserRole(null);
+      setIsApproved(false);
     } finally {
       setLoading(false);
       setIsFetchingProfile(false);
@@ -101,8 +129,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     );
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Check for existing session with validation
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      // If there's an error getting the session, clear localStorage and start fresh
+      if (error) {
+        console.warn("Error getting session, clearing localStorage:", error);
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
       
