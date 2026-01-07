@@ -133,6 +133,20 @@ End with an overall rating: Excellent, Good, Fair, or Poor.`;
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error("Lovable AI error:", aiResponse.status, errorText);
+      
+      if (aiResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ error: 'AI credits exhausted. Please add credits to your Lovable workspace to continue using AI features.' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (aiResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'AI rate limit exceeded. Please wait a moment and try again.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       throw new Error(`Lovable AI request failed: ${aiResponse.statusText}`);
     }
 

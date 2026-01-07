@@ -109,6 +109,13 @@ export const AudioPlayerPanel = ({
 
       if (summaryError) {
         console.warn("Summary regeneration failed:", summaryError);
+        // Check for specific error types
+        const errorMessage = summaryError.message || '';
+        if (errorMessage.includes('402') || errorMessage.includes('credits')) {
+          toast.warning("AI credits exhausted. Durations saved, but AI summary could not be generated. Please add credits to your Lovable workspace.");
+        } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+          toast.warning("AI rate limit reached. Durations saved, but please try regenerating summary later.");
+        }
         // Don't fail the whole operation - durations are saved
       }
 
