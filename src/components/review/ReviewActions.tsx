@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone, ClipboardList } from "lucide-react";
 import { ReAuditDialog } from "./ReAuditDialog";
 
 interface ReviewActionsProps {
@@ -31,6 +31,9 @@ interface ReviewActionsProps {
   checklistFailureComments?: string;
   reviewDurationSeconds?: number;
   onReleaseLock?: () => Promise<void>;
+  audioAnalysisComplete?: boolean;
+  pdfAnalysisComplete?: boolean;
+  onScrollToChecklist?: () => void;
 }
 
 export const ReviewActions = ({ 
@@ -43,6 +46,9 @@ export const ReviewActions = ({
   checklistFailureComments = "",
   reviewDurationSeconds,
   onReleaseLock,
+  audioAnalysisComplete = false,
+  pdfAnalysisComplete = false,
+  onScrollToChecklist,
 }: ReviewActionsProps) => {
   const [showFailDialog, setShowFailDialog] = useState(false);
   const [showPassDialog, setShowPassDialog] = useState(false);
@@ -246,8 +252,9 @@ export const ReviewActions = ({
 
   // Determine if we should show auditor buttons
   const showAuditorButtons = isAuditor && !isReviewed && checklistCompleted;
-  const canPass = showAuditorButtons && !hasChecklistFailures;
-  const canFail = showAuditorButtons;
+  const analysisComplete = audioAnalysisComplete && pdfAnalysisComplete;
+  const canPass = showAuditorButtons && !hasChecklistFailures && analysisComplete;
+  const canFail = showAuditorButtons && analysisComplete;
 
   return (
     <>
@@ -284,9 +291,28 @@ export const ReviewActions = ({
                   </Button>
                 )}
 
+                {/* Review Checklist button - shown when can fail but there are failures */}
+                {hasChecklistFailures && onScrollToChecklist && (
+                  <Button
+                    onClick={onScrollToChecklist}
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    Review Checklist
+                  </Button>
+                )}
+
                 {hasChecklistFailures && (
                   <span className="text-sm text-amber-600 ml-2">
                     Checklist has failed items - interview cannot pass
+                  </span>
+                )}
+
+                {/* Show warning if analysis not complete */}
+                {showAuditorButtons && !analysisComplete && (
+                  <span className="text-sm text-orange-600 ml-2">
+                    Complete audio &amp; PDF analysis before passing/failing
                   </span>
                 )}
               </>

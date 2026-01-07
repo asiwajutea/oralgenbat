@@ -86,12 +86,20 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
   const handleSaveScores = async () => {
     setIsSaving(true);
     try {
+      // Generate updated feedback noting the manual adjustment
+      const adjustmentNote = `\n\n---\n📝 Scores manually adjusted by reviewer on ${new Date().toLocaleDateString()}:\n• Clarity: ${editClarityScore}% (${getScoreLabel(editClarityScore)})\n• Legibility: ${editLegibilityScore}% (${getScoreLabel(editLegibilityScore)})`;
+      
+      const updatedFeedback = feedback 
+        ? feedback.split('\n\n---\n📝 Scores manually')[0] + adjustmentNote // Replace previous adjustment note if exists
+        : `Manual assessment provided.${adjustmentNote}`;
+
       const { error } = await supabase
         .from('interview_metadata')
         .update({
           pdf_clarity_score: editClarityScore,
           pdf_handwriting_legibility: editLegibilityScore,
           pdf_scores_manually_adjusted: true,
+          pdf_quality_feedback: updatedFeedback,
         })
         .eq('audit_id', auditId);
 

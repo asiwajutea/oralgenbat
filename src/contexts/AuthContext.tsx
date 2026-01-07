@@ -48,16 +48,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setProfile(profileData);
       setIsApproved(profileData?.is_approved || false);
 
-      // Fetch role
+      // Fetch role - use maybeSingle to handle 0 or 1 roles gracefully
       const { data: roleData, error: roleError } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle();
 
-      if (roleError) throw roleError;
-
-      setUserRole(roleData?.role || null);
+      if (roleError) {
+        console.error("Error fetching role:", roleError);
+        setUserRole(null);
+      } else {
+        setUserRole(roleData?.role || null);
+      }
     } catch (error) {
       console.error("Error fetching profile and role:", error);
     } finally {

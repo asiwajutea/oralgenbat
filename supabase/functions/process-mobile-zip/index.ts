@@ -395,11 +395,11 @@ serve(async (req) => {
       return parts.length > 0 ? parts.join(", ") : null;
     };
 
-    // Calculate birth year from age if available
-    const calculateBirthYear = (age: number | null) => {
+    // Calculate birth year from age using the interview year, not current year
+    const calculateBirthYear = (age: number | null, interviewDateStr: string) => {
       if (!age) return null;
-      const currentYear = new Date().getFullYear();
-      return currentYear - age;
+      const interviewYear = parseInt(interviewDateStr.slice(0, 4), 10);
+      return interviewYear - age;
     };
 
     // Insert metadata into database
@@ -416,7 +416,7 @@ serve(async (req) => {
         interviewee_title: metadata.interviewee?.title || null,
         interviewee_name: formatFullName(metadata.interviewee),
         interviewee_age: metadata.interviewee?.age || null,
-        interviewee_birth_year: calculateBirthYear(metadata.interviewee?.age),
+        interviewee_birth_year: calculateBirthYear(metadata.interviewee?.age, interviewDate),
         interviewee_tribe: metadata.interviewee?.tribe || null,
         interviewee_clan: metadata.interviewee?.clan || null,
         interviewee_birth_location: formatLocation(metadata.interviewee?.birthPlace),
@@ -456,28 +456,8 @@ serve(async (req) => {
       throw metadataError;
     }
 
-    // Automatically trigger PDF analysis
-    console.log("Triggering automatic PDF analysis...");
-    try {
-      const { data: pdfAnalysisResult, error: pdfAnalysisError } = await supabase.functions.invoke(
-        'analyze-pdf',
-        {
-          body: { auditId }
-        }
-      );
-
-      if (pdfAnalysisError) {
-        console.warn("PDF analysis failed (non-critical):", pdfAnalysisError.message);
-        console.warn("PDF can be analyzed manually later from the Review page");
-      } else {
-        console.log("✓ PDF analysis completed successfully:", pdfAnalysisResult);
-      }
-    } catch (pdfAnalysisException) {
-      console.warn("PDF analysis encountered an error (non-critical):", pdfAnalysisException);
-      console.warn("PDF can be analyzed manually later from the Review page");
-    }
-
-    console.log("Mobile ZIP processing completed successfully");
+    // PDF analysis is now triggered manually from the Review page
+    console.log("Mobile ZIP processing completed successfully (PDF analysis will be done manually)");
     return new Response(
       JSON.stringify({ 
         success: true,

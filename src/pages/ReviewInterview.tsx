@@ -22,6 +22,9 @@ import { useReviewTimer } from "@/components/review/ReviewTimer";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Ref for scrolling to checklist
+type ChecklistRef = { scrollToChecklist: () => void; expandChecklist: () => void } | null;
+
 // Format seconds to MM:SS
 const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -37,7 +40,8 @@ const ReviewInterview = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const {
-    userRole
+    userRole,
+    user
   } = useAuth();
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
@@ -60,9 +64,10 @@ const ReviewInterview = () => {
     setAbandoned
   } = useInterviewLock(auditId);
 
-  // Sticky detection
+  // Sticky detection and checklist ref
   const [isSticky, setIsSticky] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const checklistRef = useRef<HTMLDivElement>(null);
 
   // Review timer - active for auditors on unreviewed interviews
   const [isTimerActive, setIsTimerActive] = useState(false);
@@ -149,17 +154,25 @@ const ReviewInterview = () => {
     enabled: !!auditId
   });
 
-  // Fetch checklist progress
+  // Fetch checklist progress - only load if reviewer_id matches current user
   const {
     data: checklistProgress,
     isLoading: checklistLoading
   } = useQuery({
-    queryKey: ["checklist-progress", auditId],
+    queryKey: ["checklist-progress", auditId, user?.id],
     queryFn: async () => {
+      if (!user?.id) return null;
+      
       const {
         data,
         error
-      } = await supabase.from("audit_checklist_progress").select("*").eq("audit_id", auditId).maybeSingle();
+      } = await supabase
+        .from("audit_checklist_progress")
+        .select("*")
+        .eq("audit_id", auditId)
+        .eq("reviewer_id", user.id) // Only load progress for current user
+        .maybeSingle();
+      
       if (error) throw error;
       if (!data) return null;
 
@@ -169,7 +182,7 @@ const ReviewInterview = () => {
         items: data.items as unknown as ChecklistProgress["items"]
       } as ChecklistProgress;
     },
-    enabled: !!auditId && isAuditor
+    enabled: !!auditId && isAuditor && !!user?.id
   });
 
   // Initialize state from saved progress
@@ -316,7 +329,7 @@ const ReviewInterview = () => {
         {/* Sticky Section - Checklist & Actions only */}
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background border-b border-border shadow-sm">
           {/* Audit Checklist for auditors on unreviewed interviews - only show if metadata is uploaded */}
-          {isAuditor && !isReviewed && metadata && <div className="p-4">
+          {isAuditor && !isReviewed && metadata && <div className="p-4" ref={checklistRef}>
               <AuditChecklist auditId={auditId!} interviewId={audit.file_name} initialProgress={checklistProgress} isSticky={isSticky} onComplete={(hasFailures, comments) => {
             setChecklistCompleted(true);
             setHasChecklistFailures(hasFailures);
@@ -342,6 +355,11 @@ const ReviewInterview = () => {
             checklistFailureComments={checklistComments}
             reviewDurationSeconds={elapsedSeconds}
             onReleaseLock={releaseLock}
+            audioAnalysisComplete={metadata?.duration_manually_confirmed === true}
+            pdfAnalysisComplete={metadata?.pdf_clarity_score !== null && metadata?.pdf_clarity_score !== undefined}
+            onScrollToChecklist={() => {
+              checklistRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
           />
         </div>
 
