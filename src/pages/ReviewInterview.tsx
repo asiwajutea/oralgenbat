@@ -394,7 +394,10 @@ const ReviewInterview = () => {
             reviewDurationSeconds={elapsedSeconds}
             onReleaseLock={releaseLock}
             audioAnalysisComplete={metadata?.duration_manually_confirmed === true}
-            pdfAnalysisComplete={metadata?.pdf_clarity_score !== null && metadata?.pdf_clarity_score !== undefined}
+            pdfAnalysisComplete={
+              (metadata?.pdf_clarity_score !== null && metadata?.pdf_clarity_score !== undefined) ||
+              metadata?.pdf_scores_manually_adjusted === true
+            }
             onScrollToChecklist={() => {
               checklistRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}

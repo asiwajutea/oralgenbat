@@ -4,7 +4,8 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { FileCheck, PenTool, RefreshCw, Loader2, Edit2, Save, X } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { FileCheck, PenTool, RefreshCw, Loader2, Edit2, Save, X, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
   const [editClarityScore, setEditClarityScore] = useState(metadata.pdf_clarity_score ?? 0);
   const [editLegibilityScore, setEditLegibilityScore] = useState(metadata.pdf_handwriting_legibility ?? 0);
 
@@ -57,10 +59,13 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
       // Check for AI credit errors
       if (error) {
         const errorMessage = error.message || '';
-        if (errorMessage.includes('402') || errorMessage.includes('credits') || errorMessage.includes('Payment')) {
-          // Silent for auditors - don't show credit error
+        if (errorMessage.includes('402') || errorMessage.includes('credits') || errorMessage.includes('Payment') || errorMessage.includes('429') || errorMessage.includes('rate')) {
+          // Silent for auditors - don't show credit error, prompt manual scoring
           console.log("AI credits exhausted - manual scoring available");
+          setAiUnavailable(true);
           toast.info("AI analysis unavailable. Please use manual scoring.");
+          // Auto-enter edit mode for manual scoring
+          setIsEditMode(true);
           return;
         }
         throw error;
@@ -201,6 +206,16 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh }: PDFAnalysisPa
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* AI Unavailable Alert */}
+        {aiUnavailable && !isManuallyAdjusted && (
+          <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-800 dark:text-amber-200">
+              AI analysis is currently unavailable. Please enter manual scores to proceed with the audit.
+            </AlertDescription>
+          </Alert>
+        )}
+        
         {/* Clarity Score */}
         <div className="space-y-3 p-4 rounded-lg border border-border bg-muted/5">
           <div className="flex items-center gap-3">
