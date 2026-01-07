@@ -269,7 +269,19 @@ const ReviewInterview = () => {
           auditId
         }
       });
-      if (error) throw error;
+      
+      // Check for AI credit errors - handle gracefully
+      if (error) {
+        const errorMessage = error.message || '';
+        if (errorMessage.includes('402') || errorMessage.includes('credits') || errorMessage.includes('Payment') || errorMessage.includes('429') || errorMessage.includes('rate') || errorMessage.includes('manual scoring')) {
+          // Silent for auditors - prompt them to use manual scoring
+          console.log("AI credits exhausted - manual scoring available");
+          toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
+          return;
+        }
+        throw error;
+      }
+      
       toast.success('PDF analyzed successfully');
       queryClient.invalidateQueries({
         queryKey: ["interview-metadata", auditId]
