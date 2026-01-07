@@ -45,6 +45,7 @@ const ReviewInterview = () => {
   } = useAuth();
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
 
   // Checklist state
   const [checklistCompleted, setChecklistCompleted] = useState(false);
@@ -274,7 +275,8 @@ const ReviewInterview = () => {
       
       // Check if AI is unavailable (graceful degradation)
       if (data?.ai_unavailable) {
-        toast.info(data.message || "AI analysis unavailable. Please use Edit Scores for manual entry.");
+        setAiUnavailable(true);
+        toast.info(data.message || "AI analysis unavailable. Please use manual scoring below.");
         return;
       }
       
@@ -440,24 +442,37 @@ const ReviewInterview = () => {
             });
           }} /> : <AudioAnalysisPanel metadata={metadata} />}
               
-              {metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null ? <PDFAnalysisPanel metadata={metadata} auditId={auditId!} onRefresh={() => queryClient.invalidateQueries({
-            queryKey: ["interview-metadata", auditId]
-          })} /> : <div className="border border-dashed border-border rounded-lg p-6 text-center">
+              {metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null || aiUnavailable ? (
+                <PDFAnalysisPanel 
+                  metadata={metadata} 
+                  auditId={auditId!} 
+                  onRefresh={() => queryClient.invalidateQueries({
+                    queryKey: ["interview-metadata", auditId]
+                  })}
+                  aiUnavailable={aiUnavailable}
+                />
+              ) : (
+                <div className="border border-dashed border-border rounded-lg p-6 text-center">
                   <FileCheck className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
                   <h3 className="font-medium mb-2">PDF Quality Not Analyzed</h3>
                   <p className="text-sm text-muted-foreground mb-4">
                     Analyze the PDF to get clarity, legibility scores and AI feedback
                   </p>
                   <Button onClick={handleAnalyzePDF} disabled={isAnalyzingPDF} variant="outline">
-                    {isAnalyzingPDF ? <>
+                    {isAnalyzingPDF ? (
+                      <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Analyzing PDF...
-                      </> : <>
+                      </>
+                    ) : (
+                      <>
                         <FileCheck className="mr-2 h-4 w-4" />
                         Analyze PDF Quality
-                      </>}
+                      </>
+                    )}
                   </Button>
-                </div>}
+                </div>
+              )}
             </> : <MobileZipUpload auditId={auditId!} expectedFileName={audit.file_name} onUploadSuccess={() => {
           queryClient.invalidateQueries({
             queryKey: ["audit", auditId]
