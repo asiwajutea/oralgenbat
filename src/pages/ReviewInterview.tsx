@@ -265,44 +265,44 @@ const ReviewInterview = () => {
         body: { auditId }
       });
       
-      // Check for AI credit/rate limit errors - handle gracefully
+      // Handle FunctionsHttpError (non-2xx responses)
       if (error) {
-        const errorMessage = error.message || JSON.stringify(error) || '';
-        const isAiUnavailable = 
-          errorMessage.includes('402') || 
-          errorMessage.includes('429') ||
-          errorMessage.includes('credits') || 
-          errorMessage.includes('Payment') || 
-          errorMessage.includes('rate') || 
-          errorMessage.includes('manual scoring') ||
-          errorMessage.includes('unavailable');
-          
-        if (isAiUnavailable) {
-          console.log("AI credits exhausted - manual scoring available");
+        // FunctionsHttpError contains status in context
+        const status = (error as any)?.context?.status;
+        if (status === 402 || status === 429) {
+          console.log("AI credits/rate limit - manual scoring available");
           toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
           return;
         }
+        
+        // Check error message as fallback
+        const errorMessage = String(error?.message || '');
+        if (errorMessage.includes('402') || errorMessage.includes('429')) {
+          toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
+          return;
+        }
+        
         throw error;
       }
       
-      // Also check if data contains an error (for non-throwing error responses)
+      // Check if data contains an error (edge function returned error in body)
       if (data?.error) {
-        const errorMsg = data.error;
-        if (errorMsg.includes('manual') || errorMsg.includes('unavailable')) {
+        if (data.error.includes('manual') || data.error.includes('unavailable')) {
           toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
           return;
         }
+        throw new Error(data.error);
       }
       
       toast.success('PDF analyzed successfully');
       queryClient.invalidateQueries({
         queryKey: ["interview-metadata", auditId]
       });
-    } catch (error: any) {
-      console.error('PDF analysis error:', error);
-      // Final check for AI-related errors in catch block
-      const errStr = error?.message || JSON.stringify(error) || '';
-      if (errStr.includes('402') || errStr.includes('429') || errStr.includes('manual')) {
+    } catch (err) {
+      console.error('PDF analysis error:', err);
+      // Safe string conversion
+      const errStr = String(err?.message || err || '');
+      if (errStr.includes('402') || errStr.includes('429') || errStr.includes('manual') || errStr.includes('unavailable')) {
         toast.info("AI analysis unavailable. Please use Edit Scores for manual entry.");
         return;
       }
