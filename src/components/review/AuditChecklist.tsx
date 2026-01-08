@@ -228,6 +228,24 @@ export const AuditChecklist = ({
     }
   };
 
+  // Calculate the maximum index that has been answered
+  const maxAnsweredIndex = items.reduce((max, item, index) => 
+    item.answer ? Math.max(max, index) : max, -1
+  );
+
+  const handleNext = () => {
+    // Only allow next if there are answered questions ahead
+    if (currentIndex < maxAnsweredIndex) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      setShowCommentBox(false);
+      setCurrentComment("");
+      // Save progress when going forward
+      const hasAnyFailures = items.some((item) => item.answer === "no");
+      saveProgress(items, nextIndex, false, hasAnyFailures, "");
+    }
+  };
+
   const handleAnswer = (answer: "yes" | "no") => {
     const updatedItems = [...items];
     updatedItems[currentIndex] = { ...updatedItems[currentIndex], answer };
@@ -612,6 +630,17 @@ export const AuditChecklist = ({
                   </Label>
                 </div>
               </RadioGroup>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNext}
+                disabled={currentIndex >= maxAnsweredIndex}
+                className="gap-1"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
 
             {/* Comment box for "No" answers */}
