@@ -26,19 +26,21 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
 
   const uploadFileWithProgress = async (
     file: File,
-    filePath: string
+    filePath: string,
+    validatedArrayBuffer: ArrayBuffer
   ): Promise<string> => {
     return new Promise(async (resolve, reject) => {
       try {
         console.log(`Starting upload of ${file.size} bytes to ${filePath}`);
         
-        // Use standard upload with upsert for better reliability
+        // Use the pre-validated ArrayBuffer to ensure binary integrity
+        // This prevents any potential corruption during File->Blob conversion
         const { data, error: uploadError } = await supabase.storage
           .from("mobile-zips")
-          .upload(filePath, file, {
+          .upload(filePath, validatedArrayBuffer, {
             cacheControl: '3600',
             upsert: true,
-            contentType: file.type || 'application/zip',
+            contentType: 'application/zip',
           });
 
         if (uploadError) {
@@ -51,9 +53,22 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
         // Simulate progress for user feedback (since standard upload doesn't provide progress)
         setUploadProgress(100);
         
-        // Wait longer for storage to fully commit the file
+        // Wait for storage to fully commit the file
         console.log('Waiting for storage to finalize...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Verify the uploaded file size matches
+        const { data: fileInfo } = await supabase.storage
+          .from("mobile-zips")
+          .list(filePath.split('/')[0]);
+        
+        const uploadedFile = fileInfo?.find(f => f.name === file.name);
+        if (uploadedFile && uploadedFile.metadata?.size) {
+          console.log(`Uploaded file size: ${uploadedFile.metadata.size}, original: ${validatedArrayBuffer.byteLength}`);
+          if (uploadedFile.metadata.size !== validatedArrayBuffer.byteLength) {
+            console.warn('File size mismatch after upload!');
+          }
+        }
         
         // Get public URL
         const { data: { publicUrl } } = supabase.storage
@@ -69,7 +84,7 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
     });
   };
 
-  const validateZipFile = async (file: File): Promise<{ valid: boolean; error?: string; details?: string }> => {
+  const validateZipFile = async (file: File): Promise<{ valid: boolean; error?: string; details?: string; arrayBuffer?: ArrayBuffer }> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
@@ -126,7 +141,8 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
         };
       }
       
-      return { valid: true };
+      // Return the validated arrayBuffer so we can reuse it for upload
+      return { valid: true, arrayBuffer };
     } catch (error) {
       console.error("ZIP validation error:", error);
       return { 
@@ -224,8 +240,8 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
         title: "Uploading mobile ZIP file...",
       });
 
-      // Upload with progress tracking
-      const publicUrl = await uploadFileWithProgress(file, filePath);
+      // Upload with progress tracking using the validated ArrayBuffer
+      const publicUrl = await uploadFileWithProgress(file, filePath, validation.arrayBuffer!);
 
       const { error: updateError } = await supabase
         .from('audits')
