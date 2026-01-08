@@ -580,6 +580,77 @@ export type Database = {
         }
         Relationships: []
       }
+      team_export_batches: {
+        Row: {
+          created_at: string
+          export_batch_id: string
+          exported_at: string
+          exported_by: string | null
+          file_names: Json
+          id: string
+          team_id: string
+          total_files: number
+          total_names: number
+        }
+        Insert: {
+          created_at?: string
+          export_batch_id: string
+          exported_at?: string
+          exported_by?: string | null
+          file_names?: Json
+          id?: string
+          team_id: string
+          total_files?: number
+          total_names?: number
+        }
+        Update: {
+          created_at?: string
+          export_batch_id?: string
+          exported_at?: string
+          exported_by?: string | null
+          file_names?: Json
+          id?: string
+          team_id?: string
+          total_files?: number
+          total_names?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_export_batches_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "data_entry_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_presence: {
+        Row: {
+          is_online: boolean
+          last_seen_at: string | null
+          last_session_duration_seconds: number | null
+          session_started_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          is_online?: boolean
+          last_seen_at?: string | null
+          last_session_duration_seconds?: number | null
+          session_started_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          is_online?: boolean
+          last_seen_at?: string | null
+          last_session_duration_seconds?: number | null
+          session_started_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null

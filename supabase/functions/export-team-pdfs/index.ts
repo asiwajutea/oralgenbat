@@ -9,6 +9,7 @@ const corsHeaders = {
 interface ExportRequest {
   teamId: string;
   teamName?: string;
+  batchId?: string; // For re-downloading a specific batch
 }
 
 serve(async (req) => {
@@ -22,7 +23,15 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { teamId, teamName }: ExportRequest = await req.json();
+    // Get auth user for tracking who exported
+    const authHeader = req.headers.get('Authorization');
+    let exportedBy: string | null = null;
+    if (authHeader) {
+      const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+      exportedBy = user?.id || null;
+    }
+
+    const { teamId, teamName, batchId }: ExportRequest = await req.json();
 
     if (!teamId) {
       return new Response(
@@ -31,12 +40,55 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Exporting PDFs for team: ${teamId}`);
+    console.log(`Exporting PDFs for team: ${teamId}${batchId ? ` (re-download batch: ${batchId})` : ''}`);
+
+    // If re-downloading a specific batch
+    if (batchId) {
+      const { data: batch, error: batchError } = await supabase
+        .from('team_export_batches')
+        .select('*')
+        .eq('export_batch_id', batchId)
+        .eq('team_id', teamId)
+        .single();
+
+      if (batchError || !batch) {
+        return new Response(
+          JSON.stringify({ error: 'Batch not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Get audit files for this batch
+      const fileNames = batch.file_names as string[];
+      const { data: audits } = await supabase
+        .from('audits')
+        .select('id, file_name, file_url')
+        .in('file_name', fileNames);
+
+      const pdfList = audits?.map(audit => ({
+        fileName: `${audit.file_name}.pdf`,
+        url: audit.file_url,
+        auditId: audit.id,
+      })) || [];
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          teamName: teamName || 'Unknown Team',
+          totalFiles: pdfList.length,
+          files: pdfList,
+          exportTimestamp: batch.exported_at,
+          batchId: batch.export_batch_id,
+          isRedownload: true,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Get only unexported assignments for the team (current batch)
     const { data: assignments, error: assignError } = await supabase
       .from('interview_assignments')
-      .select('id, audit_id')
+      .select('id, audit_id, total_names')
       .eq('team_id', teamId)
       .is('exported_at', null);
 
@@ -60,7 +112,7 @@ serve(async (req) => {
 
     // Generate a unique batch ID based on timestamp
     const exportTimestamp = new Date();
-    const batchId = `batch_${exportTimestamp.toISOString().replace(/[:.]/g, '-')}`;
+    const exportBatchId = `batch_${exportTimestamp.toISOString().replace(/[:.]/g, '-')}`;
 
     // Get audit details with PDF URLs
     const auditIds = assignments.map(a => a.audit_id);
@@ -87,19 +139,41 @@ serve(async (req) => {
 
     console.log(`Found ${audits.length} audits with PDF files`);
 
+    // Calculate total names for this batch
+    const totalNames = assignments.reduce((sum, a) => sum + (a.total_names || 0), 0);
+
     // Mark all these assignments as exported
     const assignmentIds = assignments.map(a => a.id);
     const { error: updateError } = await supabase
       .from('interview_assignments')
       .update({
         exported_at: exportTimestamp.toISOString(),
-        export_batch_id: batchId,
+        export_batch_id: exportBatchId,
       })
       .in('id', assignmentIds);
 
     if (updateError) {
       console.error('Error marking assignments as exported:', updateError);
       // Don't throw - continue with the export even if marking fails
+    }
+
+    // Save export batch record for history
+    const fileNames = audits.map(a => a.file_name);
+    const { error: batchInsertError } = await supabase
+      .from('team_export_batches')
+      .insert({
+        team_id: teamId,
+        export_batch_id: exportBatchId,
+        exported_at: exportTimestamp.toISOString(),
+        exported_by: exportedBy,
+        total_files: audits.length,
+        total_names: totalNames,
+        file_names: fileNames,
+      });
+
+    if (batchInsertError) {
+      console.error('Error saving export batch:', batchInsertError);
+      // Don't throw - batch was still exported successfully
     }
 
     // Create a list of PDF URLs with filenames for the client to download
@@ -116,9 +190,10 @@ serve(async (req) => {
         success: true,
         teamName: teamName || 'Unknown Team',
         totalFiles: pdfList.length,
+        totalNames: totalNames,
         files: pdfList,
         exportTimestamp: exportTimestamp.toISOString(),
-        batchId: batchId,
+        batchId: exportBatchId,
       }),
       { 
         status: 200, 

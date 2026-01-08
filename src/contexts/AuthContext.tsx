@@ -158,6 +158,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
+    // Update presence to offline before signing out
+    if (user?.id) {
+      try {
+        await supabase
+          .from("user_presence")
+          .upsert({
+            user_id: user.id,
+            is_online: false,
+            last_seen_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id' });
+      } catch (err) {
+        console.error("Error updating presence on signout:", err);
+      }
+    }
+    
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);

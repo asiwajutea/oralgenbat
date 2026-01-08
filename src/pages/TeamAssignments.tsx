@@ -60,6 +60,7 @@ import {
   useAssignInterviews,
   useUnassignInterview,
   useUpdateTypingStatus,
+  useExportBatches,
   UnassignedInterview,
   Assignment,
   Team,
@@ -94,6 +95,7 @@ const TeamAssignments = () => {
   const { data: teams = [], isLoading: teamsLoading } = useTeams();
   const { data: unassignedInterviews = [], isLoading: unassignedLoading } = useUnassignedInterviews();
   const { data: assignments = [], isLoading: assignmentsLoading } = useAssignments();
+  const { data: exportBatches = [] } = useExportBatches();
   const assignInterviews = useAssignInterviews();
   const unassignInterview = useUnassignInterview();
   const updateTypingStatus = useUpdateTypingStatus();
@@ -258,11 +260,11 @@ const TeamAssignments = () => {
     }
   };
 
-  const handleExportTeamPDFs = async (team: Team) => {
+  const handleExportTeamPDFs = async (team: Team, batchIdToRedownload?: string) => {
     setExportingTeamId(team.id);
     try {
       const { data, error } = await supabase.functions.invoke('export-team-pdfs', {
-        body: { teamId: team.id, teamName: team.name }
+        body: { teamId: team.id, teamName: team.name, batchId: batchIdToRedownload }
       });
 
       if (error) throw error;
@@ -307,12 +309,20 @@ const TeamAssignments = () => {
       URL.revokeObjectURL(url);
 
       toast.success(`Downloaded ${data.files.length} PDFs`);
+      
+      // Refresh export batches
+      queryClient.invalidateQueries({ queryKey: ["team-export-batches"] });
     } catch (error) {
       console.error('Export error:', error);
       toast.error('Failed to export PDFs');
     } finally {
       setExportingTeamId(null);
     }
+  };
+
+  // Get export batches for a team
+  const getTeamBatches = (teamId: string) => {
+    return exportBatches.filter(b => b.team_id === teamId);
   };
 
   const getTypingStatusBadge = (status: string) => {
@@ -753,6 +763,39 @@ const TeamAssignments = () => {
                             ))}
                           </TableBody>
                         </Table>
+                      )}
+                      
+                      {/* Export History for this team */}
+                      {getTeamBatches(team.id).length > 0 && (
+                        <div className="mt-4 pt-4 border-t">
+                          <h4 className="text-sm font-medium mb-2">Export History</h4>
+                          <div className="space-y-2">
+                            {getTeamBatches(team.id).map((batch) => (
+                              <div key={batch.id} className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm">
+                                <div>
+                                  <span className="font-medium">{batch.total_files} PDFs</span>
+                                  <span className="text-muted-foreground mx-2">•</span>
+                                  <span>{batch.total_names.toLocaleString()} names</span>
+                                  <span className="text-muted-foreground mx-2">•</span>
+                                  <span className="text-muted-foreground">
+                                    {format(new Date(batch.exported_at), "MMM d, yyyy h:mm a")}
+                                  </span>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportTeamPDFs(team, batch.export_batch_id);
+                                  }}
+                                  disabled={exportingTeamId === team.id}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </CardContent>
                   )}
