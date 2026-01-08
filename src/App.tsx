@@ -10,6 +10,8 @@ import AdminRoute from "@/components/AdminRoute";
 import { FieldManagerRoute } from "@/components/FieldManagerRoute";
 import { ContractorRoute } from "@/components/ContractorRoute";
 import { ApproverRoute } from "@/components/ApproverRoute";
+import { DataEntryRoute } from "@/components/DataEntryRoute";
+import { TrackingRoute } from "@/components/TrackingRoute";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import Home from "./pages/Home";
@@ -28,6 +30,9 @@ import ReviewHistory from "./pages/ReviewHistory";
 import AdminReviewHistory from "./pages/AdminReviewHistory";
 import LockedInterviews from "./pages/LockedInterviews";
 import TeamAssignments from "./pages/TeamAssignments";
+import DataEntryPortal from "./pages/DataEntryPortal";
+import InterviewTracking from "./pages/InterviewTracking";
+import ZipDiagnostics from "./pages/ZipDiagnostics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -185,6 +190,38 @@ const App = () => (
                     <TeamAssignments />
                   </Layout>
                 </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/zip-diagnostics"
+              element={
+                <AdminRoute>
+                  <Layout>
+                    <ZipDiagnostics />
+                  </Layout>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/data-entry"
+              element={
+                <DataEntryRoute>
+                  <Layout>
+                    <DataEntryPortal />
+                  </Layout>
+                </DataEntryRoute>
+              }
+            />
+            <Route
+              path="/interview-tracking"
+              element={
+                <ProtectedRoute>
+                  <TrackingRoute>
+                    <Layout>
+                      <InterviewTracking />
+                    </Layout>
+                  </TrackingRoute>
+                </ProtectedRoute>
               }
             />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
