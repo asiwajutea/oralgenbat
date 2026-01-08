@@ -11,9 +11,11 @@ interface MobileZipUploadProps {
   auditId: string;
   expectedFileName: string;
   onUploadSuccess: () => void;
+  existingZipUrl?: string | null;
+  hasProcessingFailed?: boolean;
 }
 
-export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: MobileZipUploadProps) => {
+export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess, existingZipUrl, hasProcessingFailed }: MobileZipUploadProps) => {
   const { userRole } = useAuth();
   
   // Auditors cannot upload files - return null to hide component
@@ -21,8 +23,49 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
     return null;
   }
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'deleting'>('idle');
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+
+  // Function to delete existing corrupted ZIP and allow fresh upload
+  const deleteExistingZip = async () => {
+    setUploadStatus('deleting');
+    try {
+      const filePath = `${auditId}/${expectedFileName}.zip`;
+      
+      // Delete from storage
+      const { error: deleteError } = await supabase.storage
+        .from("mobile-zips")
+        .remove([filePath]);
+        
+      if (deleteError) {
+        console.warn("Could not delete file:", deleteError);
+      }
+
+      // Clear the database references
+      await supabase.from('interview_photos').delete().eq('audit_id', auditId);
+      await supabase.from('interview_metadata').delete().eq('audit_id', auditId);
+      await supabase
+        .from('audits')
+        .update({ mobile_zip_url: null, mobile_zip_uploaded_at: null })
+        .eq('id', auditId);
+
+      toast({
+        title: "Corrupted file removed",
+        description: "You can now upload a fresh copy of the ZIP file.",
+      });
+      
+      onUploadSuccess(); // Refresh the UI
+    } catch (error) {
+      console.error('Error deleting corrupted ZIP:', error);
+      toast({
+        title: "Failed to delete file",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadStatus('idle');
+    }
+  };
 
   const uploadFileWithProgress = async (
     file: File,
@@ -308,16 +351,59 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
         return 'Uploading...';
       case 'processing':
         return 'Processing ZIP...';
+      case 'deleting':
+        return 'Removing corrupted file...';
       default:
-        return 'Upload Mobile ZIP File';
+        return existingZipUrl && hasProcessingFailed ? 'Upload New ZIP File' : 'Upload Mobile ZIP File';
     }
   };
+
+  // Show corrupted file warning if there's an existing ZIP that failed processing
+  if (existingZipUrl && hasProcessingFailed && uploadStatus === 'idle') {
+    return (
+      <div className="p-8 text-center border border-dashed border-destructive/50 rounded-lg bg-destructive/5">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-destructive">Corrupted ZIP File Detected</h3>
+            <p className="text-sm text-muted-foreground max-w-md">
+              The previously uploaded ZIP file is corrupted and cannot be processed. This usually happens when the file wasn't fully transferred from the mobile device.
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              <strong>Solution:</strong> Delete the corrupted file and re-upload a fresh copy from the mobile app.
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <Button 
+              onClick={deleteExistingZip}
+              variant="destructive"
+              className="gap-2"
+            >
+              Delete Corrupted File
+            </Button>
+            <Button 
+              onClick={triggerFileInput}
+              variant="outline"
+              className="gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              Upload Fresh Copy
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 text-center border border-dashed rounded-lg bg-muted/5">
       <div className="flex flex-col items-center gap-4">
         <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
-          {isUploading ? (
+          {isUploading || uploadStatus === 'deleting' ? (
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
           ) : (
             <Upload className="h-8 w-8 text-primary" />
@@ -353,10 +439,10 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: 
 
         <Button 
           onClick={triggerFileInput}
-          disabled={isUploading}
+          disabled={isUploading || uploadStatus === 'deleting'}
           className="gap-2"
         >
-          {isUploading ? (
+          {isUploading || uploadStatus === 'deleting' ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Upload className="h-4 w-4" />
