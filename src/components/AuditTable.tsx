@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
+import JSZip from "jszip";
 
 interface Audit {
   id: string;
@@ -217,6 +218,64 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
     });
   };
 
+  // Validate ZIP file integrity before upload
+  const validateZipFile = async (file: File): Promise<{ valid: boolean; error?: string; details?: string; arrayBuffer?: ArrayBuffer }> => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      
+      // Check for ZIP magic number (PK)
+      if (bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+        return { 
+          valid: false, 
+          error: "Invalid ZIP file", 
+          details: "The file does not appear to be a valid ZIP archive." 
+        };
+      }
+      
+      // Check for End of Central Directory (EOCD) signature
+      const searchStart = Math.max(0, bytes.length - 65536);
+      let foundEOCD = false;
+      
+      for (let i = bytes.length - 22; i >= searchStart; i--) {
+        if (bytes[i] === 0x50 && bytes[i+1] === 0x4B && 
+            bytes[i+2] === 0x05 && bytes[i+3] === 0x06) {
+          foundEOCD = true;
+          break;
+        }
+      }
+      
+      if (!foundEOCD) {
+        return { 
+          valid: false, 
+          error: "Incomplete or corrupted ZIP file", 
+          details: "The ZIP file appears to be incomplete or corrupted. Please export the ZIP file again from the mobile app and ensure it transfers completely." 
+        };
+      }
+      
+      // Try to load with JSZip to verify structure
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const files = Object.keys(zip.files);
+      
+      if (files.length === 0) {
+        return { valid: false, error: "Empty ZIP file", details: "The ZIP file contains no files." };
+      }
+      
+      const hasMetadata = files.some(f => f.toLowerCase().includes('metadata.json'));
+      if (!hasMetadata) {
+        return { valid: false, error: "Missing interview data", details: "The ZIP file does not contain required metadata.json." };
+      }
+      
+      return { valid: true, arrayBuffer };
+    } catch (error) {
+      return { 
+        valid: false, 
+        error: "Failed to read ZIP file", 
+        details: error instanceof Error ? error.message : "The file could not be read." 
+      };
+    }
+  };
+
   const handleMobileZipUpload = async (auditId: string) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -250,6 +309,22 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
           toast({
             title: "Filename mismatch",
             description: `The ZIP file must be named "${expectedFileName}.zip" to match the interview ID. Your file is named "${file.name}"`,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Validate ZIP file integrity before uploading
+        toast({
+          title: "Validating ZIP file...",
+          description: "Checking file integrity before upload",
+        });
+
+        const validation = await validateZipFile(file);
+        if (!validation.valid) {
+          toast({
+            title: validation.error || "Invalid ZIP file",
+            description: validation.details || "The file could not be validated.",
             variant: "destructive",
           });
           return;
