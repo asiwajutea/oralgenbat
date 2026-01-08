@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock, Trash2, Bell, X } from "lucide-react";
-import { format } from "date-fns";
+import { Loader2, CheckCircle, Clock, Trash2, Bell, X, Circle } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface UserProfile {
@@ -27,6 +28,14 @@ interface UserProfile {
   created_at: string;
   role?: string;
   approved_by_name?: string;
+}
+
+interface UserPresence {
+  user_id: string;
+  is_online: boolean;
+  last_seen_at: string | null;
+  session_started_at: string | null;
+  last_session_duration_seconds: number | null;
 }
 
 const AdminDashboard = () => {
@@ -60,6 +69,38 @@ const AdminDashboard = () => {
     enabled: userRole === 'admin' || userRole === 'super_admin',
     refetchInterval: 60000, // Refresh every minute
   });
+
+  // Fetch user presence data
+  const { data: presenceData = [] } = useQuery({
+    queryKey: ["user-presence"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_presence")
+        .select("*");
+      
+      if (error) {
+        console.error("Error fetching presence:", error);
+        return [];
+      }
+      return data as UserPresence[];
+    },
+    enabled: userRole === 'admin' || userRole === 'super_admin',
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  // Create a map of user presence for quick lookup
+  const presenceMap = new Map(presenceData.map(p => [p.user_id, p]));
+
+  // Format session duration
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return "-";
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
 
   const dismissNotification = async (notificationId: string) => {
     await supabase
@@ -403,6 +444,7 @@ const AdminDashboard = () => {
                           <TableHead>Contractor ID</TableHead>
                           <TableHead>Role</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Online</TableHead>
                           <TableHead className="text-right space-x-2">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -457,6 +499,48 @@ const AdminDashboard = () => {
                                   Pending
                                 </Badge>
                               )}
+                            </TableCell>
+                            <TableCell>
+                              {(() => {
+                                const presence = presenceMap.get(user.id);
+                                const isOnline = presence?.is_online;
+                                const lastSeen = presence?.last_seen_at;
+                                const lastDuration = presence?.last_session_duration_seconds;
+                                
+                                return (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2">
+                                          <Circle 
+                                            className={`h-2.5 w-2.5 ${isOnline ? 'fill-green-500 text-green-500' : 'fill-muted text-muted'}`} 
+                                          />
+                                          <span className="text-xs text-muted-foreground">
+                                            {isOnline ? 'Online' : lastSeen ? formatDistanceToNow(new Date(lastSeen), { addSuffix: true }) : 'Never'}
+                                          </span>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <div className="text-xs space-y-1">
+                                          <p>
+                                            <strong>Status:</strong> {isOnline ? 'Online now' : 'Offline'}
+                                          </p>
+                                          {lastSeen && (
+                                            <p>
+                                              <strong>Last seen:</strong> {format(new Date(lastSeen), 'MMM d, h:mm a')}
+                                            </p>
+                                          )}
+                                          {lastDuration !== null && lastDuration !== undefined && (
+                                            <p>
+                                              <strong>Last session:</strong> {formatDuration(lastDuration)}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell className="text-right space-x-2">
                               {!user.is_approved ? (
