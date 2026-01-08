@@ -184,7 +184,9 @@ const ReviewInterview = () => {
       
       return available ? { id: available.id } : null;
     },
-    enabled: !!auditId && !!user?.id
+    enabled: !!auditId && !!user?.id,
+    staleTime: 0, // Always get fresh data
+    refetchOnMount: 'always', // Refetch when component mounts
   });
 
   // Fetch checklist progress - only load if reviewer_id matches current user

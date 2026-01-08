@@ -4,6 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Upload, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface MobileZipUploadProps {
   auditId: string;
@@ -12,6 +13,12 @@ interface MobileZipUploadProps {
 }
 
 export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess }: MobileZipUploadProps) => {
+  const { userRole } = useAuth();
+  
+  // Auditors cannot upload files - return null to hide component
+  if (userRole === 'auditor') {
+    return null;
+  }
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing'>('idle');
   const [uploadProgress, setUploadProgress] = useState<number>(0);

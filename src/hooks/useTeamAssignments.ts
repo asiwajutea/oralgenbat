@@ -294,3 +294,36 @@ export const useDeleteTeam = () => {
     },
   });
 };
+
+export interface ExportBatch {
+  id: string;
+  team_id: string;
+  export_batch_id: string;
+  exported_at: string;
+  exported_by: string | null;
+  total_files: number;
+  total_names: number;
+  file_names: string[];
+}
+
+export const useExportBatches = (teamId?: string) => {
+  return useQuery({
+    queryKey: ["team-export-batches", teamId],
+    queryFn: async () => {
+      let query = supabase
+        .from("team_export_batches")
+        .select("*")
+        .order("exported_at", { ascending: false });
+
+      if (teamId) {
+        query = query.eq("team_id", teamId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      return data as ExportBatch[];
+    },
+    enabled: true,
+  });
+};

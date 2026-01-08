@@ -125,9 +125,10 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [uploadingAudits, setUploadingAudits] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
-  const { session } = useAuth();
+  const { session, userRole } = useAuth();
   const currentUserId = session?.user?.id;
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const canUpload = userRole !== 'auditor'; // Auditors cannot upload files
 
   // Get audit IDs for metadata status query
   const auditIds = useMemo(() => audits.map(a => a.id), [audits]);
@@ -568,19 +569,23 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                               </div>
                               
                               <div className="flex flex-col gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 justify-start"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleMobileZipUpload(audit.id);
-                                  }}
-                                  disabled={uploadingAudits.has(audit.id)}
-                                >
-                                  <Upload className="h-3.5 w-3.5 mr-2" />
-                                  {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
-                                </Button>
+                                {canUpload ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 justify-start"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMobileZipUpload(audit.id);
+                                    }}
+                                    disabled={uploadingAudits.has(audit.id)}
+                                  >
+                                    <Upload className="h-3.5 w-3.5 mr-2" />
+                                    {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">-</span>
+                                )}
                                 
                                 {uploadingAudits.has(audit.id) && (
                                   <div className="space-y-1">
@@ -638,18 +643,22 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                 <Info className="h-3.5 w-3.5 text-muted-foreground" />
                               </div>
                               
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 justify-start"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handlePdfReplace(audit.id);
-                                }}
-                              >
-                                <Upload className="h-3.5 w-3.5 mr-2" />
-                                REPLACE PDF
-                              </Button>
+                              {canUpload ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 justify-start"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePdfReplace(audit.id);
+                                  }}
+                                >
+                                  <Upload className="h-3.5 w-3.5 mr-2" />
+                                  REPLACE PDF
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
                               
                               <div></div>
                               <div></div>

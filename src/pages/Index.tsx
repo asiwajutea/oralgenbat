@@ -7,6 +7,7 @@ import { BulkZipUploadDialog } from "@/components/BulkZipUploadDialog";
 import { CombinedUploadDialog } from "@/components/CombinedUploadDialog";
 import { AuditPagination } from "@/components/AuditPagination";
 import { AuditorStatsCard } from "@/components/AuditorStatsCard";
+import { AdminStatsCard } from "@/components/AdminStatsCard";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -56,6 +57,7 @@ const Index = () => {
   const [combinedUploadOpen, setCombinedUploadOpen] = useState(false);
   
   const hideReviewButton = userRole === 'field_manager' || userRole === 'contractor';
+  const canUpload = userRole !== 'auditor'; // Auditors cannot upload files
 
   const fetchAudits = async () => {
     try {
@@ -170,51 +172,60 @@ const Index = () => {
                 </p>
               </div>
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="gap-2">
-                  <Upload className="h-4 w-4" />
-                  UPLOAD
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => setPdfUploadOpen(true)}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Upload PDFs Only
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCombinedUploadOpen(true)}>
-                  <Files className="h-4 w-4 mr-2" />
-                  Upload PDFs + Metadata
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setBulkZipOpen(true)}>
-                  <FileArchive className="h-4 w-4 mr-2" />
-                  Bulk Upload ZIPs
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {canUpload && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    UPLOAD
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => setPdfUploadOpen(true)}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Upload PDFs Only
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCombinedUploadOpen(true)}>
+                    <Files className="h-4 w-4 mr-2" />
+                    Upload PDFs + Metadata
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBulkZipOpen(true)}>
+                    <FileArchive className="h-4 w-4 mr-2" />
+                    Bulk Upload ZIPs
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
-            {/* Upload Dialogs */}
-            <UploadDialog 
-              onUploadComplete={fetchAudits} 
-              open={pdfUploadOpen}
-              onOpenChange={setPdfUploadOpen}
-            />
-            <BulkZipUploadDialog 
-              onUploadComplete={fetchAudits}
-              open={bulkZipOpen}
-              onOpenChange={setBulkZipOpen}
-            />
-            <CombinedUploadDialog 
-              onUploadComplete={fetchAudits}
-              open={combinedUploadOpen}
-              onOpenChange={setCombinedUploadOpen}
-            />
+            {/* Upload Dialogs - only render if canUpload */}
+            {canUpload && (
+              <>
+                <UploadDialog 
+                  onUploadComplete={fetchAudits} 
+                  open={pdfUploadOpen}
+                  onOpenChange={setPdfUploadOpen}
+                />
+                <BulkZipUploadDialog 
+                  onUploadComplete={fetchAudits}
+                  open={bulkZipOpen}
+                  onOpenChange={setBulkZipOpen}
+                />
+                <CombinedUploadDialog 
+                  onUploadComplete={fetchAudits}
+                  open={combinedUploadOpen}
+                  onOpenChange={setCombinedUploadOpen}
+                />
+              </>
+            )}
           </div>
         </div>
 
         {/* Table Content */}
         <main className="flex-1 p-6 flex flex-col">
+          {/* Admin Stats Cards */}
+          <AdminStatsCard />
+          
           {/* Auditor Stats Cards */}
           <AuditorStatsCard />
           

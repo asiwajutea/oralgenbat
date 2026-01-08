@@ -318,9 +318,99 @@ export const AuditChecklist = ({
     }
   };
 
+  // State for reviewing individual questions after completion
+  const [reviewingIndex, setReviewingIndex] = useState<number | null>(null);
+
   if (isCompleted) {
     const failedItems = items.filter((item) => item.answer === "no");
     const passedItems = items.filter((item) => item.answer === "yes");
+
+    // If reviewing a specific question
+    if (reviewingIndex !== null) {
+      const reviewItem = items[reviewingIndex];
+      return (
+        <Card className="border-border bg-card">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardCheck className="h-5 w-5 text-primary" />
+                Review Question
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setReviewingIndex(null)}
+              >
+                Back to Summary
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-4">
+            <div className="flex items-center justify-between">
+              <Badge
+                variant="outline"
+                className={cn("text-xs", getCategoryColor(reviewItem.category))}
+              >
+                Section {reviewItem.category}: {reviewItem.categoryLabel}
+              </Badge>
+              <Badge variant="outline" className="text-xs font-normal">
+                {reviewingIndex + 1} of {totalItems}
+              </Badge>
+            </div>
+            
+            <p className="text-sm leading-relaxed">
+              <span className="font-semibold">Q{reviewItem.id}:</span> {reviewItem.question}
+            </p>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Answer:</span>
+              {reviewItem.answer === "yes" ? (
+                <Badge className="bg-green-100 text-green-700">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Yes
+                </Badge>
+              ) : (
+                <Badge variant="destructive">
+                  <XCircle className="h-3 w-3 mr-1" />
+                  No
+                </Badge>
+              )}
+            </div>
+            
+            {reviewItem.comment && (
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-xs text-muted-foreground mb-1">Comment:</p>
+                <p className="text-sm">{reviewItem.comment}</p>
+              </div>
+            )}
+            
+            {/* Navigation buttons */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setReviewingIndex(Math.max(0, reviewingIndex - 1))}
+                disabled={reviewingIndex === 0}
+                className="gap-1"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setReviewingIndex(Math.min(totalItems - 1, reviewingIndex + 1))}
+                disabled={reviewingIndex === totalItems - 1}
+                className="gap-1"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
 
     return (
       <Card className="border-border bg-card">
@@ -357,19 +447,62 @@ export const AuditChecklist = ({
             </div>
           </CardHeader>
           <CollapsibleContent>
-            <CardContent className="pt-0">
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span>{passedItems.length} Passed</span>
-                </div>
-                {failedItems.length > 0 && (
+            <CardContent className="pt-0 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4 text-sm">
                   <div className="flex items-center gap-1.5">
-                    <XCircle className="h-4 w-4 text-destructive" />
-                    <span>{failedItems.length} Failed</span>
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>{passedItems.length} Passed</span>
                   </div>
-                )}
+                  {failedItems.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <XCircle className="h-4 w-4 text-destructive" />
+                      <span>{failedItems.length} Failed</span>
+                    </div>
+                  )}
+                </div>
+                {/* Navigation buttons to review questions */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setReviewingIndex(0)}
+                    className="gap-1 text-xs"
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                    First
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setReviewingIndex(totalItems - 1)}
+                    className="gap-1 text-xs"
+                  >
+                    Last
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
+              
+              {/* Quick jump to specific failed questions */}
+              {failedItems.length > 0 && (
+                <div className="pt-2 border-t">
+                  <p className="text-xs text-muted-foreground mb-2">Click to review failed items:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {failedItems.map((item) => (
+                      <Button
+                        key={item.id}
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={() => setReviewingIndex(items.findIndex(i => i.id === item.id))}
+                      >
+                        Q{item.id}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </CollapsibleContent>
         </Collapsible>
