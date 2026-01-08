@@ -25,18 +25,40 @@ import { toast } from "sonner";
 
 const Home = () => {
   const navigate = useNavigate();
-  const { userRole, profile } = useAuth();
+  const { userRole, profile, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   
   const canUpload = userRole !== 'auditor';
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isAuditor = userRole === 'auditor';
+  const isFieldManager = userRole === 'field_manager';
+  const isContractor = userRole === 'contractor';
+
+  // Get user's team interviewer codes for field managers
+  const { data: teamInterviewerCodes = [] } = useQuery({
+    queryKey: ["user-team-codes", user?.id],
+    queryFn: async () => {
+      if (!user?.id || !isFieldManager) return [];
+      
+      const { data, error } = await supabase
+        .from("team_assignments")
+        .select("interviewer_code")
+        .eq("field_manager_id", user.id)
+        .eq("status", "approved");
+      
+      if (error) throw error;
+      return data?.map(t => t.interviewer_code) || [];
+    },
+    enabled: isFieldManager && !!user?.id,
+  });
   
-  // Get interviews approved in last 24 hours
+  // Get interviews approved in last 24 hours - USER SPECIFIC
   const { data: recentlyApproved = [] } = useQuery({
-    queryKey: ["recently-approved-interviews"],
+    queryKey: ["recently-approved-interviews", userRole, profile?.full_name, profile?.contractor_id, teamInterviewerCodes],
     queryFn: async () => {
       const twentyFourHoursAgo = subHours(new Date(), 24).toISOString();
-      const { data, error } = await supabase
+      
+      let query = supabase
         .from("audits")
         .select("id, file_name, reviewed_at, reviewed_by")
         .eq("status", "Audit Passed")
@@ -44,17 +66,46 @@ const Home = () => {
         .order("reviewed_at", { ascending: false })
         .limit(10);
       
+      // For auditors, show only their own approved interviews
+      if (isAuditor && profile?.full_name) {
+        query = query.eq("reviewed_by", profile.full_name);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      
+      let results = data || [];
+      
+      // For field managers, filter by their team's interviewer codes
+      if (isFieldManager && teamInterviewerCodes.length > 0) {
+        results = results.filter(interview => {
+          const parts = interview.file_name.split('_');
+          if (parts.length >= 2) {
+            const interviewerCode = parts[1];
+            return teamInterviewerCodes.includes(interviewerCode);
+          }
+          return false;
+        });
+      }
+      
+      // For contractors, filter by contractor ID in file_name
+      if (isContractor && profile?.contractor_id) {
+        results = results.filter(interview => 
+          interview.file_name.startsWith(profile.contractor_id)
+        );
+      }
+      
+      return results;
     },
   });
   
-  // Get interviews in progress (locked)
+  // Get interviews in progress (locked) - ONLY SHOW USER'S OWN
   const { data: inProgressInterviews = [] } = useQuery({
-    queryKey: ["in-progress-interviews"],
+    queryKey: ["in-progress-interviews", user?.id, userRole, isAdmin],
     queryFn: async () => {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data, error } = await supabase
+      
+      let query = supabase
         .from("audits")
         .select("id, file_name, locked_at, locked_by, profiles!audits_locked_by_fkey(full_name)")
         .not("locked_by", "is", null)
@@ -62,16 +113,22 @@ const Home = () => {
         .order("locked_at", { ascending: false })
         .limit(10);
       
+      // For non-admins, only show their own locked interviews
+      if (!isAdmin && user?.id) {
+        query = query.eq("locked_by", user.id);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
   });
   
-  // Get interviews sent for re-audit
+  // Get interviews sent for re-audit - USER SPECIFIC
   const { data: reAuditInterviews = [] } = useQuery({
-    queryKey: ["re-audit-interviews-home"],
+    queryKey: ["re-audit-interviews-home", userRole, profile?.full_name, profile?.contractor_id, teamInterviewerCodes],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("audits")
         .select("id, file_name, reviewed_by, last_modified, re_audit_count")
         .eq("is_re_audit", true)
@@ -79,8 +136,36 @@ const Home = () => {
         .order("last_modified", { ascending: false })
         .limit(10);
       
+      // For auditors, only show re-audits they originally reviewed
+      if (isAuditor && profile?.full_name) {
+        query = query.eq("reviewed_by", profile.full_name);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      
+      let results = data || [];
+      
+      // For field managers, filter by their team's interviewer codes
+      if (isFieldManager && teamInterviewerCodes.length > 0) {
+        results = results.filter(interview => {
+          const parts = interview.file_name.split('_');
+          if (parts.length >= 2) {
+            const interviewerCode = parts[1];
+            return teamInterviewerCodes.includes(interviewerCode);
+          }
+          return false;
+        });
+      }
+      
+      // For contractors, filter by contractor ID in file_name
+      if (isContractor && profile?.contractor_id) {
+        results = results.filter(interview => 
+          interview.file_name.startsWith(profile.contractor_id)
+        );
+      }
+      
+      return results;
     },
   });
 
@@ -169,7 +254,9 @@ const Home = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  <CardTitle className="text-lg">Approved in Last 24 Hours</CardTitle>
+                  <CardTitle className="text-lg">
+                    {isAuditor ? "My Approved (24h)" : "Approved in Last 24 Hours"}
+                  </CardTitle>
                 </div>
                 <Badge variant="secondary" className="bg-green-100 text-green-700">
                   {recentlyApproved.length}
@@ -219,7 +306,9 @@ const Home = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Clock className="h-5 w-5 text-blue-600" />
-                    <CardTitle className="text-lg">In Progress</CardTitle>
+                    <CardTitle className="text-lg">
+                      {isAdmin ? "All In Progress" : "My In Progress"}
+                    </CardTitle>
                   </div>
                   <Badge variant="secondary" className="bg-blue-100 text-blue-700">
                     {inProgressInterviews.length}
@@ -258,7 +347,9 @@ const Home = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-5 w-5 text-orange-600" />
-                    <CardTitle className="text-lg">Sent for Re-Audit</CardTitle>
+                    <CardTitle className="text-lg">
+                      {isAuditor ? "My Re-Audits" : "Sent for Re-Audit"}
+                    </CardTitle>
                   </div>
                   <Badge variant="secondary" className="bg-orange-100 text-orange-700">
                     {reAuditInterviews.length}

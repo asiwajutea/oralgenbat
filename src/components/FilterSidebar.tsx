@@ -13,10 +13,12 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useStatusCounts } from "@/hooks/useStatusCounts";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface FilterSidebarProps {
   onFilterChange: (filters: FilterState) => void;
   onClose?: () => void;
+  initialFilters?: Partial<FilterState>;
 }
 
 export interface FilterState {
@@ -28,16 +30,60 @@ export interface FilterState {
   endDate: string;
 }
 
-export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) => {
-  const [filters, setFilters] = useState<FilterState>({
+const STORAGE_KEY = "interview-filters";
+
+const getStoredFilters = (userId: string): FilterState | null => {
+  try {
+    const stored = localStorage.getItem(`${STORAGE_KEY}-${userId}`);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error("Failed to parse stored filters:", e);
+  }
+  return null;
+};
+
+const storeFilters = (userId: string, filters: FilterState) => {
+  try {
+    localStorage.setItem(`${STORAGE_KEY}-${userId}`, JSON.stringify(filters));
+  } catch (e) {
+    console.error("Failed to store filters:", e);
+  }
+};
+
+const clearStoredFilters = (userId: string) => {
+  try {
+    localStorage.removeItem(`${STORAGE_KEY}-${userId}`);
+  } catch (e) {
+    console.error("Failed to clear stored filters:", e);
+  }
+};
+
+export const FilterSidebar = ({ onFilterChange, onClose, initialFilters }: FilterSidebarProps) => {
+  const { user } = useAuth();
+  const userId = user?.id || "anonymous";
+  
+  const defaultFilters: FilterState = {
     statuses: [],
     interviewId: "",
     reviewer: "",
     interviewerId: "",
     startDate: "",
     endDate: "",
+  };
+
+  // Initialize from localStorage or defaults
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const stored = getStoredFilters(userId);
+    if (stored) {
+      return { ...stored, ...initialFilters };
+    }
+    return { ...defaultFilters, ...initialFilters };
   });
+  
   const [reviewers, setReviewers] = useState<string[]>([]);
+  const [initialized, setInitialized] = useState(false);
   const { data: statusCounts } = useStatusCounts();
 
   const statusOptions = [
@@ -46,6 +92,21 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
     { value: "Audit Passed", label: `Audit Passed (${statusCounts?.counts?.["Audit Passed"] || 0})` },
     { value: "Audit Failed", label: `Audit Failed (${statusCounts?.counts?.["Audit Failed"] || 0})` },
   ];
+
+  // Load stored filters on mount
+  useEffect(() => {
+    const stored = getStoredFilters(userId);
+    if (stored) {
+      const mergedFilters = { ...stored, ...initialFilters };
+      setFilters(mergedFilters);
+      // Notify parent of loaded filters
+      onFilterChange(mergedFilters);
+    } else if (initialFilters) {
+      setFilters(prev => ({ ...prev, ...initialFilters }));
+      onFilterChange({ ...defaultFilters, ...initialFilters });
+    }
+    setInitialized(true);
+  }, [userId]);
 
   useEffect(() => {
     const fetchReviewers = async () => {
@@ -65,6 +126,13 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
 
     fetchReviewers();
   }, []);
+
+  // Store filters whenever they change (after initialization)
+  useEffect(() => {
+    if (initialized) {
+      storeFilters(userId, filters);
+    }
+  }, [filters, userId, initialized]);
 
   const handleStatusChange = (status: string, checked: boolean) => {
     const newStatuses = checked
@@ -100,6 +168,7 @@ export const FilterSidebar = ({ onFilterChange, onClose }: FilterSidebarProps) =
     };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
+    clearStoredFilters(userId);
   };
 
   return (

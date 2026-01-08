@@ -232,11 +232,47 @@ export type Database = {
         }
         Relationships: []
       }
+      field_manager_admin_assignments: {
+        Row: {
+          admin_id: string
+          assigned_at: string | null
+          assigned_by: string | null
+          created_at: string | null
+          field_manager_id: string
+          id: string
+          is_active: boolean | null
+          notes: string | null
+        }
+        Insert: {
+          admin_id: string
+          assigned_at?: string | null
+          assigned_by?: string | null
+          created_at?: string | null
+          field_manager_id: string
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+        }
+        Update: {
+          admin_id?: string
+          assigned_at?: string | null
+          assigned_by?: string | null
+          created_at?: string | null
+          field_manager_id?: string
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+        }
+        Relationships: []
+      }
       interview_assignments: {
         Row: {
           assigned_at: string | null
           assigned_by: string | null
           audit_id: string
+          entry_completed_at: string | null
+          entry_completed_by: string | null
+          entry_status: string | null
           export_batch_id: string | null
           exported_at: string | null
           id: string
@@ -250,6 +286,9 @@ export type Database = {
           assigned_at?: string | null
           assigned_by?: string | null
           audit_id: string
+          entry_completed_at?: string | null
+          entry_completed_by?: string | null
+          entry_status?: string | null
           export_batch_id?: string | null
           exported_at?: string | null
           id?: string
@@ -263,6 +302,9 @@ export type Database = {
           assigned_at?: string | null
           assigned_by?: string | null
           audit_id?: string
+          entry_completed_at?: string | null
+          entry_completed_by?: string | null
+          entry_status?: string | null
           export_batch_id?: string | null
           exported_at?: string | null
           id?: string

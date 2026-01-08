@@ -82,6 +82,24 @@ const Header = () => {
               Team Approvals
             </NavLink>
           )}
+          {(userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && (
+            <NavLink 
+              to="/interview-tracking"
+              className="text-sm font-medium transition-colors hover:text-primary"
+              activeClassName="text-primary"
+            >
+              Tracking
+            </NavLink>
+          )}
+          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin') && (
+            <NavLink 
+              to="/data-entry"
+              className="text-sm font-medium transition-colors hover:text-primary"
+              activeClassName="text-primary"
+            >
+              Data Entry
+            </NavLink>
+          )}
           {(userRole === 'admin' || userRole === 'super_admin') && (
             <>
               <NavLink 
@@ -133,6 +151,17 @@ const Header = () => {
                             )}
                           >
                             Team Assignments
+                          </Link>
+                        </NavigationMenuLink>
+                        <NavigationMenuLink asChild>
+                          <Link 
+                            to="/admin/zip-diagnostics" 
+                            className={cn(
+                              "block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+                              location.pathname === '/admin/zip-diagnostics' && "bg-accent text-accent-foreground"
+                            )}
+                          >
+                            ZIP Diagnostics
                           </Link>
                         </NavigationMenuLink>
                       </div>
