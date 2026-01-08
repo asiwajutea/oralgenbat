@@ -70,8 +70,6 @@ export const AIAutoAssignDialog = ({
     return previousBalance ? -previousBalance.difference : 0;
   };
 
-  const totalNames = unassignedInterviews.reduce((sum, i) => sum + i.total_names, 0);
-  const storedBalance = getStoredBalance();
 
   const toggleTeam = (teamId: string) => {
     const newSelected = new Set(selectedTeams);
