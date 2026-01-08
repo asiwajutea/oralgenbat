@@ -12,6 +12,7 @@ import { ContractorRoute } from "@/components/ContractorRoute";
 import { ApproverRoute } from "@/components/ApproverRoute";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
+import Home from "./pages/Home";
 import ReviewInterview from "./pages/ReviewInterview";
 import Auth from "./pages/Auth";
 import PendingApproval from "./pages/PendingApproval";
@@ -44,6 +45,16 @@ const App = () => (
             <Route path="/pending-approval" element={<PendingApproval />} />
             <Route
               path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Home />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/interviews"
               element={
                 <ProtectedRoute>
                   <Layout>

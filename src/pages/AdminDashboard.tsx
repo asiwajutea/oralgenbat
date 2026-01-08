@@ -12,9 +12,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock, Trash2, Bell, X, Circle } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Trash2, Bell, X, Circle, History } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { SessionHistoryDialog } from "@/components/SessionHistoryDialog";
 
 interface UserProfile {
   id: string;
@@ -48,6 +49,7 @@ const AdminDashboard = () => {
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [showClearStorageDialog, setShowClearStorageDialog] = useState(false);
   const [clearingStorage, setClearingStorage] = useState(false);
+  const [sessionHistoryUser, setSessionHistoryUser] = useState<UserProfile | null>(null);
 
   // Fetch admin notifications (AI credit warnings)
   const { data: notifications = [] } = useQuery({
@@ -543,6 +545,16 @@ const AdminDashboard = () => {
                               })()}
                             </TableCell>
                             <TableCell className="text-right space-x-2">
+                              {userRole === 'super_admin' && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setSessionHistoryUser(user)}
+                                  title="View Session History"
+                                >
+                                  <History className="h-4 w-4" />
+                                </Button>
+                              )}
                               {!user.is_approved ? (
                                 <Button
                                   size="sm"
@@ -626,6 +638,14 @@ const AdminDashboard = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Session History Dialog */}
+        <SessionHistoryDialog
+          open={!!sessionHistoryUser}
+          onOpenChange={(open) => !open && setSessionHistoryUser(null)}
+          userId={sessionHistoryUser?.id || ""}
+          userName={sessionHistoryUser?.full_name || ""}
+        />
       </div>
     </div>
   );

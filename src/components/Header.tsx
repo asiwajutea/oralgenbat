@@ -37,6 +37,13 @@ const Header = () => {
             className="text-sm font-medium transition-colors hover:text-primary"
             activeClassName="text-primary"
           >
+            Home
+          </NavLink>
+          <NavLink 
+            to="/interviews"
+            className="text-sm font-medium transition-colors hover:text-primary"
+            activeClassName="text-primary"
+          >
             Interviews
           </NavLink>
           {userRole === 'field_manager' && (

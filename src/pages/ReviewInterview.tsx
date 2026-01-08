@@ -316,6 +316,34 @@ const ReviewInterview = () => {
       </div>;
   }
 
+  // Check if this is a re-audit that the current user is not authorized to view
+  // Only the original reviewer or admin/super_admin can access re-audits
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isReAuditRestricted = audit.is_re_audit && 
+    audit.status === 'Awaiting Review' && 
+    !isAdmin && 
+    userRole === 'auditor';
+  
+  if (isReAuditRestricted) {
+    // Fetch profile to check if current user is the original reviewer
+    const isOriginalReviewer = audit.reviewed_by === user?.user_metadata?.full_name;
+    
+    if (!isOriginalReviewer) {
+      return <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+            <h2 className="text-2xl font-semibold mb-2">Access Restricted</h2>
+            <p className="text-muted-foreground mb-4">
+              This re-audit can only be reviewed by the original auditor ({audit.reviewed_by}) or an administrator.
+            </p>
+            <Button onClick={() => navigate("/interviews")}>
+              Return to Interviews
+            </Button>
+          </div>
+        </div>;
+    }
+  }
+
   // Show blocked message if locked by another user
   if (lockedByOther && !isReviewed) {
     return <div className="min-h-screen flex items-center justify-center">

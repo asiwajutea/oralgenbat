@@ -53,7 +53,7 @@ const PendingApproval = () => {
             </p>
           </div>
 
-          <Button onClick={signOut} variant="outline" className="w-full">
+          <Button onClick={() => signOut()} variant="outline" className="w-full">
             Sign Out
           </Button>
 
