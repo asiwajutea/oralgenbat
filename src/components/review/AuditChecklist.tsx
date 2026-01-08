@@ -234,8 +234,8 @@ export const AuditChecklist = ({
   );
 
   const handleNext = () => {
-    // Only allow next if there are answered questions ahead
-    if (currentIndex < maxAnsweredIndex) {
+    // Only allow next if the next question has been answered
+    if (items[currentIndex + 1]?.answer) {
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
       setShowCommentBox(false);
@@ -635,7 +635,7 @@ export const AuditChecklist = ({
                 variant="ghost"
                 size="sm"
                 onClick={handleNext}
-                disabled={currentIndex >= maxAnsweredIndex}
+                disabled={!items[currentIndex + 1]?.answer}
                 className="gap-1"
               >
                 Next
