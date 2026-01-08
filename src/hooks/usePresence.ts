@@ -7,6 +7,8 @@ export const usePresence = () => {
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionStartRef = useRef<Date | null>(null);
 
+  const sessionHistoryIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!user?.id) return;
 
@@ -16,6 +18,20 @@ export const usePresence = () => {
         
         if (isOnline && !sessionStartRef.current) {
           sessionStartRef.current = new Date();
+          
+          // Create a new session history record
+          const { data: sessionData } = await supabase
+            .from("user_session_history")
+            .insert({
+              user_id: user.id,
+              session_started_at: sessionStartRef.current.toISOString(),
+            })
+            .select("id")
+            .single();
+          
+          if (sessionData) {
+            sessionHistoryIdRef.current = sessionData.id;
+          }
         }
 
         const updateData: Record<string, unknown> = {
@@ -33,7 +49,21 @@ export const usePresence = () => {
             (Date.now() - sessionStartRef.current.getTime()) / 1000
           );
           updateData.last_session_duration_seconds = durationSeconds;
+          
+          // Update session history with end time
+          if (sessionHistoryIdRef.current) {
+            await supabase
+              .from("user_session_history")
+              .update({
+                session_ended_at: now,
+                duration_seconds: durationSeconds,
+                logout_reason: "tab_close",
+              })
+              .eq("id", sessionHistoryIdRef.current);
+          }
+          
           sessionStartRef.current = null;
+          sessionHistoryIdRef.current = null;
         }
 
         // Upsert presence record

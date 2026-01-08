@@ -57,8 +57,18 @@ export const AIAutoAssignDialog = ({
   const [customPercentages, setCustomPercentages] = useState<Record<string, number>>({});
   const [groupByAgent, setGroupByAgent] = useState(true);
   const [applyBalanceCorrection, setApplyBalanceCorrection] = useState(true);
+  const [manualCorrections, setManualCorrections] = useState<Record<string, number>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const assignInterviews = useAssignInterviews();
+
+  const totalNames = unassignedInterviews.reduce((sum, i) => sum + i.total_names, 0);
+  const storedBalance = getStoredBalance();
+  
+  // Initialize manual corrections from stored balance
+  const getDefaultCorrection = (teamId: string) => {
+    const previousBalance = storedBalance.find((b) => b.teamId === teamId);
+    return previousBalance ? -previousBalance.difference : 0;
+  };
 
   const totalNames = unassignedInterviews.reduce((sum, i) => sum + i.total_names, 0);
   const storedBalance = getStoredBalance();
@@ -130,13 +140,13 @@ export const AIAutoAssignDialog = ({
       teamArray.forEach((teamId) => {
         let baseTarget = (distribution[teamId] / 100) * totalNames;
         
-        // Apply balance correction from previous batch
+        // Apply balance correction from previous batch (manual or auto)
         if (applyBalanceCorrection) {
-          const previousBalance = storedBalance.find((b) => b.teamId === teamId);
-          if (previousBalance) {
-            // If team was under-assigned before (negative difference), give them more now
-            baseTarget -= previousBalance.difference;
-          }
+          const manualValue = manualCorrections[teamId];
+          const correction = manualValue !== undefined 
+            ? manualValue 
+            : getDefaultCorrection(teamId);
+          baseTarget += correction;
         }
         
         teamTargets[teamId] = Math.max(0, baseTarget);
@@ -252,8 +262,10 @@ export const AIAutoAssignDialog = ({
     if (distributionMode === "equal") {
       const perTeam = totalNames / teamArray.length;
       return teamArray.map((teamId) => {
-        const previousBalance = storedBalance.find((b) => b.teamId === teamId);
-        const correction = applyBalanceCorrection && previousBalance ? -previousBalance.difference : 0;
+        const manualValue = manualCorrections[teamId];
+        const correction = applyBalanceCorrection 
+          ? (manualValue !== undefined ? manualValue : getDefaultCorrection(teamId))
+          : 0;
         return {
           teamId,
           team: teams.find((t) => t.id === teamId),
@@ -264,8 +276,10 @@ export const AIAutoAssignDialog = ({
       });
     } else {
       return teamArray.map((teamId) => {
-        const previousBalance = storedBalance.find((b) => b.teamId === teamId);
-        const correction = applyBalanceCorrection && previousBalance ? -previousBalance.difference : 0;
+        const manualValue = manualCorrections[teamId];
+        const correction = applyBalanceCorrection 
+          ? (manualValue !== undefined ? manualValue : getDefaultCorrection(teamId))
+          : 0;
         return {
           teamId,
           team: teams.find((t) => t.id === teamId),
@@ -388,15 +402,56 @@ export const AIAutoAssignDialog = ({
             </div>
             
             {hasStoredBalance && (
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="apply-balance"
-                  checked={applyBalanceCorrection}
-                  onCheckedChange={(checked) => setApplyBalanceCorrection(checked === true)}
-                />
-                <Label htmlFor="apply-balance" className="text-sm cursor-pointer">
-                  Apply balance correction from previous batch
-                </Label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="apply-balance"
+                    checked={applyBalanceCorrection}
+                    onCheckedChange={(checked) => setApplyBalanceCorrection(checked === true)}
+                  />
+                  <Label htmlFor="apply-balance" className="text-sm cursor-pointer">
+                    Apply balance correction from previous batch
+                  </Label>
+                </div>
+                
+                {/* Manual correction inputs */}
+                {applyBalanceCorrection && selectedTeams.size > 0 && (
+                  <div className="space-y-2 pl-6 border-l-2 border-muted ml-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground">Manual Correction Values</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs"
+                        onClick={() => setManualCorrections({})}
+                      >
+                        Reset to Calculated
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Array.from(selectedTeams).map((teamId) => {
+                        const team = teams.find((t) => t.id === teamId);
+                        const defaultVal = getDefaultCorrection(teamId);
+                        const currentVal = manualCorrections[teamId] ?? defaultVal;
+                        return (
+                          <div key={teamId} className="flex items-center gap-2">
+                            <span className="text-xs flex-1 truncate">{team?.name}:</span>
+                            <Input
+                              type="number"
+                              value={currentVal}
+                              onChange={(e) => setManualCorrections(prev => ({
+                                ...prev,
+                                [teamId]: parseInt(e.target.value) || 0
+                              }))}
+                              className="w-20 h-7 text-xs"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Filter, Upload, ChevronDown, FileText, FileArchive, Files } from "lucide-react";
 import { FilterSidebar, FilterState } from "@/components/FilterSidebar";
 import { AuditTable } from "@/components/AuditTable";
@@ -37,11 +38,14 @@ interface Audit {
 }
 
 const Index = () => {
-  const { userRole } = useAuth();
+  const { userRole, profile } = useAuth();
+  const [searchParams] = useSearchParams();
+  const searchFromUrl = searchParams.get("search") || "";
+  
   const [audits, setAudits] = useState<Audit[]>([]);
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
-    interviewId: "",
+    interviewId: searchFromUrl,
     reviewer: "",
     interviewerId: "",
     startDate: "",
@@ -58,6 +62,14 @@ const Index = () => {
   
   const hideReviewButton = userRole === 'field_manager' || userRole === 'contractor';
   const canUpload = userRole !== 'auditor'; // Auditors cannot upload files
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+
+  // Update filters when URL search param changes
+  useEffect(() => {
+    if (searchFromUrl) {
+      setFilters(prev => ({ ...prev, interviewId: searchFromUrl }));
+    }
+  }, [searchFromUrl]);
 
   const fetchAudits = async () => {
     try {
@@ -115,7 +127,20 @@ const Index = () => {
 
       if (error) throw error;
       
-      setAudits(data || []);
+      // Filter out re-audit interviews that don't belong to the current auditor
+      // Admins and super_admins can see all re-audits
+      let filteredData = data || [];
+      if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
+        filteredData = filteredData.filter(audit => {
+          // If it's a re-audit, only show if the current user reviewed it originally
+          if (audit.is_re_audit && audit.status === 'Awaiting Review') {
+            return audit.reviewed_by === profile.full_name;
+          }
+          return true;
+        });
+      }
+      
+      setAudits(filteredData);
       setTotalCount(count || 0);
     } catch (error) {
       console.error("Error fetching audits:", error);

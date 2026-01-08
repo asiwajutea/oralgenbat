@@ -19,7 +19,7 @@ interface AuthContextType {
   userRole: string | null;
   isApproved: boolean;
   loading: boolean;
-  signOut: () => Promise<void>;
+  signOut: (reason?: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -157,7 +157,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => {
+  const signOut = async (reason?: string) => {
     // Update presence to offline before signing out
     if (user?.id) {
       try {
@@ -169,6 +169,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             last_seen_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id' });
+        
+        // Log session end in history
+        const { data: activeSession } = await supabase
+          .from("user_session_history")
+          .select("id, session_started_at")
+          .eq("user_id", user.id)
+          .is("session_ended_at", null)
+          .order("session_started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (activeSession) {
+          const durationSeconds = Math.floor(
+            (Date.now() - new Date(activeSession.session_started_at).getTime()) / 1000
+          );
+          await supabase
+            .from("user_session_history")
+            .update({
+              session_ended_at: new Date().toISOString(),
+              duration_seconds: durationSeconds,
+              logout_reason: reason || "manual",
+            })
+            .eq("id", activeSession.id);
+        }
       } catch (err) {
         console.error("Error updating presence on signout:", err);
       }

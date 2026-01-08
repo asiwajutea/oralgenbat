@@ -672,6 +672,44 @@ export type Database = {
         }
         Relationships: []
       }
+      user_session_history: {
+        Row: {
+          created_at: string | null
+          duration_seconds: number | null
+          id: string
+          logout_reason: string | null
+          session_ended_at: string | null
+          session_started_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          logout_reason?: string | null
+          session_ended_at?: string | null
+          session_started_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          logout_reason?: string | null
+          session_ended_at?: string | null
+          session_started_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_session_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
