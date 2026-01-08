@@ -44,20 +44,40 @@ serve(async (req) => {
       try {
         console.log(`Download attempt ${attempt}/3...`);
         
-        // Use Supabase Storage API directly instead of public URL
-        const { data, error } = await supabase.storage
-          .from("mobile-zips")
-          .download(storagePath);
+        // Try multiple download methods
+        let arrayBuffer: ArrayBuffer | null = null;
+        
+        // Method 1: Direct fetch from public URL (more reliable for binary files)
+        try {
+          console.log(`Trying direct fetch from: ${mobileZipUrl}`);
+          const response = await fetch(mobileZipUrl);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          arrayBuffer = await response.arrayBuffer();
+          console.log(`Direct fetch succeeded: ${arrayBuffer.byteLength} bytes`);
+        } catch (fetchError) {
+          console.warn(`Direct fetch failed: ${fetchError}. Trying Supabase SDK...`);
+          
+          // Method 2: Supabase Storage API fallback
+          const { data, error } = await supabase.storage
+            .from("mobile-zips")
+            .download(storagePath);
 
-        if (error) {
-          throw new Error(`Storage download error: ${error.message}`);
+          if (error) {
+            throw new Error(`Storage download error: ${error.message}`);
+          }
+
+          if (!data) {
+            throw new Error("No data returned from storage");
+          }
+
+          arrayBuffer = await data.arrayBuffer();
+          console.log(`Supabase SDK download succeeded: ${arrayBuffer.byteLength} bytes`);
         }
-
-        if (!data) {
-          throw new Error("No data returned from storage");
-        }
-
-        const arrayBuffer = await data.arrayBuffer();
+        
         zipBytes = new Uint8Array(arrayBuffer);
         
         console.log(`Downloaded ${zipBytes.length} bytes`);
@@ -97,14 +117,28 @@ serve(async (req) => {
         }
         
         if (!foundEOCD) {
+          // Check for ZIP64 EOCD (0x50 0x4B 0x06 0x06)
+          let foundZip64EOCD = false;
+          for (let i = zipBytes.length - 56; i >= searchStart; i--) {
+            if (zipBytes[i] === 0x50 && zipBytes[i+1] === 0x4B && 
+                zipBytes[i+2] === 0x06 && zipBytes[i+3] === 0x06) {
+              foundZip64EOCD = true;
+              console.log(`Found ZIP64 EOCD at offset ${i} - this format may not be fully supported`);
+              break;
+            }
+          }
+          
           // Log diagnostic information
           const lastBytes = Array.from(zipBytes.slice(-100))
             .map(b => b.toString(16).padStart(2, '0')).join(' ');
-          console.warn(`⚠️ EOCD not found in expected location. Last 100 bytes: ${lastBytes}`);
+          console.warn(`⚠️ Standard EOCD not found. Last 100 bytes: ${lastBytes}`);
           console.warn(`File size: ${zipBytes.length}, searched from ${searchStart} to ${zipBytes.length - 22}`);
           
-          // Don't fail here - let JSZip try to parse it
-          console.log('Proceeding with JSZip parsing despite missing EOCD in expected location...');
+          if (foundZip64EOCD) {
+            console.log('ZIP64 format detected. Proceeding with JSZip parsing...');
+          } else {
+            console.log('Proceeding with JSZip parsing despite missing EOCD...');
+          }
         } else {
           console.log(`✓ Valid ZIP file structure detected (${zipBytes.length} bytes, EOCD at ${eocdOffset})`);
         }
