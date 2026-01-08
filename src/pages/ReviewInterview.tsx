@@ -503,17 +503,23 @@ const ReviewInterview = () => {
                   </Button>
                 </div>
               )}
-            </> : <MobileZipUpload auditId={auditId!} expectedFileName={audit.file_name} onUploadSuccess={() => {
-          queryClient.invalidateQueries({
-            queryKey: ["audit", auditId]
-          });
-          queryClient.invalidateQueries({
-            queryKey: ["interview-metadata", auditId]
-          });
-          queryClient.invalidateQueries({
-            queryKey: ["interview-photos", auditId]
-          });
-        }} />}
+            </> : <MobileZipUpload 
+              auditId={auditId!} 
+              expectedFileName={audit.file_name} 
+              existingZipUrl={audit.mobile_zip_url}
+              hasProcessingFailed={!!audit.mobile_zip_url && !metadata}
+              onUploadSuccess={() => {
+                queryClient.invalidateQueries({
+                  queryKey: ["audit", auditId]
+                });
+                queryClient.invalidateQueries({
+                  queryKey: ["interview-metadata", auditId]
+                });
+                queryClient.invalidateQueries({
+                  queryKey: ["interview-photos", auditId]
+                });
+              }} 
+            />}
         </div>
       </div>
 
