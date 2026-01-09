@@ -22,31 +22,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle, XCircle, Loader2, Users, UserPlus } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { CheckCircle, XCircle, Loader2, Users, UserPlus, Link2 } from "lucide-react";
 import { format } from "date-fns";
 
 const TeamApprovals = () => {
   const { session, userRole, profile } = useAuth();
   const queryClient = useQueryClient();
+  const isSuperAdmin = userRole === "super_admin";
 
   const { data: pendingRequests, isLoading, error } = useQuery({
     queryKey: ["pending-team-assignments", profile?.contractor_id],
     queryFn: async () => {
-      console.log("🔍 Debug Info:", {
-        userRole,
-        contractorId: profile?.contractor_id,
-        userId: session?.user?.id
-      });
-
-      // First, fetch team assignments
       let query = supabase
         .from("team_assignments")
         .select("*")
         .eq("status", "pending");
 
-      // If user is a contractor (not admin), filter by their contractor_id
       if (userRole === 'contractor' && profile?.contractor_id) {
-        console.log("📌 Filtering by contractor_id:", profile.contractor_id);
         query = query.eq("contractor_id", profile.contractor_id);
       }
 
@@ -55,25 +53,16 @@ const TeamApprovals = () => {
       if (assignmentsError) throw assignmentsError;
       if (!assignments || assignments.length === 0) return [];
 
-      // Fetch field manager profiles for all assignments
       const managerIds = [...new Set(assignments.map(a => a.field_manager_id))];
-      const { data: managers, error: managersError } = await supabase
+      const { data: managers } = await supabase
         .from("profiles")
         .select("id, full_name, email")
         .in("id", managerIds);
 
-      if (managersError) console.error("Failed to fetch managers:", managersError);
-
-      // Combine the data
       const combinedData = assignments.map(assignment => ({
         ...assignment,
         manager: managers?.find(m => m.id === assignment.field_manager_id) || null
       }));
-
-      console.log("📊 Query Results:", { 
-        assignments: combinedData.length, 
-        managers: managers?.length 
-      });
 
       return combinedData;
     },
@@ -92,32 +81,27 @@ const TeamApprovals = () => {
         query = query.eq("contractor_id", profile.contractor_id);
       }
 
-      const { data: assignments, error: assignmentsError } = await query
-        .order("field_manager_id");
+      const { data: assignments, error: assignmentsError } = await query.order("field_manager_id");
 
       if (assignmentsError) throw assignmentsError;
       if (!assignments || assignments.length === 0) return [];
 
-      // Fetch field manager profiles
       const managerIds = [...new Set(assignments.map(a => a.field_manager_id))];
       const { data: managers } = await supabase
         .from("profiles")
         .select("id, full_name, email")
         .in("id", managerIds);
 
-      // Fetch interviewer names from interview_metadata
       const interviewerCodes = [...new Set(assignments.map(a => a.interviewer_code))];
       const { data: interviewers } = await supabase
         .from("interview_metadata")
         .select("interviewer_code, interviewer_name")
         .in("interviewer_code", interviewerCodes);
 
-      // Create a map of interviewer codes to names
       const interviewerMap = new Map(
         interviewers?.map(i => [i.interviewer_code, i.interviewer_name])
       );
 
-      // Group assignments by field manager with interviewer names
       const teamsByManager = managerIds.map(managerId => {
         const manager = managers?.find(m => m.id === managerId);
         const members = assignments
@@ -144,7 +128,6 @@ const TeamApprovals = () => {
   const { data: allFieldManagers } = useQuery({
     queryKey: ["all-field-managers", profile?.contractor_id],
     queryFn: async () => {
-      // Get all field manager user IDs
       const { data: fieldManagerRoles } = await supabase
         .from("user_roles")
         .select("user_id")
@@ -154,14 +137,12 @@ const TeamApprovals = () => {
 
       const managerIds = fieldManagerRoles.map(r => r.user_id);
 
-      // Get profiles for these field managers
       let profilesQuery = supabase
         .from("profiles")
         .select("id, full_name, email, contractor_id")
         .in("id", managerIds)
         .eq("is_approved", true);
 
-      // Filter by contractor_id for contractors
       if (userRole === 'contractor' && profile?.contractor_id) {
         profilesQuery = profilesQuery.eq("contractor_id", profile.contractor_id);
       }
@@ -176,7 +157,6 @@ const TeamApprovals = () => {
   const { data: unassignedInterviewers, isLoading: loadingUnassigned } = useQuery({
     queryKey: ["unassigned-interviewers", profile?.contractor_id],
     queryFn: async () => {
-      // Get all interviewers from interview_metadata
       let metadataQuery = supabase
         .from("interview_metadata")
         .select("interviewer_code, interviewer_name, contractor_id");
@@ -189,7 +169,6 @@ const TeamApprovals = () => {
       
       if (interviewersError) throw interviewersError;
 
-      // Get unique interviewers
       const uniqueInterviewers = Array.from(
         new Map(
           allInterviewers?.map(i => [
@@ -203,7 +182,6 @@ const TeamApprovals = () => {
         ).values()
       );
 
-      // Get all approved assignments
       let assignmentsQuery = supabase
         .from("team_assignments")
         .select("interviewer_code")
@@ -217,9 +195,52 @@ const TeamApprovals = () => {
 
       const assignedCodes = approvedAssignments?.map(a => a.interviewer_code) || [];
       
-      // Filter out assigned interviewers
       return uniqueInterviewers.filter(i => !assignedCodes.includes(i.code));
     },
+  });
+
+  // FM-Admin Assignments (Super Admin only)
+  const { data: fmAdminAssignments = [], isLoading: loadingFmAdmin } = useQuery({
+    queryKey: ["fm-admin-assignments"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("field_manager_admin_assignments")
+        .select(`
+          id,
+          field_manager_id,
+          admin_id,
+          is_active,
+          assigned_at
+        `)
+        .eq("is_active", true);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: isSuperAdmin,
+  });
+
+  // Fetch all admins (Super Admin only)
+  const { data: allAdmins = [] } = useQuery({
+    queryKey: ["all-admins"],
+    queryFn: async () => {
+      const { data: adminRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "admin");
+
+      if (!adminRoles || adminRoles.length === 0) return [];
+
+      const adminIds = adminRoles.map(r => r.user_id);
+      const { data: admins } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", adminIds)
+        .eq("is_approved", true);
+
+      return admins || [];
+    },
+    enabled: isSuperAdmin,
   });
 
   const updateAssignmentMutation = useMutation({
@@ -245,6 +266,7 @@ const TeamApprovals = () => {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["pending-team-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["approved-teams"] });
       toast({
         title: "Success",
         description: `Assignment ${variables.status}.`,
@@ -338,12 +360,76 @@ const TeamApprovals = () => {
     },
   });
 
+  // FM-Admin assignment mutation
+  const assignFmToAdminMutation = useMutation({
+    mutationFn: async ({
+      fieldManagerId,
+      adminId,
+    }: {
+      fieldManagerId: string;
+      adminId: string;
+    }) => {
+      if (!session?.user.id) throw new Error("Not authenticated");
+
+      // Check for existing assignment
+      const { data: existing } = await supabase
+        .from("field_manager_admin_assignments")
+        .select("id")
+        .eq("field_manager_id", fieldManagerId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing
+        const { error } = await supabase
+          .from("field_manager_admin_assignments")
+          .update({
+            admin_id: adminId,
+            assigned_by: session.user.id,
+            assigned_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        // Create new
+        const { error } = await supabase
+          .from("field_manager_admin_assignments")
+          .insert({
+            field_manager_id: fieldManagerId,
+            admin_id: adminId,
+            assigned_by: session.user.id,
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fm-admin-assignments"] });
+      toast({
+        title: "Success",
+        description: "Field manager assigned to admin.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign field manager.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleApprove = (assignmentId: string) => {
     updateAssignmentMutation.mutate({ assignmentId, status: "approved" });
   };
 
   const handleReject = (assignmentId: string) => {
     updateAssignmentMutation.mutate({ assignmentId, status: "rejected" });
+  };
+
+  const getAdminForFm = (fmId: string) => {
+    const assignment = fmAdminAssignments.find(a => a.field_manager_id === fmId);
+    if (!assignment) return null;
+    return allAdmins.find(a => a.id === assignment.admin_id);
   };
 
   return (
@@ -358,252 +444,343 @@ const TeamApprovals = () => {
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Pending Requests ({pendingRequests?.length || 0})
-            </CardTitle>
-            <CardDescription>
-              Review requests from field managers to assign interviewers to their teams
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {error && (
-              <div className="bg-destructive/10 p-4 rounded-md mb-4">
-                <p className="text-destructive font-medium">Error loading requests:</p>
-                <p className="text-sm text-muted-foreground">{error.message}</p>
+        <Accordion type="multiple" defaultValue={["pending", "active"]} className="space-y-4">
+          {/* Pending Requests Accordion */}
+          <AccordionItem value="pending" className="border rounded-lg">
+            <AccordionTrigger className="px-6 hover:no-underline">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                <span className="font-semibold">Pending Requests ({pendingRequests?.length || 0})</span>
               </div>
-            )}
-            {isLoading ? (
-              <div className="flex justify-center p-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : pendingRequests && pendingRequests.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Field Manager</TableHead>
-                    <TableHead>Interviewer Code</TableHead>
-                    <TableHead>Contractor ID</TableHead>
-                    <TableHead>Request Date</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendingRequests.map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">
-                            {(request.manager as any)?.full_name || "Unknown"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {(request.manager as any)?.email}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {request.interviewer_code}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{request.contractor_id}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(request.created_at), "MMM d, yyyy HH:mm")}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {request.notes || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleApprove(request.id)}
-                            disabled={updateAssignmentMutation.isPending}
-                            className="gap-1"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleReject(request.id)}
-                            disabled={updateAssignmentMutation.isPending}
-                            className="gap-1"
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Reject
-                          </Button>
-                        </div>
-                      </TableCell>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <p className="text-sm text-muted-foreground mb-4">
+                Review requests from field managers to assign interviewers to their teams
+              </p>
+              {error && (
+                <div className="bg-destructive/10 p-4 rounded-md mb-4">
+                  <p className="text-destructive font-medium">Error loading requests:</p>
+                  <p className="text-sm text-muted-foreground">{(error as Error).message}</p>
+                </div>
+              )}
+              {isLoading ? (
+                <div className="flex justify-center p-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : pendingRequests && pendingRequests.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Field Manager</TableHead>
+                      <TableHead>Interviewer Code</TableHead>
+                      <TableHead>Contractor ID</TableHead>
+                      <TableHead>Request Date</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center p-12 text-muted-foreground">
-                <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">No Pending Requests</p>
-                <p className="text-sm">
-                  All team assignment requests have been processed.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Active Teams Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Active Teams ({approvedTeams?.length || 0})
-            </CardTitle>
-            <CardDescription>
-              Field managers and their assigned interviewers
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loadingTeams ? (
-              <div className="flex justify-center p-8">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : approvedTeams && approvedTeams.length > 0 ? (
-              <div className="space-y-4">
-                {approvedTeams.map(team => (
-                  <div key={team.managerId} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold">{team.managerName}</h3>
-                        <p className="text-sm text-muted-foreground">{team.managerEmail}</p>
-                      </div>
-                      <Badge variant="outline">{team.memberCount} {team.memberCount === 1 ? 'member' : 'members'}</Badge>
-                    </div>
-                    <div className="space-y-2">
-                      {team.members.map(member => (
-                        <div key={member.id} className="flex items-center justify-between gap-2 p-2 rounded border bg-muted/30">
-                          <div className="flex items-center gap-2 flex-1">
-                            <Badge variant="secondary">{member.interviewer_code}</Badge>
-                            <span className="font-medium">{member.interviewer_name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              • Assigned {format(new Date(member.approved_at), "MMM d, yyyy")}
-                            </span>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingRequests.map((request) => (
+                      <TableRow key={request.id}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">
+                              {(request.manager as any)?.full_name || "Unknown"}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {(request.manager as any)?.email}
+                            </div>
                           </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {request.interviewer_code}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{request.contractor_id}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {format(new Date(request.created_at), "MMM d, yyyy HH:mm")}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {request.notes || "-"}
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-2">
-                            <Select
-                              value={member.field_manager_id}
-                              onValueChange={(newManagerId) => {
-                                if (newManagerId !== member.field_manager_id) {
-                                  reassignAgentMutation.mutate({
-                                    assignmentId: member.id,
-                                    newFieldManagerId: newManagerId,
-                                  });
-                                }
-                              }}
+                            <Button
+                              size="sm"
+                              onClick={() => handleApprove(request.id)}
+                              disabled={updateAssignmentMutation.isPending}
+                              className="gap-1"
                             >
-                              <SelectTrigger className="w-[200px] h-8 text-xs">
-                                <SelectValue placeholder="Reassign to..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {allFieldManagers?.map(manager => (
+                              <CheckCircle className="h-4 w-4" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleReject(request.id)}
+                              disabled={updateAssignmentMutation.isPending}
+                              className="gap-1"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              Reject
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center p-12 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">No Pending Requests</p>
+                  <p className="text-sm">
+                    All team assignment requests have been processed.
+                  </p>
+                </div>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Active Teams Accordion */}
+          <AccordionItem value="active" className="border rounded-lg">
+            <AccordionTrigger className="px-6 hover:no-underline">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                <span className="font-semibold">Active Teams ({approvedTeams?.length || 0})</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <p className="text-sm text-muted-foreground mb-4">
+                Field managers and their assigned interviewers
+              </p>
+              {loadingTeams ? (
+                <div className="flex justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : approvedTeams && approvedTeams.length > 0 ? (
+                <div className="space-y-4">
+                  {approvedTeams.map(team => (
+                    <div key={team.managerId} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h3 className="font-semibold">{team.managerName}</h3>
+                          <p className="text-sm text-muted-foreground">{team.managerEmail}</p>
+                        </div>
+                        <Badge variant="outline">{team.memberCount} {team.memberCount === 1 ? 'member' : 'members'}</Badge>
+                      </div>
+                      <div className="space-y-2">
+                        {team.members.map(member => (
+                          <div key={member.id} className="flex items-center justify-between gap-2 p-2 rounded border bg-muted/30">
+                            <div className="flex items-center gap-2 flex-1">
+                              <Badge variant="secondary">{member.interviewer_code}</Badge>
+                              <span className="font-medium">{member.interviewer_name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                • Assigned {format(new Date(member.approved_at), "MMM d, yyyy")}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={member.field_manager_id}
+                                onValueChange={(newManagerId) => {
+                                  if (newManagerId !== member.field_manager_id) {
+                                    reassignAgentMutation.mutate({
+                                      assignmentId: member.id,
+                                      newFieldManagerId: newManagerId,
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="w-[200px] h-8 text-xs">
+                                  <SelectValue placeholder="Reassign to..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {allFieldManagers?.map(manager => (
+                                    <SelectItem key={manager.id} value={manager.id}>
+                                      {manager.full_name}
+                                      {manager.id === team.managerId && " (Current)"}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center p-8 text-muted-foreground">
+                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">No Active Teams</p>
+                  <p className="text-sm">No approved team assignments yet.</p>
+                </div>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Unassigned Agents Accordion */}
+          <AccordionItem value="unassigned" className="border rounded-lg">
+            <AccordionTrigger className="px-6 hover:no-underline">
+              <div className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                <span className="font-semibold">Unassigned Agents ({unassignedInterviewers?.length || 0})</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-6 pb-6">
+              <p className="text-sm text-muted-foreground mb-4">
+                Interviewers not currently assigned to any team
+              </p>
+              {loadingUnassigned ? (
+                <div className="flex justify-center p-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : unassignedInterviewers && unassignedInterviewers.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Interviewer Code</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Contractor ID</TableHead>
+                      <TableHead>Assign To Team</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {unassignedInterviewers.map(interviewer => (
+                      <TableRow key={interviewer.code}>
+                        <TableCell className="font-medium">{interviewer.code}</TableCell>
+                        <TableCell>{interviewer.name || "-"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{interviewer.contractor_id}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            onValueChange={(fieldManagerId) => {
+                              assignAgentMutation.mutate({
+                                interviewerCode: interviewer.code,
+                                fieldManagerId,
+                                contractorId: interviewer.contractor_id,
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue placeholder="Select field manager..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allFieldManagers
+                                ?.filter(manager => manager.contractor_id === interviewer.contractor_id)
+                                .map(manager => (
                                   <SelectItem key={manager.id} value={manager.id}>
                                     {manager.full_name}
-                                    {manager.id === team.managerId && " (Current)"}
                                   </SelectItem>
                                 ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center p-8 text-muted-foreground">
-                <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">No Active Teams</p>
-                <p className="text-sm">No approved team assignments yet.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center p-8 text-muted-foreground">
+                  <UserPlus className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">All Agents Assigned</p>
+                  <p className="text-sm">All interviewers are assigned to teams.</p>
+                </div>
+              )}
+            </AccordionContent>
+          </AccordionItem>
 
-        {/* Unassigned Agents Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              Unassigned Agents ({unassignedInterviewers?.length || 0})
-            </CardTitle>
-            <CardDescription>
-              Interviewers not currently assigned to any team
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loadingUnassigned ? (
-              <div className="flex justify-center p-8">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : unassignedInterviewers && unassignedInterviewers.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Interviewer Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Contractor ID</TableHead>
-                    <TableHead>Assign To Team</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {unassignedInterviewers.map(interviewer => (
-                    <TableRow key={interviewer.code}>
-                      <TableCell className="font-medium">{interviewer.code}</TableCell>
-                      <TableCell>{interviewer.name || "-"}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{interviewer.contractor_id}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          onValueChange={(fieldManagerId) => {
-                            assignAgentMutation.mutate({
-                              interviewerCode: interviewer.code,
-                              fieldManagerId,
-                              contractorId: interviewer.contractor_id,
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="w-[200px]">
-                            <SelectValue placeholder="Select field manager..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {allFieldManagers
-                              ?.filter(manager => manager.contractor_id === interviewer.contractor_id)
-                              .map(manager => (
-                                <SelectItem key={manager.id} value={manager.id}>
-                                  {manager.full_name}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center p-8 text-muted-foreground">
-                <UserPlus className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">All Agents Assigned</p>
-                <p className="text-sm">All interviewers are assigned to teams.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {/* FM-Admin Assignments (Super Admin only) */}
+          {isSuperAdmin && (
+            <AccordionItem value="fm-admin" className="border rounded-lg">
+              <AccordionTrigger className="px-6 hover:no-underline">
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-5 w-5" />
+                  <span className="font-semibold">Field Manager → Admin Assignments</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Assign field managers to admins for interview tracking visibility
+                </p>
+                {loadingFmAdmin ? (
+                  <div className="flex justify-center p-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : allFieldManagers && allFieldManagers.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Field Manager</TableHead>
+                        <TableHead>Contractor</TableHead>
+                        <TableHead>Current Admin</TableHead>
+                        <TableHead>Assign To Admin</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allFieldManagers.map(fm => {
+                        const currentAdmin = getAdminForFm(fm.id);
+                        return (
+                          <TableRow key={fm.id}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{fm.full_name}</div>
+                                <div className="text-xs text-muted-foreground">{fm.email}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{fm.contractor_id}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              {currentAdmin ? (
+                                <Badge variant="secondary">{currentAdmin.full_name}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">Not assigned</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={currentAdmin?.id || ""}
+                                onValueChange={(adminId) => {
+                                  if (adminId && adminId !== currentAdmin?.id) {
+                                    assignFmToAdminMutation.mutate({
+                                      fieldManagerId: fm.id,
+                                      adminId,
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="w-[200px]">
+                                  <SelectValue placeholder="Select admin..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {allAdmins.map(admin => (
+                                    <SelectItem key={admin.id} value={admin.id}>
+                                      {admin.full_name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center p-8 text-muted-foreground">
+                    <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">No Field Managers</p>
+                    <p className="text-sm">No approved field managers found.</p>
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          )}
+        </Accordion>
       </div>
     </Layout>
   );

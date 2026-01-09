@@ -15,7 +15,12 @@ import {
   Loader2,
   ArrowUpDown,
   Filter,
-  X
+  X,
+  Eye,
+  CheckCircle,
+  XCircle,
+  FileCheck,
+  FolderOpen
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -34,19 +39,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 
 interface TrackingInterview {
   id: string;
   file_name: string;
   status: string;
   reviewed_at: string | null;
-  reviewed_by: string | null;
-  contractor_id: string | null;
-  interviewer_code: string | null;
+  review_comment: string | null;
+  action_plan: string | null;
+  artifact_correction: string[] | null;
   field_manager: string | null;
   total_names: number | null;
   interviewee_name: string | null;
   interview_date: string | null;
+  has_metadata: boolean;
+  has_pdf: boolean;
+  team_assigned: boolean;
+  team_name: string | null;
 }
 
 const InterviewTracking = () => {
@@ -59,14 +69,16 @@ const InterviewTracking = () => {
   
   // Filters
   const [filters, setFilters] = useState({
-    contractor: "",
     fieldManager: "",
-    agentCode: "",
     status: "",
     startDate: "",
     endDate: "",
   });
   const [showFilters, setShowFilters] = useState(false);
+
+  // Failed interview modal
+  const [selectedInterview, setSelectedInterview] = useState<TrackingInterview | null>(null);
+  const [showFailedModal, setShowFailedModal] = useState(false);
 
   const isAdmin = userRole === 'admin';
   const isSuperAdmin = userRole === 'super_admin';
@@ -81,7 +93,7 @@ const InterviewTracking = () => {
       
       const { data, error } = await supabase
         .from("field_manager_admin_assignments")
-        .select("field_manager_id, profiles!field_manager_admin_assignments_field_manager_id_fkey(full_name)")
+        .select("field_manager_id")
         .eq("admin_id", user.id)
         .eq("is_active", true);
       
@@ -99,7 +111,7 @@ const InterviewTracking = () => {
       
       let query = supabase
         .from("team_assignments")
-        .select("interviewer_code, field_manager_id, profiles!team_assignments_field_manager_id_fkey(full_name)")
+        .select("interviewer_code, field_manager_id")
         .eq("status", "approved");
       
       if (isFieldManager) {
@@ -116,64 +128,79 @@ const InterviewTracking = () => {
     enabled: !!user?.id && (isFieldManager || (isAdmin && assignedFieldManagers.length > 0) || isSuperAdmin),
   });
 
-  // Main interviews query
+  // Main interviews query - now fetches all statuses
   const { data: interviews = [], isLoading } = useQuery({
-    queryKey: ["tracking-interviews", userRole, profile?.contractor_id, teamAssignments, filters],
+    queryKey: ["tracking-interviews", userRole, profile?.contractor_id, teamAssignments],
     queryFn: async () => {
-      // Get audits with passed status
-      let query = supabase
+      // Get audits with all statuses (not just passed)
+      const { data: audits, error: auditsError } = await supabase
         .from("audits")
         .select(`
           id,
           file_name,
+          file_url,
           status,
           reviewed_at,
-          reviewed_by
-        `)
-        .eq("status", "Audit Passed");
+          review_comment,
+          action_plan,
+          artifact_correction
+        `);
       
-      const { data: audits, error: auditsError } = await query;
       if (auditsError) throw auditsError;
-      
       if (!audits || audits.length === 0) return [];
       
       // Get metadata for these audits
       const auditIds = audits.map(a => a.id);
-      const { data: metadata, error: metaError } = await supabase
+      const { data: metadata } = await supabase
         .from("interview_metadata")
         .select("audit_id, contractor_id, interviewer_code, field_manager, total_names, interviewee_name, interview_date")
         .in("audit_id", auditIds);
       
-      if (metaError) throw metaError;
+      // Get interview assignments
+      const { data: assignments } = await supabase
+        .from("interview_assignments")
+        .select("audit_id, team_id, data_entry_teams(name)")
+        .in("audit_id", auditIds);
       
-      // Combine data
+      // Create maps
       const metadataMap = new Map(metadata?.map(m => [m.audit_id, m]) || []);
+      const assignmentMap = new Map(assignments?.map(a => [a.audit_id, a]) || []);
+      
       let results: TrackingInterview[] = audits.map(audit => {
         const meta = metadataMap.get(audit.id);
+        const assignment = assignmentMap.get(audit.id);
+        
         return {
           id: audit.id,
           file_name: audit.file_name,
           status: audit.status,
           reviewed_at: audit.reviewed_at,
-          reviewed_by: audit.reviewed_by,
-          contractor_id: meta?.contractor_id || null,
-          interviewer_code: meta?.interviewer_code || null,
+          review_comment: audit.review_comment,
+          action_plan: audit.action_plan,
+          artifact_correction: audit.artifact_correction,
           field_manager: meta?.field_manager || null,
           total_names: meta?.total_names || null,
           interviewee_name: meta?.interviewee_name || null,
           interview_date: meta?.interview_date || null,
+          has_metadata: !!meta,
+          has_pdf: !!audit.file_url,
+          team_assigned: !!assignment,
+          team_name: (assignment?.data_entry_teams as any)?.name || null,
+          // For filtering
+          contractor_id: meta?.contractor_id || null,
+          interviewer_code: meta?.interviewer_code || null,
         };
       });
       
       // Apply role-based filtering
       if (isContractor && profile?.contractor_id) {
-        results = results.filter(r => r.contractor_id === profile.contractor_id);
+        results = results.filter(r => (r as any).contractor_id === profile.contractor_id);
       } else if (isFieldManager && teamAssignments.length > 0) {
         const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter(r => r.interviewer_code && myCodes.includes(r.interviewer_code));
+        results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
       } else if (isAdmin && teamAssignments.length > 0) {
         const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter(r => r.interviewer_code && assignedCodes.includes(r.interviewer_code));
+        results = results.filter(r => (r as any).interviewer_code && assignedCodes.includes((r as any).interviewer_code));
       }
       // Super admin sees all
       
@@ -184,10 +211,9 @@ const InterviewTracking = () => {
 
   // Get unique values for filter dropdowns
   const filterOptions = useMemo(() => {
-    const contractors = [...new Set(interviews.map(i => i.contractor_id).filter(Boolean))];
     const fieldManagers = [...new Set(interviews.map(i => i.field_manager).filter(Boolean))];
-    const agentCodes = [...new Set(interviews.map(i => i.interviewer_code).filter(Boolean))];
-    return { contractors, fieldManagers, agentCodes };
+    const statuses = [...new Set(interviews.map(i => i.status).filter(Boolean))];
+    return { fieldManagers, statuses };
   }, [interviews]);
 
   // Apply filters and search
@@ -198,15 +224,13 @@ const InterviewTracking = () => {
         const query = searchQuery.toLowerCase();
         const matchesSearch = 
           interview.file_name.toLowerCase().includes(query) ||
-          interview.interviewee_name?.toLowerCase().includes(query) ||
-          interview.interviewer_code?.toLowerCase().includes(query);
+          interview.interviewee_name?.toLowerCase().includes(query);
         if (!matchesSearch) return false;
       }
       
       // Apply other filters
-      if (filters.contractor && interview.contractor_id !== filters.contractor) return false;
       if (filters.fieldManager && interview.field_manager !== filters.fieldManager) return false;
-      if (filters.agentCode && interview.interviewer_code !== filters.agentCode) return false;
+      if (filters.status && interview.status !== filters.status) return false;
       if (filters.startDate && interview.interview_date && interview.interview_date < filters.startDate) return false;
       if (filters.endDate && interview.interview_date && interview.interview_date > filters.endDate) return false;
       
@@ -251,17 +275,17 @@ const InterviewTracking = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ["Interview ID", "Contractor", "Agent Code", "Field Manager", "Total Names", "Interviewee", "Interview Date", "Reviewed By", "Reviewed At"];
+    const headers = ["Interview ID", "Field Manager", "Total Names", "Interviewee", "Interview Date", "Status", "Team Assigned", "PDF", "Metadata"];
     const rows = sortedInterviews.map(i => [
       i.file_name,
-      i.contractor_id || "",
-      i.interviewer_code || "",
       i.field_manager || "",
       i.total_names?.toString() || "",
       i.interviewee_name || "",
       i.interview_date || "",
-      i.reviewed_by || "",
-      i.reviewed_at ? format(new Date(i.reviewed_at), "yyyy-MM-dd HH:mm") : ""
+      i.status,
+      i.team_assigned ? (i.team_name || "Yes") : "No",
+      i.has_pdf ? "Yes" : "No",
+      i.has_metadata ? "Yes" : "No",
     ]);
     
     const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -276,9 +300,7 @@ const InterviewTracking = () => {
 
   const clearFilters = () => {
     setFilters({
-      contractor: "",
       fieldManager: "",
-      agentCode: "",
       status: "",
       startDate: "",
       endDate: "",
@@ -287,6 +309,26 @@ const InterviewTracking = () => {
   };
 
   const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery;
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "Audit Passed":
+        return <Badge className="bg-success text-success-foreground gap-1"><CheckCircle className="h-3 w-3" />Passed</Badge>;
+      case "Audit Failed":
+        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
+      case "Re-Audit Pending":
+        return <Badge variant="outline" className="text-warning border-warning gap-1">Re-Audit</Badge>;
+      case "In Review":
+        return <Badge variant="secondary" className="gap-1">In Review</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const handleViewFailed = (interview: TrackingInterview) => {
+    setSelectedInterview(interview);
+    setShowFailedModal(true);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
@@ -330,25 +372,23 @@ const InterviewTracking = () => {
           </Card>
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Users className="h-5 w-5 text-green-600" />
+              <div className="p-2 bg-success/10 rounded-lg">
+                <CheckCircle className="h-5 w-5 text-success" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Unique Agents</p>
-                <p className="text-2xl font-bold">{filterOptions.agentCodes.length}</p>
+                <p className="text-sm text-muted-foreground">Passed</p>
+                <p className="text-2xl font-bold">{interviews.filter(i => i.status === "Audit Passed").length}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Users className="h-5 w-5 text-blue-600" />
+              <div className="p-2 bg-destructive/10 rounded-lg">
+                <XCircle className="h-5 w-5 text-destructive" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Names</p>
-                <p className="text-2xl font-bold">
-                  {interviews.reduce((sum, i) => sum + (i.total_names || 0), 0).toLocaleString()}
-                </p>
+                <p className="text-sm text-muted-foreground">Failed</p>
+                <p className="text-2xl font-bold">{interviews.filter(i => i.status === "Audit Failed").length}</p>
               </div>
             </CardContent>
           </Card>
@@ -378,28 +418,14 @@ const InterviewTracking = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div>
                   <Label className="text-sm">Search</Label>
                   <Input
-                    placeholder="ID, name, code..."
+                    placeholder="ID, interviewee..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
-                </div>
-                <div>
-                  <Label className="text-sm">Contractor</Label>
-                  <Select value={filters.contractor} onValueChange={(v) => setFilters({ ...filters, contractor: v === "all" ? "" : v })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Contractors</SelectItem>
-                      {filterOptions.contractors.map(c => (
-                        <SelectItem key={c} value={c!}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div>
                   <Label className="text-sm">Field Manager</Label>
@@ -416,15 +442,15 @@ const InterviewTracking = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-sm">Agent Code</Label>
-                  <Select value={filters.agentCode} onValueChange={(v) => setFilters({ ...filters, agentCode: v === "all" ? "" : v })}>
+                  <Label className="text-sm">Status</Label>
+                  <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v === "all" ? "" : v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Agents</SelectItem>
-                      {filterOptions.agentCodes.map(code => (
-                        <SelectItem key={code} value={code!}>{code}</SelectItem>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      {filterOptions.statuses.map(s => (
+                        <SelectItem key={s} value={s!}>{s}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -476,8 +502,6 @@ const InterviewTracking = () => {
                           <ArrowUpDown className="h-3 w-3" />
                         </div>
                       </TableHead>
-                      <TableHead>Contractor</TableHead>
-                      <TableHead>Agent Code</TableHead>
                       <TableHead>Field Manager</TableHead>
                       <TableHead className="cursor-pointer" onClick={() => handleSort("total_names")}>
                         <div className="flex items-center gap-1">
@@ -492,26 +516,66 @@ const InterviewTracking = () => {
                           <ArrowUpDown className="h-3 w-3" />
                         </div>
                       </TableHead>
-                      <TableHead>Reviewed By</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Team Assigned</TableHead>
+                      <TableHead>Artifacts</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedInterviews.map((interview) => (
                       <TableRow key={interview.id}>
-                        <TableCell className="font-medium">{interview.file_name}</TableCell>
-                        <TableCell>{interview.contractor_id || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{interview.interviewer_code || "-"}</Badge>
-                        </TableCell>
+                        <TableCell className="font-medium font-mono text-sm">{interview.file_name}</TableCell>
                         <TableCell>{interview.field_manager || "-"}</TableCell>
                         <TableCell>{interview.total_names || "-"}</TableCell>
                         <TableCell className="max-w-[150px] truncate">
                           {interview.interviewee_name || "-"}
                         </TableCell>
+                        <TableCell>{interview.interview_date || "-"}</TableCell>
+                        <TableCell>{getStatusBadge(interview.status)}</TableCell>
                         <TableCell>
-                          {interview.interview_date || "-"}
+                          {interview.team_assigned ? (
+                            <Badge variant="outline" className="gap-1 text-success border-success">
+                              <Users className="h-3 w-3" />
+                              {interview.team_name || "Assigned"}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              Not Assigned
+                            </Badge>
+                          )}
                         </TableCell>
-                        <TableCell>{interview.reviewed_by || "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant={interview.has_pdf ? "outline" : "destructive"} 
+                              className={`gap-1 ${interview.has_pdf ? 'text-success border-success' : ''}`}
+                            >
+                              <FileCheck className="h-3 w-3" />
+                              PDF
+                            </Badge>
+                            <Badge 
+                              variant={interview.has_metadata ? "outline" : "destructive"}
+                              className={`gap-1 ${interview.has_metadata ? 'text-success border-success' : ''}`}
+                            >
+                              <FolderOpen className="h-3 w-3" />
+                              Meta
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {interview.status === "Audit Failed" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewFailed(interview)}
+                              className="gap-1"
+                            >
+                              <Eye className="h-3 w-3" />
+                              View
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -551,6 +615,13 @@ const InterviewTracking = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Failed Interview Modal */}
+      <FailedInterviewModal
+        open={showFailedModal}
+        onOpenChange={setShowFailedModal}
+        interview={selectedInterview}
+      />
     </div>
   );
 };
