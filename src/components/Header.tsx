@@ -1,6 +1,8 @@
-import { FileText, ChevronDown } from "lucide-react";
+import { FileText } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import UserMenu from "@/components/UserMenu";
+import MobileNav from "@/components/MobileNav";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   NavigationMenu,
@@ -17,21 +19,22 @@ const Header = () => {
   const { userRole } = useAuth();
   const location = useLocation();
   
-  // Check if we're on any "All Reviews" submenu page
   const isReviewsActive = location.pathname.startsWith('/admin/review-history') || 
                           location.pathname.startsWith('/admin/team-assignments');
 
   return (
     <header className="border-b bg-card sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-card/95">
-      <div className="container flex items-center justify-between h-16 px-6">
-        {/* Left: Logo + Brand */}
-        <div className="flex items-center gap-2">
-          <FileText className="h-6 w-6 text-primary" />
-          <span className="text-xl font-semibold">Backend Audit Tool</span>
+      <div className="container flex items-center justify-between h-14 sm:h-16 px-4 sm:px-6">
+        {/* Left: Mobile Nav + Logo */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <MobileNav />
+          <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+          <span className="text-lg sm:text-xl font-semibold hidden xs:inline">Backend Audit Tool</span>
+          <span className="text-lg font-semibold xs:hidden">Audit</span>
         </div>
         
-        {/* Center: Navigation Links */}
-        <nav className="flex items-center gap-6">
+        {/* Center: Navigation Links - Desktop only */}
+        <nav className="hidden lg:flex items-center gap-4 xl:gap-6">
           <NavLink 
             to="/"
             className="text-sm font-medium transition-colors hover:text-primary"
@@ -117,7 +120,7 @@ const Header = () => {
                 Analytics
               </NavLink>
               
-              {/* All Reviews Dropdown with Hover */}
+              {/* All Reviews Dropdown */}
               <NavigationMenu>
                 <NavigationMenuList>
                   <NavigationMenuItem>
@@ -190,8 +193,13 @@ const Header = () => {
           )}
         </nav>
         
-        {/* Right: User Menu */}
-        <UserMenu />
+        {/* Right: Theme Toggle + User Menu */}
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:block">
+            <ThemeToggle />
+          </div>
+          <UserMenu />
+        </div>
       </div>
     </header>
   );

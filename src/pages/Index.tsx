@@ -82,22 +82,48 @@ const Index = () => {
 
       // Apply filters to query
       if (filters.statuses.length > 0) {
-        // Handle "In Progress" filter separately
-        if (filters.statuses.includes("In Progress")) {
-          const otherStatuses = filters.statuses.filter(s => s !== "In Progress");
-          if (otherStatuses.length > 0) {
-            // Complex OR filter: In Progress OR other statuses
-            query = query.or(
-              `and(locked_by.not.is.null,locked_at.gte.${oneHourAgo}),status.in.(${otherStatuses.join(",")})`
-            );
-          } else {
-            // Only In Progress filter
-            query = query
-              .not("locked_by", "is", null)
-              .gte("locked_at", oneHourAgo);
+        // Handle special filters
+        const hasReAudit = filters.statuses.includes("Re-Audit");
+        const hasInProgress = filters.statuses.includes("In Progress");
+        const otherStatuses = filters.statuses.filter(s => s !== "In Progress" && s !== "Re-Audit");
+
+        if (hasReAudit && !hasInProgress && otherStatuses.length === 0) {
+          // Only Re-Audit filter
+          query = query.eq("is_re_audit", true).eq("status", "Awaiting Review");
+          
+          // For auditors, only show their own re-audits
+          if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
+            query = query.eq("reviewed_by", profile.full_name);
           }
+        } else if (hasInProgress && !hasReAudit && otherStatuses.length === 0) {
+          // Only In Progress filter
+          query = query
+            .not("locked_by", "is", null)
+            .gte("locked_at", oneHourAgo);
+        } else if (hasInProgress || hasReAudit) {
+          // Complex OR filter with multiple conditions
+          const conditions = [];
+          
+          if (hasInProgress) {
+            conditions.push(`and(locked_by.not.is.null,locked_at.gte.${oneHourAgo})`);
+          }
+          
+          if (hasReAudit) {
+            if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
+              conditions.push(`and(is_re_audit.eq.true,status.eq.Awaiting Review,reviewed_by.eq.${profile.full_name})`);
+            } else {
+              conditions.push(`and(is_re_audit.eq.true,status.eq.Awaiting Review)`);
+            }
+          }
+          
+          if (otherStatuses.length > 0) {
+            conditions.push(`status.in.(${otherStatuses.join(",")})`);
+          }
+          
+          query = query.or(conditions.join(","));
         } else {
-          query = query.in("status", filters.statuses as Array<Audit["status"]>);
+          // Standard status filter
+          query = query.in("status", otherStatuses as Array<Audit["status"]>);
         }
       }
       if (filters.interviewId) {
@@ -107,7 +133,6 @@ const Index = () => {
         query = query.ilike("reviewed_by", `%${filters.reviewer}%`);
       }
       if (filters.interviewerId) {
-        // Extract interviewer ID from file_name pattern: NG71_704_20251013_1000 -> 704
         query = query.ilike("file_name", `%_${filters.interviewerId}_%`);
       }
       if (filters.startDate) {
@@ -127,11 +152,17 @@ const Index = () => {
 
       if (error) throw error;
       
-      // Filter out re-audit interviews that don't belong to the current auditor
-      // Admins and super_admins can see all re-audits
+      // Filter data based on role
       let filteredData = data || [];
+      
       if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
         filteredData = filteredData.filter(audit => {
+          // For "Pending" / "Awaiting Review" status, only show if it has complete artifacts
+          if ((audit.status === 'Pending' || audit.status === 'Awaiting Review') && !audit.is_re_audit) {
+            const hasCompleteArtifacts = !!audit.file_url && !!audit.mobile_zip_url;
+            if (!hasCompleteArtifacts) return false;
+          }
+          
           // If it's a re-audit, only show if the current user reviewed it originally
           if (audit.is_re_audit && audit.status === 'Awaiting Review') {
             return audit.reviewed_by === profile.full_name;
@@ -165,21 +196,21 @@ const Index = () => {
   }, [itemsPerPage]);
 
   return (
-    <div className="flex min-h-screen w-full bg-background">
+    <div className="flex flex-col lg:flex-row min-h-screen w-full bg-background">
       {/* Mobile Filter Sidebar */}
       {isFilterOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="fixed inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setIsFilterOpen(false)} />
-          <div className="fixed right-0 top-0 h-full w-[336px] shadow-lg z-50">
+          <div className="fixed right-0 top-0 h-full w-full max-w-[336px] shadow-lg z-50">
             <FilterSidebar onFilterChange={setFilters} onClose={() => setIsFilterOpen(false)} />
           </div>
         </div>
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Page Header */}
-        <div className="border-b bg-card px-6 py-4">
+        <div className="border-b bg-card px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button
@@ -191,8 +222,8 @@ const Index = () => {
                 <Filter className="h-4 w-4" />
               </Button>
               <div>
-                <h1 className="text-2xl font-bold">Interviews</h1>
-                <p className="text-sm text-muted-foreground">
+                <h1 className="text-xl sm:text-2xl font-bold">Interviews</h1>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   {totalCount} {totalCount === 1 ? "result" : "results"}
                 </p>
               </div>
@@ -200,9 +231,9 @@ const Index = () => {
             {canUpload && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button className="gap-2">
+                  <Button className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
                     <Upload className="h-4 w-4" />
-                    UPLOAD
+                    <span className="hidden xs:inline">UPLOAD</span>
                     <ChevronDown className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -247,7 +278,7 @@ const Index = () => {
         </div>
 
         {/* Table Content */}
-        <main className="flex-1 p-6 flex flex-col">
+        <main className="flex-1 p-4 sm:p-6 flex flex-col overflow-x-auto">
           {/* Admin Stats Cards */}
           <AdminStatsCard />
           

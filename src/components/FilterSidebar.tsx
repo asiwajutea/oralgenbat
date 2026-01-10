@@ -61,8 +61,9 @@ const clearStoredFilters = (userId: string) => {
 };
 
 export const FilterSidebar = ({ onFilterChange, onClose, initialFilters }: FilterSidebarProps) => {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const userId = user?.id || "anonymous";
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   
   const defaultFilters: FilterState = {
     statuses: [],
@@ -86,8 +87,10 @@ export const FilterSidebar = ({ onFilterChange, onClose, initialFilters }: Filte
   const [initialized, setInitialized] = useState(false);
   const { data: statusCounts } = useStatusCounts();
 
+  // Build status options dynamically based on role
   const statusOptions = [
     { value: "Pending", label: `Awaiting Review (${statusCounts?.counts?.Pending || 0})` },
+    { value: "Re-Audit", label: `Re-Audit (${statusCounts?.counts?.["Re-Audit"] || 0})` },
     { value: "In Progress", label: `In Progress (${statusCounts?.counts?.["In Progress"] || 0})` },
     { value: "Audit Passed", label: `Audit Passed (${statusCounts?.counts?.["Audit Passed"] || 0})` },
     { value: "Audit Failed", label: `Audit Failed (${statusCounts?.counts?.["Audit Failed"] || 0})` },
@@ -172,7 +175,7 @@ export const FilterSidebar = ({ onFilterChange, onClose, initialFilters }: Filte
   };
 
   return (
-    <aside className="w-[336px] h-full border-l bg-card p-6 space-y-6 overflow-y-auto flex flex-col">
+    <aside className="w-full sm:w-[336px] h-full border-l bg-card p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto flex flex-col">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Filter Results</h2>
         {onClose && (

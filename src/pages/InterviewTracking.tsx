@@ -418,41 +418,41 @@ const InterviewTracking = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
-      <div className="container py-8 space-y-6">
+      <div className="container py-4 sm:py-8 px-4 sm:px-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold">Interview Tracking</h1>
-            <p className="text-muted-foreground mt-1">
-              {isSuperAdmin ? "View all interviews across the organization" :
+            <h1 className="text-2xl sm:text-3xl font-bold">Interview Tracking</h1>
+            <p className="text-sm sm:text-base text-muted-foreground mt-1">
+              {isSuperAdmin ? "View all interviews" :
                isAdmin ? "View interviews from your assigned field managers" :
                isFieldManager ? "View interviews from your team" :
                "View interviews from your contractor"}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2 text-xs sm:text-sm">
               <Filter className="h-4 w-4" />
-              Filters
+              <span className="hidden sm:inline">Filters</span>
               {hasActiveFilters && <Badge variant="secondary" className="ml-1">Active</Badge>}
             </Button>
-            <Button onClick={handleExportCSV} className="gap-2">
+            <Button onClick={handleExportCSV} className="gap-2 text-xs sm:text-sm">
               <Download className="h-4 w-4" />
-              Export CSV
+              <span className="hidden sm:inline">Export CSV</span>
             </Button>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <Card>
-            <CardContent className="p-4 flex items-center gap-3">
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
               <div className="p-2 bg-primary/10 rounded-lg">
-                <FileText className="h-5 w-5 text-primary" />
+                <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Interviews</p>
-                <p className="text-2xl font-bold">{interviews.length}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Total</p>
+                <p className="text-lg sm:text-2xl font-bold">{interviews.length}</p>
               </div>
             </CardContent>
           </Card>
