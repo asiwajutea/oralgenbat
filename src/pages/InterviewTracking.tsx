@@ -521,7 +521,7 @@ const InterviewTracking = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Field Managers</SelectItem>
-                      {filterOptions.fieldManagers.map(fm => (
+                      {[...filterOptions.fieldManagers].sort((a, b) => (a ?? '').localeCompare(b ?? '')).map(fm => (
                         <SelectItem key={fm} value={fm!}>{fm}</SelectItem>
                       ))}
                     </SelectContent>
@@ -535,7 +535,7 @@ const InterviewTracking = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Statuses</SelectItem>
-                      {filterOptions.statuses.map(s => (
+                      {[...filterOptions.statuses].sort((a, b) => (a ?? '').localeCompare(b ?? '')).map(s => (
                         <SelectItem key={s} value={s!}>{s}</SelectItem>
                       ))}
                     </SelectContent>

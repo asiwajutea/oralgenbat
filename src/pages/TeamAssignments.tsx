@@ -436,7 +436,7 @@ const TeamAssignments = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Contractors</SelectItem>
-                {contractors.map((c) => (
+                {[...contractors].sort((a, b) => a.localeCompare(b)).map((c) => (
                   <SelectItem key={c} value={c}>
                     {c}
                   </SelectItem>

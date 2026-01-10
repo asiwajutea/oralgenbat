@@ -677,6 +677,7 @@ const TeamApprovals = () => {
                               <SelectContent>
                                 {allFieldManagers
                                   ?.filter(manager => manager.contractor_id === interviewer.contractor_id)
+                                  .sort((a, b) => a.full_name.localeCompare(b.full_name))
                                   .map(manager => (
                                     <SelectItem key={manager.id} value={manager.id}>
                                       {manager.full_name}
@@ -765,7 +766,7 @@ const TeamApprovals = () => {
                                     <SelectValue placeholder="Select admin..." />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {allAdmins.map(admin => (
+                                    {[...allAdmins].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(admin => (
                                       <SelectItem key={admin.id} value={admin.id}>
                                         {admin.full_name}
                                       </SelectItem>

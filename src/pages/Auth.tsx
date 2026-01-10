@@ -243,10 +243,10 @@ const Auth = () => {
                       <SelectValue placeholder="Select your role" />
                     </SelectTrigger>
                     <SelectContent className="bg-background">
-                      <SelectItem value="field_manager">Field Manager</SelectItem>
                       <SelectItem value="auditor">Auditor</SelectItem>
                       <SelectItem value="contractor">Contractor</SelectItem>
                       <SelectItem value="data_entry_clerk">Data Entry Clerk</SelectItem>
+                      <SelectItem value="field_manager">Field Manager</SelectItem>
                       <SelectItem value="quality_assurance_manager">Quality Assurance Manager</SelectItem>
                     </SelectContent>
                   </Select>
