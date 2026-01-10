@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,8 @@ import {
   CheckCircle,
   XCircle,
   FileCheck,
-  FolderOpen
+  FolderOpen,
+  Upload
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -40,6 +41,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
+import { AuditPagination } from "@/components/AuditPagination";
+import { toast } from "@/hooks/use-toast";
 
 interface TrackingInterview {
   id: string;
@@ -61,11 +64,12 @@ interface TrackingInterview {
 
 const InterviewTracking = () => {
   const { user, userRole, profile } = useAuth();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<string>("reviewed_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [itemsPerPage, setItemsPerPage] = useState(20);
   
   // Filters
   const [filters, setFilters] = useState({
@@ -73,12 +77,17 @@ const InterviewTracking = () => {
     status: "",
     startDate: "",
     endDate: "",
+    metadataStatus: "",
   });
   const [showFilters, setShowFilters] = useState(false);
 
   // Failed interview modal
   const [selectedInterview, setSelectedInterview] = useState<TrackingInterview | null>(null);
   const [showFailedModal, setShowFailedModal] = useState(false);
+
+  // File upload refs
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const isAdmin = userRole === 'admin';
   const isSuperAdmin = userRole === 'super_admin';
@@ -234,6 +243,10 @@ const InterviewTracking = () => {
       if (filters.startDate && interview.interview_date && interview.interview_date < filters.startDate) return false;
       if (filters.endDate && interview.interview_date && interview.interview_date > filters.endDate) return false;
       
+      // Metadata status filter
+      if (filters.metadataStatus === "with_metadata" && !interview.has_metadata) return false;
+      if (filters.metadataStatus === "without_metadata" && interview.has_metadata) return false;
+      
       return true;
     });
   }, [interviews, searchQuery, filters]);
@@ -261,7 +274,7 @@ const InterviewTracking = () => {
   const paginatedInterviews = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return sortedInterviews.slice(start, start + itemsPerPage);
-  }, [sortedInterviews, currentPage]);
+  }, [sortedInterviews, currentPage, itemsPerPage]);
 
   const totalPages = Math.ceil(sortedInterviews.length / itemsPerPage);
 
@@ -304,6 +317,7 @@ const InterviewTracking = () => {
       status: "",
       startDate: "",
       endDate: "",
+      metadataStatus: "",
     });
     setSearchQuery("");
   };
@@ -316,8 +330,8 @@ const InterviewTracking = () => {
         return <Badge className="bg-success text-success-foreground gap-1"><CheckCircle className="h-3 w-3" />Passed</Badge>;
       case "Audit Failed":
         return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
-      case "Re-Audit Pending":
-        return <Badge variant="outline" className="text-warning border-warning gap-1">Re-Audit</Badge>;
+      case "Awaiting Review":
+        return <Badge variant="outline" className="text-warning border-warning gap-1">Pending</Badge>;
       case "In Review":
         return <Badge variant="secondary" className="gap-1">In Review</Badge>;
       default:
@@ -328,6 +342,78 @@ const InterviewTracking = () => {
   const handleViewFailed = (interview: TrackingInterview) => {
     setSelectedInterview(interview);
     setShowFailedModal(true);
+  };
+
+  // Handle metadata upload from tracking page
+  const handleMetadataUpload = async (interviewId: string, fileName: string, file: File) => {
+    if (!file || !file.name.endsWith('.zip')) {
+      toast({
+        title: "Invalid file",
+        description: "Please upload a ZIP file containing metadata",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadingId(interviewId);
+    
+    try {
+      // Upload the ZIP file
+      const zipPath = `mobile-zips/${interviewId}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("mobile-zips")
+        .upload(zipPath, file);
+      
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("mobile-zips")
+        .getPublicUrl(zipPath);
+
+      // Update the audit with the mobile zip URL
+      const { error: updateError } = await supabase
+        .from("audits")
+        .update({
+          mobile_zip_url: urlData.publicUrl,
+          mobile_zip_uploaded_at: new Date().toISOString(),
+        })
+        .eq("id", interviewId);
+
+      if (updateError) throw updateError;
+
+      // Invoke the process-mobile-zip edge function to extract metadata
+      const { error: processError } = await supabase.functions.invoke("process-mobile-zip", {
+        body: { 
+          auditId: interviewId, 
+          zipUrl: urlData.publicUrl 
+        },
+      });
+
+      if (processError) {
+        console.error("Process error:", processError);
+        // Don't throw - the upload succeeded, processing might work later
+      }
+
+      toast({
+        title: "Metadata uploaded",
+        description: "The metadata ZIP has been uploaded and is being processed.",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast({
+        title: "Upload failed",
+        description: error.message || "Failed to upload metadata",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const triggerFileInput = (interviewId: string) => {
+    fileInputRefs.current[interviewId]?.click();
   };
 
   return (
@@ -418,7 +504,7 @@ const InterviewTracking = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div>
                   <Label className="text-sm">Search</Label>
                   <Input
@@ -452,6 +538,19 @@ const InterviewTracking = () => {
                       {filterOptions.statuses.map(s => (
                         <SelectItem key={s} value={s!}>{s}</SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm">Metadata</Label>
+                  <Select value={filters.metadataStatus} onValueChange={(v) => setFilters({ ...filters, metadataStatus: v === "all" ? "" : v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Interviews</SelectItem>
+                      <SelectItem value="with_metadata">With Metadata</SelectItem>
+                      <SelectItem value="without_metadata">Without Metadata</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -546,35 +645,73 @@ const InterviewTracking = () => {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Badge 
-                              variant={interview.has_pdf ? "outline" : "destructive"} 
-                              className={`gap-1 ${interview.has_pdf ? 'text-success border-success' : ''}`}
-                            >
-                              <FileCheck className="h-3 w-3" />
-                              PDF
+                          {interview.has_pdf && interview.has_metadata ? (
+                            <Badge variant="outline" className="gap-1 text-success border-success">
+                              <CheckCircle className="h-3 w-3" />
+                              Complete
                             </Badge>
-                            <Badge 
-                              variant={interview.has_metadata ? "outline" : "destructive"}
-                              className={`gap-1 ${interview.has_metadata ? 'text-success border-success' : ''}`}
-                            >
-                              <FolderOpen className="h-3 w-3" />
-                              Meta
-                            </Badge>
-                          </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              {!interview.has_pdf && (
+                                <Badge variant="destructive" className="gap-1">
+                                  <FileCheck className="h-3 w-3" />
+                                  PDF
+                                </Badge>
+                              )}
+                              {!interview.has_metadata && (
+                                <Badge variant="destructive" className="gap-1">
+                                  <FolderOpen className="h-3 w-3" />
+                                  Meta
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
-                          {interview.status === "Audit Failed" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleViewFailed(interview)}
-                              className="gap-1"
-                            >
-                              <Eye className="h-3 w-3" />
-                              View
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {interview.status === "Audit Failed" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewFailed(interview)}
+                                className="gap-1"
+                              >
+                                <Eye className="h-3 w-3" />
+                                View
+                              </Button>
+                            )}
+                            {!interview.has_metadata && (
+                              <>
+                                <input
+                                  type="file"
+                                  accept=".zip"
+                                  className="hidden"
+                                  ref={(el) => { fileInputRefs.current[interview.id] = el; }}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      handleMetadataUpload(interview.id, interview.file_name, file);
+                                    }
+                                    e.target.value = '';
+                                  }}
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => triggerFileInput(interview.id)}
+                                  disabled={uploadingId === interview.id}
+                                  className="gap-1"
+                                >
+                                  {uploadingId === interview.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Upload className="h-3 w-3" />
+                                  )}
+                                  Upload
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -582,34 +719,19 @@ const InterviewTracking = () => {
                 </Table>
 
                 {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t">
-                    <p className="text-sm text-muted-foreground">
-                      Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedInterviews.length)} of {sortedInterviews.length}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                      >
-                        Previous
-                      </Button>
-                      <span className="text-sm">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                <div className="px-4 py-3 border-t">
+                  <AuditPagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={sortedInterviews.length}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(newValue) => {
+                      setItemsPerPage(newValue);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
               </>
             )}
           </CardContent>

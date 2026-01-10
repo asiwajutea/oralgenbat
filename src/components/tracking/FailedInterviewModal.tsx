@@ -113,8 +113,9 @@ export function FailedInterviewModal({
       if (submissionError) throw submissionError;
 
       // Update audit status and file URLs if new files were uploaded
+      // CRITICAL: Use "Awaiting Review" status so auditors can see and process re-audits
       const updateData: Record<string, any> = {
-        status: "Re-Audit Pending",
+        status: "Awaiting Review",
         is_re_audit: true,
       };
       
