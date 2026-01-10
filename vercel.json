@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!assets|src|@vite|node_modules|favicon.ico).*)",
+      "source": "/:path*",
       "destination": "/index.html"
     }
   ]
