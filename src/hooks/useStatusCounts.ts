@@ -115,6 +115,5 @@ export const useStatusCounts = () => {
 
       return { counts, totalNames };
     },
-    refetchInterval: 30000, // Refresh every 30 seconds
   });
 };

@@ -3,15 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AuditPagination } from "@/components/AuditPagination";
 import { format } from "date-fns";
-import { History, Search, ChevronLeft, ChevronRight, Clock, MessageSquare, ExternalLink } from "lucide-react";
+import { History, Search, Clock, MessageSquare, ExternalLink } from "lucide-react";
 
 interface ReviewedAudit {
   id: string;
@@ -25,17 +25,16 @@ interface ReviewedAudit {
   review_duration_seconds: number | null;
 }
 
-const ITEMS_PER_PAGE = 15;
-
 const ReviewHistory = () => {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["review-history", profile?.full_name, currentPage, statusFilter, searchTerm],
+    queryKey: ["review-history", profile?.full_name, currentPage, statusFilter, searchTerm, itemsPerPage],
     queryFn: async () => {
       if (!profile?.full_name) return { audits: [], totalCount: 0 };
 
@@ -54,8 +53,8 @@ const ReviewHistory = () => {
         query = query.ilike("file_name", `%${searchTerm}%`);
       }
 
-      const from = (currentPage - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
 
       const { data: audits, count, error } = await query.range(from, to);
 
@@ -84,7 +83,16 @@ const ReviewHistory = () => {
     return `${secs}s`;
   };
 
-  const totalPages = Math.ceil((data?.totalCount || 0) / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil((data?.totalCount || 0) / itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+  };
 
   if (isLoading) {
     return (
@@ -135,8 +143,8 @@ const ReviewHistory = () => {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="Audit Passed">Passed</SelectItem>
             <SelectItem value="Audit Failed">Failed</SelectItem>
+            <SelectItem value="Audit Passed">Passed</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -171,7 +179,7 @@ const ReviewHistory = () => {
                       onClick={() => navigate(`/review/${audit.id}`)}
                     >
                       <TableCell className="font-medium">
-                        {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                        {(currentPage - 1) * itemsPerPage + index + 1}
                       </TableCell>
                       <TableCell className="font-medium font-mono text-sm">
                         {audit.file_name}
@@ -226,31 +234,14 @@ const ReviewHistory = () => {
       </Card>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <AuditPagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalCount={data?.totalCount || 0}
+        itemsPerPage={itemsPerPage}
+        onPageChange={handlePageChange}
+        onItemsPerPageChange={handleItemsPerPageChange}
+      />
     </div>
   );
 };

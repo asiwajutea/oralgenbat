@@ -411,7 +411,6 @@ export const useCriticalAgentsFraud = () => {
       return criticalAgents.sort((a, b) => b.overallFraudScore - a.overallFraudScore);
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes to reduce load
-    refetchOnWindowFocus: true,
   });
 };
 

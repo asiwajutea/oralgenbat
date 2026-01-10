@@ -1,17 +1,31 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   AlertTriangle,
   CheckCircle2,
   Trash2,
   FileArchive,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Filter,
+  X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -46,6 +60,9 @@ interface ZipDiagnosticResult {
   status: "valid" | "corrupted" | "missing_data";
 }
 
+type SortField = "file_name" | "mobile_zip_uploaded_at" | "status" | "photo_count";
+type SortOrder = "asc" | "desc";
+
 const ZipDiagnostics = () => {
   const queryClient = useQueryClient();
   const [selectedAudit, setSelectedAudit] = useState<ZipDiagnosticResult | null>(null);
@@ -58,6 +75,19 @@ const ZipDiagnostics = () => {
   // Bulk selection state
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [metadataFilter, setMetadataFilter] = useState<string>("");
+  const [photosFilter, setPhotosFilter] = useState<string>("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  // Sort state
+  const [sortField, setSortField] = useState<SortField>("mobile_zip_uploaded_at");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   // Scan all audits with ZIP files
   const { data: diagnosticResults = [], isLoading, refetch } = useQuery({
@@ -125,6 +155,77 @@ const ZipDiagnostics = () => {
       return results;
     },
   });
+
+  // Filter and sort logic
+  const filteredResults = useMemo(() => {
+    return diagnosticResults.filter(result => {
+      // Search filter
+      if (searchQuery && !result.file_name.toLowerCase().includes(searchQuery.toLowerCase())) {
+        return false;
+      }
+      // Status filter
+      if (statusFilter && result.status !== statusFilter) return false;
+      // Metadata filter
+      if (metadataFilter === "with" && !result.has_metadata) return false;
+      if (metadataFilter === "without" && result.has_metadata) return false;
+      // Photos filter
+      if (photosFilter === "with" && !result.has_photos) return false;
+      if (photosFilter === "without" && result.has_photos) return false;
+      // Date range
+      if (startDate && result.mobile_zip_uploaded_at) {
+        const uploadDate = result.mobile_zip_uploaded_at.split("T")[0];
+        if (uploadDate < startDate) return false;
+      }
+      if (endDate && result.mobile_zip_uploaded_at) {
+        const uploadDate = result.mobile_zip_uploaded_at.split("T")[0];
+        if (uploadDate > endDate) return false;
+      }
+      return true;
+    });
+  }, [diagnosticResults, searchQuery, statusFilter, metadataFilter, photosFilter, startDate, endDate]);
+
+  const sortedResults = useMemo(() => {
+    return [...filteredResults].sort((a, b) => {
+      let aVal: string | number | null = a[sortField];
+      let bVal: string | number | null = b[sortField];
+      
+      if (aVal === null) aVal = "";
+      if (bVal === null) bVal = "";
+      
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
+      }
+      return sortOrder === "asc" 
+        ? String(aVal).localeCompare(String(bVal)) 
+        : String(bVal).localeCompare(String(aVal));
+    });
+  }, [filteredResults, sortField, sortOrder]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortOrder("desc");
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-50" />;
+    return sortOrder === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("");
+    setMetadataFilter("");
+    setPhotosFilter("");
+    setStartDate("");
+    setEndDate("");
+    setCurrentPage(1);
+  };
+
+  const hasActiveFilters = searchQuery || statusFilter || metadataFilter || photosFilter || startDate || endDate;
 
   // Delete corrupted ZIP mutation
   const deleteZipMutation = useMutation({
@@ -237,9 +338,9 @@ const ZipDiagnostics = () => {
   const missingDataCount = diagnosticResults.filter(r => r.status === "missing_data").length;
   const validCount = diagnosticResults.filter(r => r.status === "valid").length;
 
-  // Pagination
-  const totalPages = Math.ceil(diagnosticResults.length / itemsPerPage);
-  const paginatedResults = diagnosticResults.slice(
+  // Pagination using sorted/filtered results
+  const totalPages = Math.ceil(sortedResults.length / itemsPerPage);
+  const paginatedResults = sortedResults.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -266,7 +367,6 @@ const ZipDiagnostics = () => {
 
   const selectableInPage = paginatedResults.filter(r => r.status !== "valid");
   const allSelectableSelected = selectableInPage.length > 0 && selectableInPage.every(r => selectedItems.has(r.id));
-  const someSelected = selectableInPage.some(r => selectedItems.has(r.id));
 
   const handleBulkDelete = () => {
     const itemsToDelete = diagnosticResults.filter(r => selectedItems.has(r.id));
@@ -288,21 +388,34 @@ const ZipDiagnostics = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
       <div className="container py-8 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold">ZIP File Diagnostics</h1>
             <p className="text-muted-foreground mt-1">
               Scan and identify corrupted ZIP files that need re-uploading
             </p>
           </div>
-          <Button onClick={() => refetch()} disabled={isLoading} className="gap-2">
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Refresh Scan
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowFilters(!showFilters)}
+              className="gap-2"
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+              {hasActiveFilters && (
+                <Badge variant="secondary" className="ml-1">Active</Badge>
+              )}
+            </Button>
+            <Button onClick={() => refetch()} disabled={isLoading} className="gap-2">
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Refresh Scan
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -353,6 +466,104 @@ const ZipDiagnostics = () => {
           </Card>
         </div>
 
+        {/* Filter Panel */}
+        {showFilters && (
+          <Card>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-lg">Filters</CardTitle>
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
+                <X className="h-4 w-4" />
+                Clear All
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {/* Search */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Search</Label>
+                  <Input 
+                    placeholder="Interview ID..." 
+                    value={searchQuery} 
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1);
+                    }} 
+                  />
+                </div>
+                {/* Status */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Status</Label>
+                  <Select value={statusFilter || "all"} onValueChange={(v) => {
+                    setStatusFilter(v === "all" ? "" : v);
+                    setCurrentPage(1);
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="corrupted">Corrupted</SelectItem>
+                      <SelectItem value="missing_data">Missing Data</SelectItem>
+                      <SelectItem value="valid">Valid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Metadata */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Metadata</Label>
+                  <Select value={metadataFilter || "all"} onValueChange={(v) => {
+                    setMetadataFilter(v === "all" ? "" : v);
+                    setCurrentPage(1);
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="with">Has Metadata</SelectItem>
+                      <SelectItem value="without">No Metadata</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Photos */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Photos</Label>
+                  <Select value={photosFilter || "all"} onValueChange={(v) => {
+                    setPhotosFilter(v === "all" ? "" : v);
+                    setCurrentPage(1);
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="with">Has Photos</SelectItem>
+                      <SelectItem value="without">No Photos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Date Range */}
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Start Date</Label>
+                  <Input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setCurrentPage(1);
+                    }} 
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">End Date</Label>
+                  <Input 
+                    type="date" 
+                    value={endDate} 
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setCurrentPage(1);
+                    }} 
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Bulk Actions Bar */}
         {selectedItems.size > 0 && (
           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
@@ -383,7 +594,10 @@ const ZipDiagnostics = () => {
           <CardHeader>
             <CardTitle>Diagnostic Results</CardTitle>
             <CardDescription>
-              ZIPs marked as "Corrupted" have no extracted data and should be re-uploaded. "Missing Data" may have partial extraction issues.
+              {hasActiveFilters 
+                ? `Showing ${sortedResults.length} of ${diagnosticResults.length} ZIPs (filtered)` 
+                : `ZIPs marked as "Corrupted" have no extracted data and should be re-uploaded. "Missing Data" may have partial extraction issues.`
+              }
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -391,13 +605,23 @@ const ZipDiagnostics = () => {
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            ) : diagnosticResults.length === 0 ? (
+            ) : sortedResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <FileArchive className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">No ZIP files found</p>
-                <p className="text-sm text-muted-foreground">
-                  No interviews have ZIP files uploaded
+                <p className="text-lg font-medium">
+                  {hasActiveFilters ? "No results match filters" : "No ZIP files found"}
                 </p>
+                <p className="text-sm text-muted-foreground">
+                  {hasActiveFilters 
+                    ? "Try adjusting your filter criteria"
+                    : "No interviews have ZIP files uploaded"
+                  }
+                </p>
+                {hasActiveFilters && (
+                  <Button variant="outline" onClick={clearFilters} className="mt-4">
+                    Clear Filters
+                  </Button>
+                )}
               </div>
             ) : (
               <>
@@ -414,11 +638,43 @@ const ZipDiagnostics = () => {
                           />
                         </TableHead>
                         <TableHead className="w-12">SN</TableHead>
-                        <TableHead>Interview ID</TableHead>
-                        <TableHead>Uploaded At</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleSort("file_name")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Interview ID
+                            {getSortIcon("file_name")}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleSort("mobile_zip_uploaded_at")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Uploaded At
+                            {getSortIcon("mobile_zip_uploaded_at")}
+                          </div>
+                        </TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleSort("status")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Status
+                            {getSortIcon("status")}
+                          </div>
+                        </TableHead>
                         <TableHead>Has Metadata</TableHead>
-                        <TableHead>Photos</TableHead>
+                        <TableHead 
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => handleSort("photo_count")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Photos
+                            {getSortIcon("photo_count")}
+                          </div>
+                        </TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -468,9 +724,10 @@ const ZipDiagnostics = () => {
                                   setSelectedAudit(result);
                                   setShowDeleteDialog(true);
                                 }}
+                                disabled={deleteZipMutation.isPending}
                                 className="gap-1"
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="h-3.5 w-3.5" />
                                 Delete
                               </Button>
                             )}
@@ -482,73 +739,73 @@ const ZipDiagnostics = () => {
                 </div>
 
                 {/* Pagination */}
-                <AuditPagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  totalCount={diagnosticResults.length}
-                  itemsPerPage={itemsPerPage}
-                  onPageChange={handlePageChange}
-                  onItemsPerPageChange={handleItemsPerPageChange}
-                />
+                <div className="mt-4">
+                  <AuditPagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={sortedResults.length}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={handlePageChange}
+                    onItemsPerPageChange={handleItemsPerPageChange}
+                  />
+                </div>
               </>
             )}
           </CardContent>
         </Card>
+
+        {/* Single Delete Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Corrupted ZIP?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will delete the corrupted ZIP file for <strong>{selectedAudit?.file_name}</strong> along with any partial data. 
+                The interview record will remain but you'll need to re-upload the mobile data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => selectedAudit && deleteZipMutation.mutate(selectedAudit)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={deleteZipMutation.isPending}
+              >
+                {deleteZipMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Bulk Delete Dialog */}
+        <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {selectedItems.size} Corrupted ZIPs?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will delete the selected corrupted ZIP files and their partial data. 
+                Interview records will remain but mobile data will need to be re-uploaded.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={bulkDeleteMutation.isPending}
+              >
+                {bulkDeleteMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
+                Delete {selectedItems.size} Files
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      {/* Single Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Corrupted ZIP File?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will delete the ZIP file for "{selectedAudit?.file_name}" and all associated data (photos, metadata). The interview will need a fresh ZIP upload.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => selectedAudit && deleteZipMutation.mutate(selectedAudit)}
-              disabled={deleteZipMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteZipMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Trash2 className="h-4 w-4 mr-2" />
-              )}
-              Delete ZIP
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Bulk Delete Confirmation Dialog */}
-      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedItems.size} ZIP File(s)?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will delete {selectedItems.size} corrupted/problematic ZIP file(s) and all their associated data (photos, metadata). These interviews will need fresh ZIP uploads.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBulkDelete}
-              disabled={bulkDeleteMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {bulkDeleteMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Trash2 className="h-4 w-4 mr-2" />
-              )}
-              Delete {selectedItems.size} Files
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 };

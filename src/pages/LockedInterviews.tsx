@@ -107,7 +107,6 @@ const LockedInterviews = () => {
         reviewer_name: profileMap.get(audit.locked_by) || "Unknown",
       })) as LockedInterview[];
     },
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
   const handleForceUnlock = async (interview: LockedInterview) => {
