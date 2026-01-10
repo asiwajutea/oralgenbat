@@ -10,11 +10,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, Shield, User } from "lucide-react";
+import { LogOut, Shield, User, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
 
 const UserMenu = () => {
   const { profile, userRole, signOut } = useAuth();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
 
   const getInitials = (name: string) => {
     return name
@@ -25,12 +27,16 @@ const UserMenu = () => {
       .slice(0, 2);
   };
 
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-          <Avatar className="h-10 w-10">
-            <AvatarFallback className="bg-primary text-primary-foreground">
+        <Button variant="ghost" className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full">
+          <Avatar className="h-9 w-9 sm:h-10 sm:w-10">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs sm:text-sm">
               {profile?.full_name ? getInitials(profile.full_name) : "U"}
             </AvatarFallback>
           </Avatar>
@@ -50,6 +56,19 @@ const UserMenu = () => {
         <DropdownMenuItem onClick={() => navigate('/profile')}>
           <User className="mr-2 h-4 w-4" />
           <span>Profile</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={toggleTheme} className="sm:hidden">
+          {theme === "dark" ? (
+            <>
+              <Sun className="mr-2 h-4 w-4" />
+              <span>Light Mode</span>
+            </>
+          ) : (
+            <>
+              <Moon className="mr-2 h-4 w-4" />
+              <span>Dark Mode</span>
+            </>
+          )}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {(userRole === 'admin' || userRole === 'super_admin') && (

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface StatusCounts {
   Pending: number;
@@ -7,6 +8,7 @@ interface StatusCounts {
   "Audit Failed": number;
   "Awaiting Review": number;
   "In Progress": number;
+  "Re-Audit": number;
 }
 
 interface TotalNames {
@@ -15,11 +17,16 @@ interface TotalNames {
   "Audit Failed": number;
   "Awaiting Review": number;
   "In Progress": number;
+  "Re-Audit": number;
 }
 
 export const useStatusCounts = () => {
+  const { userRole, profile } = useAuth();
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isAuditor = userRole === 'auditor';
+
   return useQuery({
-    queryKey: ["status-counts"],
+    queryKey: ["status-counts", userRole, profile?.full_name],
     queryFn: async (): Promise<{ counts: StatusCounts; totalNames: TotalNames }> => {
       // Get all audits with their metadata for total_names
       const { data: audits, error } = await supabase
@@ -28,6 +35,10 @@ export const useStatusCounts = () => {
           status, 
           locked_by, 
           locked_at,
+          is_re_audit,
+          reviewed_by,
+          file_url,
+          mobile_zip_url,
           interview_metadata(total_names)
         `);
 
@@ -41,6 +52,7 @@ export const useStatusCounts = () => {
         "Audit Failed": 0,
         "Awaiting Review": 0,
         "In Progress": 0,
+        "Re-Audit": 0,
       };
 
       const totalNames: TotalNames = {
@@ -49,11 +61,13 @@ export const useStatusCounts = () => {
         "Audit Failed": 0,
         "Awaiting Review": 0,
         "In Progress": 0,
+        "Re-Audit": 0,
       };
 
       audits?.forEach((audit) => {
         const metadata = audit.interview_metadata as { total_names: number | null }[] | null;
         const names = metadata?.[0]?.total_names || 0;
+        const hasCompleteArtifacts = !!audit.file_url && !!audit.mobile_zip_url;
         
         // Count as "In Progress" if locked and within 1 hour
         if (audit.locked_by && audit.locked_at && audit.locked_at > oneHourAgo) {
@@ -61,10 +75,35 @@ export const useStatusCounts = () => {
           totalNames["In Progress"] += names;
         }
         
-        // Always count the actual status
+        // Handle re-audits separately
+        if (audit.is_re_audit && audit.status === "Awaiting Review") {
+          // For auditors, only count their own re-audits
+          if (isAuditor && profile?.full_name) {
+            if (audit.reviewed_by === profile.full_name) {
+              counts["Re-Audit"]++;
+              totalNames["Re-Audit"] += names;
+            }
+          } else if (isAdmin) {
+            // Admins see all re-audits
+            counts["Re-Audit"]++;
+            totalNames["Re-Audit"] += names;
+          }
+          // Skip adding to Pending count for re-audits
+          return;
+        }
+        
+        // Count regular statuses (exclude re-audits from Pending/Awaiting Review)
         if (audit.status === "Pending" || audit.status === "Awaiting Review") {
-          counts["Pending"]++;
-          totalNames["Pending"] += names;
+          // For auditors, only count items with complete artifacts
+          if (isAuditor) {
+            if (hasCompleteArtifacts) {
+              counts["Pending"]++;
+              totalNames["Pending"] += names;
+            }
+          } else {
+            counts["Pending"]++;
+            totalNames["Pending"] += names;
+          }
         } else if (counts[audit.status as keyof StatusCounts] !== undefined) {
           counts[audit.status as keyof StatusCounts]++;
           totalNames[audit.status as keyof StatusCounts] += names;
