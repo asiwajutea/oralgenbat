@@ -20,7 +20,7 @@ const Header = () => {
           <MobileNav />
           <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
           <span className="text-lg sm:text-xl font-semibold hidden xs:inline">Backend Audit Tool</span>
-          <span className="text-lg font-semibold xs:hidden">OralGen BAT</span>
+          <span className="text-lg font-semibold xs:hidden">Backend Audit Tool (OralGen)</span>
         </div>
         
         {/* Center: Navigation Links - Desktop only */}
