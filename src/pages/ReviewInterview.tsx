@@ -190,13 +190,23 @@ const ReviewInterview = () => {
   });
 
   // Fetch checklist progress - only load if reviewer_id matches current user
+  // For re-audits awaiting review, clear old progress to start fresh
   const {
     data: checklistProgress,
     isLoading: checklistLoading
   } = useQuery({
-    queryKey: ["checklist-progress", auditId, user?.id],
+    queryKey: ["checklist-progress", auditId, user?.id, audit?.is_re_audit, audit?.status],
     queryFn: async () => {
       if (!user?.id) return null;
+      
+      // For re-audits awaiting review, delete old progress and start fresh
+      if (audit?.is_re_audit && audit?.status === 'Awaiting Review') {
+        await supabase
+          .from("audit_checklist_progress")
+          .delete()
+          .eq("audit_id", auditId);
+        return null;
+      }
       
       const {
         data,
@@ -228,6 +238,15 @@ const ReviewInterview = () => {
       setChecklistComments(checklistProgress.failure_comments || "");
     }
   }, [checklistProgress]);
+
+  // Reset checklist state for re-audits awaiting review
+  useEffect(() => {
+    if (audit?.is_re_audit && audit?.status === 'Awaiting Review') {
+      setChecklistCompleted(false);
+      setHasChecklistFailures(false);
+      setChecklistComments("");
+    }
+  }, [audit?.is_re_audit, audit?.status]);
   const isLoading = auditLoading || metadataLoading || photosLoading || lockLoading || isAuditor && checklistLoading;
   const isReviewed = audit?.status === "Audit Passed" || audit?.status === "Audit Failed";
 

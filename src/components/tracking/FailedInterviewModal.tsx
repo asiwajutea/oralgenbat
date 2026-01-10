@@ -122,12 +122,27 @@ export function FailedInterviewModal({
       if (newPdfUrl) updateData.file_url = newPdfUrl;
       if (newZipUrl) updateData.mobile_zip_url = newZipUrl;
 
+      // First get current re_audit_count, then increment
+      const { data: currentAudit } = await supabase
+        .from("audits")
+        .select("re_audit_count")
+        .eq("id", interview.id)
+        .single();
+      
+      updateData.re_audit_count = (currentAudit?.re_audit_count || 0) + 1;
+
       const { error: auditError } = await supabase
         .from("audits")
         .update(updateData)
         .eq("id", interview.id);
 
       if (auditError) throw auditError;
+
+      // Delete previous checklist progress so next auditor starts fresh
+      await supabase
+        .from("audit_checklist_progress")
+        .delete()
+        .eq("audit_id", interview.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
