@@ -69,7 +69,6 @@ const AdminDashboard = () => {
       return data || [];
     },
     enabled: userRole === 'admin' || userRole === 'super_admin',
-    refetchInterval: 60000, // Refresh every minute
   });
 
   // Fetch user presence data
@@ -87,7 +86,6 @@ const AdminDashboard = () => {
       return data as UserPresence[];
     },
     enabled: userRole === 'admin' || userRole === 'super_admin',
-    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Create a map of user presence for quick lookup

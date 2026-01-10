@@ -30,7 +30,6 @@ export const AdminStatsCard = () => {
       };
     },
     enabled: isAdmin,
-    refetchInterval: 60000, // Refresh every minute
   });
 
   // Only render for admins
