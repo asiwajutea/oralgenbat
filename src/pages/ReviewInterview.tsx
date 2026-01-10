@@ -1,8 +1,9 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileCheck, AlertCircle, Lock, Clock } from "lucide-react";
+import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -70,6 +71,9 @@ const ReviewInterview = () => {
   const [isSticky, setIsSticky] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const checklistRef = useRef<HTMLDivElement>(null);
+  
+  // Mobile tab state for switching between review details and PDF
+  const [mobileTab, setMobileTab] = useState<"details" | "pdf">("details");
 
   // Review timer - active for auditors on unreviewed interviews
   const [isTimerActive, setIsTimerActive] = useState(false);
@@ -402,14 +406,44 @@ const ReviewInterview = () => {
         </div>
       </div>;
   }
-  return <div className="h-screen flex">
+  return <div className="h-screen flex flex-col lg:flex-row">
+      {/* Mobile Tab Navigation - only visible on mobile/tablet */}
+      <div className="lg:hidden flex-shrink-0 border-b bg-background sticky top-0 z-30">
+        <div className="flex">
+          <button
+            onClick={() => setMobileTab("details")}
+            className={`flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+              mobileTab === "details"
+                ? "border-b-2 border-primary text-primary bg-muted/30"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <ClipboardList className="h-4 w-4" />
+            Review Details
+          </button>
+          <button
+            onClick={() => setMobileTab("pdf")}
+            className={`flex-1 py-3 px-4 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+              mobileTab === "pdf"
+                ? "border-b-2 border-primary text-primary bg-muted/30"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            PDF Viewer
+          </button>
+        </div>
+      </div>
+
       {/* Left Panel - Metadata & Media */}
-      <div className="w-1/2 border-r border-border bg-background h-screen flex flex-col">
+      <div className={`w-full lg:w-1/2 border-r border-border bg-background h-[calc(100vh-49px)] lg:h-screen flex flex-col ${
+        mobileTab === "pdf" ? "hidden lg:flex" : "flex"
+      }`}>
         {/* Non-sticky Header - Navigation & Title */}
-        <div className="flex-shrink-0 p-4 pb-3 border-b border-border">
-          <div className="flex items-center justify-between">
+        <div className="flex-shrink-0 p-3 sm:p-4 pb-3 border-b border-border">
+          <div className="flex items-center justify-between gap-2">
             <ReviewNavigation nextAuditId={nextAudit?.id} />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* Lock countdown timer */}
               {isAuditor && !isReviewed && isLocked && !lockedByOther && remainingSeconds > 0}
               {isAuditor && !isReviewed && (
@@ -421,9 +455,9 @@ const ReviewInterview = () => {
               )}
             </div>
           </div>
-          <div className="mt-4">
-            <h1 className="text-xl font-bold">Interview Review</h1>
-            <p className="text-xs mt-0.5 text-muted-foreground font-medium">
+          <div className="mt-3 sm:mt-4">
+            <h1 className="text-lg sm:text-xl font-bold">Interview Review</h1>
+            <p className="text-xs mt-0.5 text-muted-foreground font-medium truncate">
               {audit.file_name}
             </p>
           </div>
@@ -435,7 +469,7 @@ const ReviewInterview = () => {
         {/* Sticky Section - Checklist & Actions only */}
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background border-b border-border shadow-sm">
           {/* Audit Checklist for auditors on unreviewed interviews - only show if metadata is uploaded */}
-          {isAuditor && !isReviewed && metadata && <div className="p-4" ref={checklistRef}>
+          {isAuditor && !isReviewed && metadata && <div className="p-3 sm:p-4" ref={checklistRef}>
               <AuditChecklist auditId={auditId!} interviewId={audit.file_name} initialProgress={checklistProgress} isSticky={isSticky} onComplete={(hasFailures, comments) => {
             setChecklistCompleted(true);
             setHasChecklistFailures(hasFailures);
@@ -445,7 +479,7 @@ const ReviewInterview = () => {
           
           {/* Message when metadata not uploaded */}
           {isAuditor && !isReviewed && !metadata && (
-            <div className="p-4 text-center text-muted-foreground bg-muted/30 border-b">
+            <div className="p-3 sm:p-4 text-center text-muted-foreground bg-muted/30 border-b">
               <p className="text-sm">Upload mobile materials to begin the audit review</p>
             </div>
           )}
@@ -473,7 +507,7 @@ const ReviewInterview = () => {
         </div>
 
         {/* Scrollable Content Section */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
           {/* Show review comments for failed interviews or re-audits */}
           <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} artifactCorrection={audit.artifact_correction} />
           
@@ -543,7 +577,9 @@ const ReviewInterview = () => {
       </div>
 
       {/* Right Panel - PDF Viewer */}
-      <div className="w-1/2 h-screen overflow-hidden bg-muted/5">
+      <div className={`w-full lg:w-1/2 h-[calc(100vh-49px)] lg:h-screen overflow-hidden bg-muted/5 ${
+        mobileTab === "details" ? "hidden lg:block" : "block"
+      }`}>
         <PDFViewer pdfUrl={audit.file_url} />
       </div>
     </div>;

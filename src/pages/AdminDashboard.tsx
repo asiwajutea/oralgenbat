@@ -333,16 +333,16 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
-      <div className="container py-8 space-y-6">
+      <div className="container py-4 sm:py-8 px-4 sm:px-6 space-y-4 sm:space-y-6">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6">
             <div>
-              <CardTitle>User Management</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-xl sm:text-2xl">User Management</CardTitle>
+              <CardDescription className="text-sm">
                 Manage user accounts and approve pending registrations
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Compact Notification Bell */}
               {(userRole === 'admin' || userRole === 'super_admin') && (
                 <Popover>
@@ -403,31 +403,33 @@ const AdminDashboard = () => {
                   variant="destructive"
                   onClick={() => setShowClearStorageDialog(true)}
                   className="gap-2"
+                  size="sm"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Clear All Storage
+                  <span className="hidden sm:inline">Clear All Storage</span>
+                  <span className="sm:hidden">Clear</span>
                 </Button>
               )}
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6">
             <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-              <TabsList className="grid w-full grid-cols-3 mb-6">
-                <TabsTrigger value="all">
-                  All Users
-                  <Badge variant="secondary" className="ml-2">
+              <TabsList className="grid w-full grid-cols-3 mb-4 sm:mb-6 h-auto">
+                <TabsTrigger value="all" className="text-xs sm:text-sm py-2 px-1 sm:px-3 flex flex-col sm:flex-row items-center gap-1">
+                  <span>All</span>
+                  <Badge variant="secondary" className="text-xs">
                     {users.length}
                   </Badge>
                 </TabsTrigger>
-                <TabsTrigger value="pending">
-                  Pending Approval
+                <TabsTrigger value="pending" className="text-xs sm:text-sm py-2 px-1 sm:px-3 flex flex-col sm:flex-row items-center gap-1">
+                  <span>Pending</span>
                   {pendingCount > 0 && (
-                    <Badge variant="default" className="ml-2 bg-yellow-500 hover:bg-yellow-600">
+                    <Badge variant="default" className="text-xs bg-yellow-500 hover:bg-yellow-600">
                       {pendingCount}
                     </Badge>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="approved">Approved</TabsTrigger>
+                <TabsTrigger value="approved" className="text-xs sm:text-sm py-2 px-1 sm:px-3">Approved</TabsTrigger>
               </TabsList>
 
               <TabsContent value={filter} className="space-y-4">
@@ -436,28 +438,33 @@ const AdminDashboard = () => {
                     <p className="text-lg">No users found</p>
                   </div>
                 ) : (
-                  <div className="rounded-md border">
-                    <Table>
+                  <div className="rounded-md border overflow-x-auto">
+                    <Table className="min-w-[700px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead>Name</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Phone</TableHead>
-                          <TableHead>Contractor ID</TableHead>
+                          <TableHead className="hidden sm:table-cell">Email</TableHead>
+                          <TableHead className="hidden lg:table-cell">Phone</TableHead>
+                          <TableHead className="hidden md:table-cell">Contractor</TableHead>
                           <TableHead>Role</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead>Online</TableHead>
-                          <TableHead className="text-right space-x-2">Actions</TableHead>
+                          <TableHead className="hidden sm:table-cell">Online</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredUsers.map((user) => (
                           <TableRow key={user.id}>
-                            <TableCell className="font-medium">{user.full_name}</TableCell>
-                            <TableCell>{user.email}</TableCell>
-                            <TableCell>{user.phone}</TableCell>
                             <TableCell>
-                              <Badge variant="outline">{user.contractor_id}</Badge>
+                              <div>
+                                <div className="font-medium">{user.full_name}</div>
+                                <div className="text-xs text-muted-foreground sm:hidden">{user.email}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell">{user.email}</TableCell>
+                            <TableCell className="hidden lg:table-cell">{user.phone}</TableCell>
+                            <TableCell className="hidden md:table-cell">
+                              <Badge variant="outline" className="text-xs">{user.contractor_id}</Badge>
                             </TableCell>
                             <TableCell>
                               {userRole === 'super_admin' ? (
@@ -466,7 +473,7 @@ const AdminDashboard = () => {
                                   onValueChange={(newRole) => updateUserRole(user.id, newRole)}
                                   disabled={user.id === currentUser?.id}
                                 >
-                                  <SelectTrigger className="w-40">
+                                  <SelectTrigger className="w-28 sm:w-40 text-xs sm:text-sm h-8 sm:h-10">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -504,7 +511,7 @@ const AdminDashboard = () => {
                                 </Badge>
                               )}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="hidden sm:table-cell">
                               {(() => {
                                 const presence = presenceMap.get(user.id);
                                 const isOnline = presence?.is_online;
@@ -546,35 +553,42 @@ const AdminDashboard = () => {
                                 );
                               })()}
                             </TableCell>
-                            <TableCell className="text-right space-x-2">
-                              {userRole === 'super_admin' && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => setSessionHistoryUser(user)}
-                                  title="View Session History"
-                                >
-                                  <History className="h-4 w-4" />
-                                </Button>
-                              )}
-                              {!user.is_approved ? (
-                                <Button
-                                  size="sm"
-                                  onClick={() => approveUser(user.id)}
-                                >
-                                  Approve
-                                </Button>
-                              ) : (
-                                userRole === 'super_admin' && (
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {userRole === 'super_admin' && (
                                   <Button
                                     size="sm"
-                                    variant="destructive"
-                                    onClick={() => confirmRevokeAccess(user)}
+                                    variant="ghost"
+                                    onClick={() => setSessionHistoryUser(user)}
+                                    title="View Session History"
+                                    className="h-8 w-8 p-0"
                                   >
-                                    Revoke Access
+                                    <History className="h-4 w-4" />
                                   </Button>
-                                )
-                              )}
+                                )}
+                                {!user.is_approved ? (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => approveUser(user.id)}
+                                    className="h-8 px-2 sm:px-3 text-xs sm:text-sm"
+                                  >
+                                    <span className="hidden sm:inline">Approve</span>
+                                    <CheckCircle className="h-4 w-4 sm:hidden" />
+                                  </Button>
+                                ) : (
+                                  userRole === 'super_admin' && (
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() => confirmRevokeAccess(user)}
+                                      className="h-8 px-2 sm:px-3 text-xs sm:text-sm"
+                                    >
+                                      <span className="hidden sm:inline">Revoke</span>
+                                      <Trash2 className="h-4 w-4 sm:hidden" />
+                                    </Button>
+                                  )
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
