@@ -218,13 +218,32 @@ export const AuditChecklist = ({
 
   const handlePrevious = () => {
     if (currentIndex > 0) {
+      // Save any pending comment before navigating
+      let updatedItems = [...items];
+      if (currentComment.trim() && currentItem.answer === "no") {
+        updatedItems[currentIndex] = {
+          ...updatedItems[currentIndex],
+          comment: currentComment.trim(),
+        };
+        setItems(updatedItems);
+      }
+      
       const prevIndex = currentIndex - 1;
       setCurrentIndex(prevIndex);
-      setShowCommentBox(false);
-      setCurrentComment("");
+      
+      // Restore comment for the previous question if it exists and was answered "no"
+      const prevItem = updatedItems[prevIndex];
+      if (prevItem.answer === "no") {
+        setShowCommentBox(true);
+        setCurrentComment(prevItem.comment || "");
+      } else {
+        setShowCommentBox(false);
+        setCurrentComment("");
+      }
+      
       // Save progress when going back
-      const hasAnyFailures = items.some((item) => item.answer === "no");
-      saveProgress(items, prevIndex, false, hasAnyFailures, "");
+      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      saveProgress(updatedItems, prevIndex, false, hasAnyFailures, "");
     }
   };
 
@@ -236,13 +255,32 @@ export const AuditChecklist = ({
   const handleNext = () => {
     // Only allow next if the next question has been answered
     if (items[currentIndex + 1]?.answer) {
+      // Save any pending comment before navigating
+      let updatedItems = [...items];
+      if (currentComment.trim() && currentItem.answer === "no") {
+        updatedItems[currentIndex] = {
+          ...updatedItems[currentIndex],
+          comment: currentComment.trim(),
+        };
+        setItems(updatedItems);
+      }
+      
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
-      setShowCommentBox(false);
-      setCurrentComment("");
+      
+      // Restore comment for the next question if it exists and was answered "no"
+      const nextItem = updatedItems[nextIndex];
+      if (nextItem.answer === "no") {
+        setShowCommentBox(true);
+        setCurrentComment(nextItem.comment || "");
+      } else {
+        setShowCommentBox(false);
+        setCurrentComment("");
+      }
+      
       // Save progress when going forward
-      const hasAnyFailures = items.some((item) => item.answer === "no");
-      saveProgress(items, nextIndex, false, hasAnyFailures, "");
+      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      saveProgress(updatedItems, nextIndex, false, hasAnyFailures, "");
     }
   };
 

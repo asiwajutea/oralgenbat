@@ -234,7 +234,7 @@ export const FilterSidebar = ({ onFilterChange, onClose, initialFilters }: Filte
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Reviewers</SelectItem>
-              {reviewers.map((reviewer) => (
+              {[...reviewers].sort((a, b) => a.localeCompare(b)).map((reviewer) => (
                 <SelectItem key={reviewer} value={reviewer}>
                   {reviewer}
                 </SelectItem>
