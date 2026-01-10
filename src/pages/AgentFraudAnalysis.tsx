@@ -162,6 +162,7 @@ const AgentFraudAnalysis = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">SN</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Time</TableHead>
                     <TableHead className="text-right">Total Names</TableHead>
@@ -171,7 +172,7 @@ const AgentFraudAnalysis = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {fraudProfile.interviews.map((interview) => {
+                  {fraudProfile.interviews.map((interview, index) => {
                     const isFlagged = 
                       fraudProfile.indicators.closeIntervals.some(
                         ci => ci.interview1 === interview.id || ci.interview2 === interview.id
@@ -181,6 +182,7 @@ const AgentFraudAnalysis = () => {
 
                     return (
                       <TableRow key={interview.id} className={isFlagged ? 'bg-red-50 dark:bg-red-950/20' : ''}>
+                        <TableCell className="font-medium">{index + 1}</TableCell>
                         <TableCell>{format(interview.timestamp, 'MMM d, yyyy')}</TableCell>
                         <TableCell>{interview.interview_time}</TableCell>
                         <TableCell className="text-right font-medium">

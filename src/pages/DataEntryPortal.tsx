@@ -352,14 +352,16 @@ const DataEntryPortal = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">SN</TableHead>
                     <TableHead>Interview ID</TableHead>
                     <TableHead>Team</TableHead>
                     <TableHead>Completed At</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recentCompletions.map((completion: any) => (
+                  {recentCompletions.map((completion: any, index: number) => (
                     <TableRow key={completion.id}>
+                      <TableCell className="font-medium">{index + 1}</TableCell>
                       <TableCell className="font-medium">
                         {completion.audits?.file_name || "Unknown"}
                       </TableCell>

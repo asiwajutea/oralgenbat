@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
-  Search, 
   AlertTriangle,
   CheckCircle2,
   Trash2,
@@ -33,6 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { AuditPagination } from "@/components/AuditPagination";
 
 interface ZipDiagnosticResult {
   id: string;
@@ -49,6 +50,14 @@ const ZipDiagnostics = () => {
   const queryClient = useQueryClient();
   const [selectedAudit, setSelectedAudit] = useState<ZipDiagnosticResult | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  
+  // Bulk selection state
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
 
   // Scan all audits with ZIP files
   const { data: diagnosticResults = [], isLoading, refetch } = useQuery({
@@ -164,6 +173,53 @@ const ZipDiagnostics = () => {
     },
   });
 
+  // Bulk delete mutation
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (items: ZipDiagnosticResult[]) => {
+      for (const item of items) {
+        // Delete photos if any
+        if (item.has_photos) {
+          const { data: photos } = await supabase
+            .from("interview_photos")
+            .select("storage_path")
+            .eq("audit_id", item.id);
+          
+          if (photos && photos.length > 0) {
+            const paths = photos.map(p => p.storage_path);
+            await supabase.storage.from("interview-photos").remove(paths);
+            await supabase.from("interview_photos").delete().eq("audit_id", item.id);
+          }
+        }
+        
+        // Delete metadata if any
+        if (item.has_metadata) {
+          await supabase.from("interview_metadata").delete().eq("audit_id", item.id);
+        }
+        
+        // Delete ZIP from storage
+        const zipPath = item.mobile_zip_url.split("/mobile-zips/")[1];
+        if (zipPath) {
+          await supabase.storage.from("mobile-zips").remove([decodeURIComponent(zipPath)]);
+        }
+        
+        // Clear ZIP URL from audit
+        await supabase
+          .from("audits")
+          .update({ mobile_zip_url: null, mobile_zip_uploaded_at: null })
+          .eq("id", item.id);
+      }
+    },
+    onSuccess: () => {
+      toast.success(`Deleted ${selectedItems.size} corrupted files`);
+      setShowBulkDeleteDialog(false);
+      setSelectedItems(new Set());
+      queryClient.invalidateQueries({ queryKey: ["zip-diagnostics"] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to delete files");
+    },
+  });
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "valid":
@@ -180,6 +236,53 @@ const ZipDiagnostics = () => {
   const corruptedCount = diagnosticResults.filter(r => r.status === "corrupted").length;
   const missingDataCount = diagnosticResults.filter(r => r.status === "missing_data").length;
   const validCount = diagnosticResults.filter(r => r.status === "valid").length;
+
+  // Pagination
+  const totalPages = Math.ceil(diagnosticResults.length / itemsPerPage);
+  const paginatedResults = diagnosticResults.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Bulk selection handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const selectableItems = paginatedResults.filter(r => r.status !== "valid").map(r => r.id);
+      setSelectedItems(new Set(selectableItems));
+    } else {
+      setSelectedItems(new Set());
+    }
+  };
+
+  const handleSelectItem = (id: string, checked: boolean) => {
+    const newSelected = new Set(selectedItems);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  const selectableInPage = paginatedResults.filter(r => r.status !== "valid");
+  const allSelectableSelected = selectableInPage.length > 0 && selectableInPage.every(r => selectedItems.has(r.id));
+  const someSelected = selectableInPage.some(r => selectedItems.has(r.id));
+
+  const handleBulkDelete = () => {
+    const itemsToDelete = diagnosticResults.filter(r => selectedItems.has(r.id));
+    bulkDeleteMutation.mutate(itemsToDelete);
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedItems(new Set()); // Clear selection when changing pages
+  };
+
+  const handleItemsPerPageChange = (newItemsPerPage: number) => {
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1);
+    setSelectedItems(new Set());
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
@@ -250,6 +353,31 @@ const ZipDiagnostics = () => {
           </Card>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectedItems.size > 0 && (
+          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+            <span className="text-sm font-medium">{selectedItems.size} item(s) selected</span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedItems(new Set())}
+              >
+                Clear Selection
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowBulkDeleteDialog(true)}
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <Card>
           <CardHeader>
@@ -272,68 +400,103 @@ const ZipDiagnostics = () => {
                 </p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Interview ID</TableHead>
-                    <TableHead>Uploaded At</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Has Metadata</TableHead>
-                    <TableHead>Photos</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {diagnosticResults.map((result) => (
-                    <TableRow key={result.id} className={result.status === "corrupted" ? "bg-red-50" : ""}>
-                      <TableCell className="font-medium">{result.file_name}</TableCell>
-                      <TableCell>
-                        {result.mobile_zip_uploaded_at 
-                          ? format(new Date(result.mobile_zip_uploaded_at), "PPp")
-                          : "-"
-                        }
-                      </TableCell>
-                      <TableCell>{getStatusBadge(result.status)}</TableCell>
-                      <TableCell>
-                        {result.has_metadata ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <AlertTriangle className="h-4 w-4 text-red-600" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {result.has_photos ? (
-                          <span className="text-green-600">{result.photo_count}</span>
-                        ) : (
-                          <span className="text-red-600">0</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {result.status !== "valid" && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedAudit(result);
-                              setShowDeleteDialog(true);
-                            }}
-                            className="gap-1"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            Delete
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={allSelectableSelected}
+                            onCheckedChange={handleSelectAll}
+                            aria-label="Select all"
+                            disabled={selectableInPage.length === 0}
+                          />
+                        </TableHead>
+                        <TableHead className="w-12">SN</TableHead>
+                        <TableHead>Interview ID</TableHead>
+                        <TableHead>Uploaded At</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Has Metadata</TableHead>
+                        <TableHead>Photos</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedResults.map((result, index) => (
+                        <TableRow key={result.id} className={result.status === "corrupted" ? "bg-red-50 dark:bg-red-950/20" : ""}>
+                          <TableCell>
+                            {result.status !== "valid" && (
+                              <Checkbox
+                                checked={selectedItems.has(result.id)}
+                                onCheckedChange={(checked) => handleSelectItem(result.id, checked as boolean)}
+                                aria-label={`Select ${result.file_name}`}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {(currentPage - 1) * itemsPerPage + index + 1}
+                          </TableCell>
+                          <TableCell className="font-medium">{result.file_name}</TableCell>
+                          <TableCell>
+                            {result.mobile_zip_uploaded_at 
+                              ? format(new Date(result.mobile_zip_uploaded_at), "PPp")
+                              : "-"
+                            }
+                          </TableCell>
+                          <TableCell>{getStatusBadge(result.status)}</TableCell>
+                          <TableCell>
+                            {result.has_metadata ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {result.has_photos ? (
+                              <span className="text-green-600">{result.photo_count}</span>
+                            ) : (
+                              <span className="text-red-600">0</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {result.status !== "valid" && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAudit(result);
+                                  setShowDeleteDialog(true);
+                                }}
+                                className="gap-1"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Delete
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                <AuditPagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalCount={diagnosticResults.length}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={handlePageChange}
+                  onItemsPerPageChange={handleItemsPerPageChange}
+                />
+              </>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Single Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -355,6 +518,33 @@ const ZipDiagnostics = () => {
                 <Trash2 className="h-4 w-4 mr-2" />
               )}
               Delete ZIP
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedItems.size} ZIP File(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete {selectedItems.size} corrupted/problematic ZIP file(s) and all their associated data (photos, metadata). These interviews will need fresh ZIP uploads.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={bulkDeleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDeleteMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete {selectedItems.size} Files
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

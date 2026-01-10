@@ -219,14 +219,16 @@ const TeamManagement = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">SN</TableHead>
                       <TableHead>Interviewer Code</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {teamAssignments.map((assignment) => (
+                    {teamAssignments.map((assignment, index) => (
                       <TableRow key={assignment.id}>
+                        <TableCell className="font-medium">{index + 1}</TableCell>
                         <TableCell className="font-medium">
                           {assignment.interviewer_code}
                         </TableCell>
@@ -278,14 +280,16 @@ const TeamManagement = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">SN</TableHead>
                       <TableHead>Code</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {unassignedInterviewers.map((interviewer) => (
+                    {unassignedInterviewers.map((interviewer, index) => (
                       <TableRow key={interviewer.code}>
+                        <TableCell className="font-medium">{index + 1}</TableCell>
                         <TableCell className="font-medium">
                           {interviewer.code}
                         </TableCell>

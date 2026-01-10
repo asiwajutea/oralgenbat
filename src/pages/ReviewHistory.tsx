@@ -153,6 +153,7 @@ const ReviewHistory = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">SN</TableHead>
                     <TableHead>Interview ID</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Review Date</TableHead>
@@ -163,12 +164,15 @@ const ReviewHistory = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.audits.map((audit) => (
+                  {data?.audits.map((audit, index) => (
                     <TableRow
                       key={audit.id}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/review/${audit.id}`)}
                     >
+                      <TableCell className="font-medium">
+                        {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                      </TableCell>
                       <TableCell className="font-medium font-mono text-sm">
                         {audit.file_name}
                       </TableCell>
