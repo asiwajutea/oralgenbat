@@ -40,6 +40,21 @@ export const ReAuditDialog = ({
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
 
+  const validateFileName = (file: File, expectedName: string, fileType: 'PDF' | 'ZIP'): boolean => {
+    const extension = fileType === 'PDF' ? '.pdf' : '.zip';
+    const fileNameWithoutExt = file.name.replace(new RegExp(`\\${extension}$`, 'i'), '');
+    
+    if (fileNameWithoutExt !== expectedName) {
+      toast({
+        title: "Filename mismatch",
+        description: `The ${fileType} file must be named "${expectedName}${extension}" to match the interview ID. Your file is named "${file.name}"`,
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async () => {
     if (!session?.user) return;
     
@@ -187,11 +202,21 @@ export const ReAuditDialog = ({
                   id="pdfFile"
                   type="file"
                   accept=".pdf"
-                  onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file && !validateFileName(file, currentFileName, 'PDF')) {
+                      e.target.value = '';
+                      return;
+                    }
+                    setPdfFile(file);
+                  }}
                   disabled={loading}
                 />
                 {pdfFile && <Upload className="h-4 w-4 text-green-600" />}
               </div>
+              <p className="text-xs text-muted-foreground">
+                File must be named: <code className="font-mono bg-muted px-1 rounded">{currentFileName}.pdf</code>
+              </p>
             </div>
           )}
 
@@ -214,11 +239,21 @@ export const ReAuditDialog = ({
                   id="zipFile"
                   type="file"
                   accept=".zip"
-                  onChange={(e) => setZipFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (file && !validateFileName(file, currentFileName, 'ZIP')) {
+                      e.target.value = '';
+                      return;
+                    }
+                    setZipFile(file);
+                  }}
                   disabled={loading}
                 />
                 {zipFile && <Upload className="h-4 w-4 text-green-600" />}
               </div>
+              <p className="text-xs text-muted-foreground">
+                File must be named: <code className="font-mono bg-muted px-1 rounded">{currentFileName}.zip</code>
+              </p>
             </div>
           )}
 

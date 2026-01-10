@@ -36,7 +36,15 @@ import InterviewTracking from "./pages/InterviewTracking";
 import ZipDiagnostics from "./pages/ZipDiagnostics";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh longer
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

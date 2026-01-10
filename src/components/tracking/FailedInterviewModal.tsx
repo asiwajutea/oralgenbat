@@ -57,6 +57,21 @@ export function FailedInterviewModal({
                          interview?.artifact_correction?.includes("ZIP") ||
                          interview?.artifact_correction?.includes("Photos");
 
+  const validateFileName = (file: File, expectedName: string, fileType: 'PDF' | 'ZIP'): boolean => {
+    const extension = fileType === 'PDF' ? '.pdf' : '.zip';
+    const fileNameWithoutExt = file.name.replace(new RegExp(`\\${extension}$`, 'i'), '');
+    
+    if (fileNameWithoutExt !== expectedName) {
+      toast({
+        title: "Filename mismatch",
+        description: `The ${fileType} file must be named "${expectedName}${extension}" to match the interview ID. Your file is named "${file.name}"`,
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
+  };
+
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!interview || !session?.user.id) throw new Error("Missing data");
@@ -272,8 +287,18 @@ export function FailedInterviewModal({
                 id="pdf-upload"
                 type="file"
                 accept=".pdf"
-                onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (file && interview && !validateFileName(file, interview.file_name, 'PDF')) {
+                    e.target.value = '';
+                    return;
+                  }
+                  setPdfFile(file);
+                }}
               />
+              <p className="text-xs text-muted-foreground">
+                Expected: <code className="font-mono bg-muted px-1 rounded">{interview.file_name}.pdf</code>
+              </p>
               {pdfFile && (
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
                   <CheckCircle className="h-3 w-3 text-success" />
@@ -292,8 +317,18 @@ export function FailedInterviewModal({
                 id="zip-upload"
                 type="file"
                 accept=".zip"
-                onChange={(e) => setZipFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (file && interview && !validateFileName(file, interview.file_name, 'ZIP')) {
+                    e.target.value = '';
+                    return;
+                  }
+                  setZipFile(file);
+                }}
               />
+              <p className="text-xs text-muted-foreground">
+                Expected: <code className="font-mono bg-muted px-1 rounded">{interview.file_name}.zip</code>
+              </p>
               {zipFile && (
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
                   <CheckCircle className="h-3 w-3 text-success" />
