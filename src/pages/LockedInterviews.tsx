@@ -226,6 +226,7 @@ const LockedInterviews = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">SN</TableHead>
                     <TableHead>Interview</TableHead>
                     <TableHead>Locked By</TableHead>
                     <TableHead>Locked At</TableHead>
@@ -235,12 +236,15 @@ const LockedInterviews = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedInterviews.map((interview) => {
+                  {paginatedInterviews.map((interview, index) => {
                     const remaining = calculateRemainingSeconds(interview.locked_at);
                     const expired = remaining <= 0;
 
                     return (
                       <TableRow key={interview.id}>
+                        <TableCell className="font-medium">
+                          {(currentPage - 1) * itemsPerPage + index + 1}
+                        </TableCell>
                         <TableCell className="font-medium">
                           {interview.file_name}
                         </TableCell>

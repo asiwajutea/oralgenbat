@@ -66,8 +66,11 @@ export const useStatusCounts = () => {
 
       audits?.forEach((audit) => {
         const metadata = audit.interview_metadata as { total_names: number | null }[] | null;
+        const hasMetadata = metadata && metadata.length > 0;
         const names = metadata?.[0]?.total_names || 0;
-        const hasCompleteArtifacts = !!audit.file_url && !!audit.mobile_zip_url;
+        // Complete artifacts = has PDF AND has successfully extracted metadata (not just ZIP URL)
+        // This excludes corrupted ZIPs where the ZIP was uploaded but processing failed
+        const hasCompleteArtifacts = !!audit.file_url && hasMetadata;
         
         // Count as "In Progress" if locked and within 1 hour
         if (audit.locked_by && audit.locked_at && audit.locked_at > oneHourAgo) {

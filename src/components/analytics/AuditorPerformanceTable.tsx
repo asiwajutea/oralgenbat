@@ -35,6 +35,7 @@ export const AuditorPerformanceTable = ({ data }: AuditorPerformanceTableProps) 
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12">SN</TableHead>
                 <TableHead>Auditor</TableHead>
                 <TableHead className="text-right">Total Reviews</TableHead>
                 <TableHead className="text-right">Pass Rate</TableHead>
@@ -45,8 +46,9 @@ export const AuditorPerformanceTable = ({ data }: AuditorPerformanceTableProps) 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((auditor) => (
+              {data.map((auditor, index) => (
                 <TableRow key={auditor.auditor_name}>
+                  <TableCell className="font-medium">{index + 1}</TableCell>
                   <TableCell className="font-medium">{auditor.auditor_name}</TableCell>
                   <TableCell className="text-right">{auditor.total_reviews}</TableCell>
                   <TableCell className="text-right">
@@ -64,7 +66,7 @@ export const AuditorPerformanceTable = ({ data }: AuditorPerformanceTableProps) 
               ))}
               {data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No auditor data available
                   </TableCell>
                 </TableRow>

@@ -595,6 +595,7 @@ const InterviewTracking = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">SN</TableHead>
                       <TableHead className="cursor-pointer" onClick={() => handleSort("file_name")}>
                         <div className="flex items-center gap-1">
                           Interview ID
@@ -622,8 +623,11 @@ const InterviewTracking = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedInterviews.map((interview) => (
+                    {paginatedInterviews.map((interview, index) => (
                       <TableRow key={interview.id}>
+                        <TableCell className="font-medium">
+                          {(currentPage - 1) * itemsPerPage + index + 1}
+                        </TableCell>
                         <TableCell className="font-medium font-mono text-sm">{interview.file_name}</TableCell>
                         <TableCell>{interview.field_manager || "-"}</TableCell>
                         <TableCell>{interview.total_names || "-"}</TableCell>

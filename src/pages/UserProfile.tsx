@@ -507,9 +507,10 @@ const UserProfile = () => {
             <p className="text-center text-muted-foreground py-8">No review activities yet</p>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+                <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">SN</TableHead>
                     <TableHead>Interview</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Review Date</TableHead>
@@ -517,12 +518,13 @@ const UserProfile = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recentActivities.map((activity) => (
+                  {recentActivities.map((activity, index) => (
                     <TableRow
                       key={activity.id}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/review/${activity.id}`)}
                     >
+                      <TableCell className="font-medium">{index + 1}</TableCell>
                       <TableCell className="font-medium">{activity.file_name}</TableCell>
                       <TableCell>
                         <Badge variant={activity.status === "Audit Passed" ? "default" : "destructive"}>
