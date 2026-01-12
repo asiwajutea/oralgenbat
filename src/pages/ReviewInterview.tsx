@@ -32,6 +32,17 @@ const formatTime = (seconds: number): string => {
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
+
+// Format duration in seconds to human readable format
+const formatReviewDuration = (seconds: number | null): string => {
+  if (!seconds) return "";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${secs}s`;
+  return `${secs}s`;
+};
 const ReviewInterview = () => {
   const {
     auditId
@@ -508,6 +519,24 @@ const ReviewInterview = () => {
 
         {/* Scrollable Content Section */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
+          {/* Show already reviewed status */}
+          {isReviewed && (
+            <div className="p-3 sm:p-4 bg-muted/50 rounded-lg border">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <Badge variant={audit.status === "Audit Passed" ? "default" : "destructive"}>
+                  {audit.status === "Audit Passed" ? "Passed" : "Failed"}
+                </Badge>
+                <span className="text-muted-foreground">
+                  Already reviewed {(audit.re_audit_count || 0) + 1} time(s) by{" "}
+                  <span className="font-medium text-foreground">{audit.reviewed_by || "Unknown"}</span>
+                  {audit.review_duration_seconds && (
+                    <span className="text-muted-foreground"> ({formatReviewDuration(audit.review_duration_seconds)})</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+          
           {/* Show review comments for failed interviews or re-audits */}
           <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} artifactCorrection={audit.artifact_correction} />
           

@@ -72,7 +72,7 @@ export const ReviewCommentsPanel = ({
         </CollapsibleTrigger>
         
         <CollapsibleContent>
-          <CardContent className="space-y-4 pt-0">
+          <CardContent className="space-y-4 pt-0 max-h-[300px] overflow-y-auto">
             {/* Artifact Correction Display */}
             {artifactCorrection && artifactCorrection.length > 0 && (
               <div>

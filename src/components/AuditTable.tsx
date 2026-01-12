@@ -585,12 +585,20 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                 <>
                                   <Button 
                                     className="bg-blue-600 hover:bg-blue-700 h-9 text-sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      navigate(`/review/${audit.id}`);
-                                    }}
+                                    asChild
                                   >
-                                    VIEW REPORT
+                                    <a 
+                                      href={`/review/${audit.id}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!e.ctrlKey && !e.metaKey && e.button === 0) {
+                                          e.preventDefault();
+                                          navigate(`/review/${audit.id}`);
+                                        }
+                                      }}
+                                    >
+                                      VIEW REPORT
+                                    </a>
                                   </Button>
                                   {showReauditAction && onReaudit && (
                                     <Button 
@@ -609,13 +617,25 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                   {!hideReviewButton && (
                                     <Button 
                                       className="bg-cyan-600 hover:bg-cyan-700 h-9 text-sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        navigate(`/review/${audit.id}`);
-                                      }}
                                       disabled={audit.status === "Audit Passed" || isLockedByOther(audit)}
+                                      asChild={audit.status !== "Audit Passed" && !isLockedByOther(audit)}
                                     >
-                                      {isLockedByOther(audit) ? "IN REVIEW" : "REVIEW INTERVIEW"}
+                                      {audit.status === "Audit Passed" || isLockedByOther(audit) ? (
+                                        <span>{isLockedByOther(audit) ? "IN REVIEW" : "REVIEW INTERVIEW"}</span>
+                                      ) : (
+                                        <a 
+                                          href={`/review/${audit.id}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!e.ctrlKey && !e.metaKey && e.button === 0) {
+                                              e.preventDefault();
+                                              navigate(`/review/${audit.id}`);
+                                            }
+                                          }}
+                                        >
+                                          REVIEW INTERVIEW
+                                        </a>
+                                      )}
                                     </Button>
                                   )}
                                 </>
@@ -653,7 +673,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                       e.stopPropagation();
                                       handleMobileZipUpload(audit.id);
                                     }}
-                                    disabled={uploadingAudits.has(audit.id)}
+                                    disabled={uploadingAudits.has(audit.id) || audit.status === "Audit Passed"}
                                   >
                                     <Upload className="h-3.5 w-3.5 mr-2" />
                                     {audit.mobile_zip_url ? 'REPLACE' : 'ATTACH'}
@@ -727,6 +747,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                     e.stopPropagation();
                                     handlePdfReplace(audit.id);
                                   }}
+                                  disabled={audit.status === "Audit Passed"}
                                 >
                                   <Upload className="h-3.5 w-3.5 mr-2" />
                                   REPLACE PDF
