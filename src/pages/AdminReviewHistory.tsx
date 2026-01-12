@@ -12,8 +12,11 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
-import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X } from "lucide-react";
+import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { jsPDF } from "jspdf";
+
+type SortField = "file_name" | "reviewed_by" | "status" | "reviewed_at" | "review_duration_seconds" | "re_audit_count";
+type SortDirection = "asc" | "desc";
 
 interface ReviewedAudit {
   id: string;
@@ -41,6 +44,8 @@ const STORAGE_KEYS = {
   statusFilter: "adminReviewHistory_statusFilter",
   reviewerFilter: "adminReviewHistory_reviewerFilter",
   searchTerm: "adminReviewHistory_searchTerm",
+  sortField: "adminReviewHistory_sortField",
+  sortDirection: "adminReviewHistory_sortDirection",
 };
 
 const AdminReviewHistory = () => {
@@ -60,6 +65,12 @@ const AdminReviewHistory = () => {
   });
   const [searchTerm, setSearchTerm] = useState(() => {
     return localStorage.getItem(STORAGE_KEYS.searchTerm) || "";
+  });
+  const [sortField, setSortField] = useState<SortField>(() => {
+    return (localStorage.getItem(STORAGE_KEYS.sortField) as SortField) || "reviewed_at";
+  });
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
+    return (localStorage.getItem(STORAGE_KEYS.sortDirection) as SortDirection) || "desc";
   });
   const [isExporting, setIsExporting] = useState(false);
 
@@ -84,12 +95,41 @@ const AdminReviewHistory = () => {
     localStorage.setItem(STORAGE_KEYS.searchTerm, searchTerm);
   }, [searchTerm]);
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.sortField, sortField);
+  }, [sortField]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.sortDirection, sortDirection);
+  }, [sortDirection]);
+
   const clearAllFilters = () => {
     setStatusFilter("all");
     setReviewerFilter("all");
     setSearchTerm("");
     setCurrentPage(1);
+    setSortField("reviewed_at");
+    setSortDirection("desc");
     Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+    setCurrentPage(1);
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
+    }
+    return sortDirection === "asc" 
+      ? <ArrowUp className="h-3 w-3 ml-1" />
+      : <ArrowDown className="h-3 w-3 ml-1" />;
   };
 
   const hasActiveFilters = statusFilter !== "all" || reviewerFilter !== "all" || searchTerm !== "";
@@ -169,13 +209,13 @@ const AdminReviewHistory = () => {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-review-history", currentPage, itemsPerPage, statusFilter, reviewerFilter, searchTerm],
+    queryKey: ["admin-review-history", currentPage, itemsPerPage, statusFilter, reviewerFilter, searchTerm, sortField, sortDirection],
     queryFn: async () => {
       let query = supabase
         .from("audits")
         .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction", { count: "exact" })
         .not("reviewed_at", "is", null)
-        .order("reviewed_at", { ascending: false });
+        .order(sortField, { ascending: sortDirection === "asc" });
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
@@ -685,13 +725,61 @@ const AdminReviewHistory = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">SN</TableHead>
-                    <TableHead>Interview ID</TableHead>
-                    <TableHead>Reviewer</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort("file_name")}
+                    >
+                      <div className="flex items-center">
+                        Interview ID
+                        {getSortIcon("file_name")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort("reviewed_by")}
+                    >
+                      <div className="flex items-center">
+                        Reviewer
+                        {getSortIcon("reviewed_by")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort("status")}
+                    >
+                      <div className="flex items-center">
+                        Status
+                        {getSortIcon("status")}
+                      </div>
+                    </TableHead>
                     <TableHead>Assignment</TableHead>
-                    <TableHead>Review Date</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Re-audit</TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort("reviewed_at")}
+                    >
+                      <div className="flex items-center">
+                        Review Date
+                        {getSortIcon("reviewed_at")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort("review_duration_seconds")}
+                    >
+                      <div className="flex items-center">
+                        Duration
+                        {getSortIcon("review_duration_seconds")}
+                      </div>
+                    </TableHead>
+                    <TableHead 
+                      className="cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort("re_audit_count")}
+                    >
+                      <div className="flex items-center">
+                        Re-audit
+                        {getSortIcon("re_audit_count")}
+                      </div>
+                    </TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
