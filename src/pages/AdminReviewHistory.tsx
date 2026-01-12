@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
-import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone } from "lucide-react";
+import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X } from "lucide-react";
 import { jsPDF } from "jspdf";
 
 interface ReviewedAudit {
@@ -35,13 +35,64 @@ interface AssignmentInfo {
   typing_status: string;
 }
 
+const STORAGE_KEYS = {
+  currentPage: "adminReviewHistory_currentPage",
+  itemsPerPage: "adminReviewHistory_itemsPerPage",
+  statusFilter: "adminReviewHistory_statusFilter",
+  reviewerFilter: "adminReviewHistory_reviewerFilter",
+  searchTerm: "adminReviewHistory_searchTerm",
+};
+
 const AdminReviewHistory = () => {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [reviewerFilter, setReviewerFilter] = useState<string>("all");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.currentPage);
+    return saved ? parseInt(saved, 10) : 1;
+  });
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.itemsPerPage);
+    return saved ? parseInt(saved, 10) : 25;
+  });
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    return localStorage.getItem(STORAGE_KEYS.statusFilter) || "all";
+  });
+  const [reviewerFilter, setReviewerFilter] = useState<string>(() => {
+    return localStorage.getItem(STORAGE_KEYS.reviewerFilter) || "all";
+  });
+  const [searchTerm, setSearchTerm] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.searchTerm) || "";
+  });
   const [isExporting, setIsExporting] = useState(false);
+
+  // Persist filters to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.currentPage, currentPage.toString());
+  }, [currentPage]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.itemsPerPage, itemsPerPage.toString());
+  }, [itemsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.statusFilter, statusFilter);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.reviewerFilter, reviewerFilter);
+  }, [reviewerFilter]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.searchTerm, searchTerm);
+  }, [searchTerm]);
+
+  const clearAllFilters = () => {
+    setStatusFilter("all");
+    setReviewerFilter("all");
+    setSearchTerm("");
+    setCurrentPage(1);
+    Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+  };
+
+  const hasActiveFilters = statusFilter !== "all" || reviewerFilter !== "all" || searchTerm !== "";
 
   // Fetch unique reviewers for filter dropdown
   const { data: reviewers } = useQuery({
@@ -263,7 +314,7 @@ const AdminReviewHistory = () => {
       const { data: allAudits } = await query;
       if (!allAudits?.length) return;
 
-      const headers = ["Interview ID", "Reviewer", "Status", "Review Date", "Duration", "Re-audit Count", "Artifacts to Correct", "Comments"];
+      const headers = ["Interview ID", "Reviewer", "Status", "Review Date", "Duration", "Re-audit Count", "Artifacts to Correct", "Review Feedback", "Action Plan"];
       const rows = allAudits.map(a => [
         a.file_name,
         a.reviewed_by || "-",
@@ -272,7 +323,9 @@ const AdminReviewHistory = () => {
         formatDuration(a.review_duration_seconds),
         a.re_audit_count || 0,
         a.artifact_correction?.map(getArtifactLabel).join(", ") || "-",
-        a.review_comment || "-"
+        // Only include feedback for failed interviews
+        a.status === "Audit Failed" ? (a.review_comment || "-") : "-",
+        a.status === "Audit Failed" ? (a.action_plan || "-") : "-"
       ]);
 
       const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${v}"`).join(","))].join("\n");
@@ -304,7 +357,7 @@ const AdminReviewHistory = () => {
       const { data: allAudits } = await query;
       if (!allAudits?.length) return;
 
-      const headers = ["Interview ID", "Reviewer", "Status", "Review Date", "Duration", "Re-audit Count", "Artifacts to Correct", "Comments"];
+      const headers = ["Interview ID", "Reviewer", "Status", "Review Date", "Duration", "Re-audit Count", "Artifacts to Correct", "Review Feedback", "Action Plan"];
       const rows = allAudits.map(a => [
         a.file_name,
         a.reviewed_by || "-",
@@ -313,7 +366,9 @@ const AdminReviewHistory = () => {
         formatDuration(a.review_duration_seconds),
         a.re_audit_count || 0,
         a.artifact_correction?.map(getArtifactLabel).join(", ") || "-",
-        a.review_comment || "-"
+        // Only include feedback for failed interviews
+        a.status === "Audit Failed" ? (a.review_comment || "-") : "-",
+        a.status === "Audit Failed" ? (a.action_plan || "-") : "-"
       ]);
 
       const csv = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
@@ -356,7 +411,7 @@ const AdminReviewHistory = () => {
       doc.setFontSize(9);
       
       allAudits.slice(0, 50).forEach((a, i) => {
-        if (y > 270) {
+        if (y > 260) {
           doc.addPage();
           y = 20;
         }
@@ -370,6 +425,14 @@ const AdminReviewHistory = () => {
         if (a.artifact_correction?.length) {
           y += 5;
           doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}`, 14, y);
+        }
+        // Only include feedback for failed interviews
+        if (a.status === "Audit Failed" && a.review_comment) {
+          y += 5;
+          const feedbackText = a.review_comment.length > 100 
+            ? a.review_comment.substring(0, 100) + "..." 
+            : a.review_comment;
+          doc.text(`Feedback: ${feedbackText}`, 14, y);
         }
         y += 8;
       });
@@ -524,6 +587,18 @@ const AdminReviewHistory = () => {
           </SelectContent>
         </Select>
         
+        {hasActiveFilters && (
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={clearAllFilters}
+            className="text-muted-foreground gap-1"
+          >
+            <X className="h-4 w-4" />
+            Clear Filters
+          </Button>
+        )}
+        
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" disabled={isExporting} className="gap-2">
@@ -586,14 +661,21 @@ const AdminReviewHistory = () => {
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Badge variant="destructive" className="cursor-help gap-1">
+                                <Badge 
+                                  variant="destructive" 
+                                  className="cursor-help gap-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   Failed
                                   <span className="inline-flex items-center justify-center w-4 h-4 text-xs rounded-full bg-white/20">
                                     {audit.artifact_correction.length}
                                   </span>
                                 </Badge>
                               </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
+                              <TooltipContent 
+                                className="max-w-xs"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <p className="font-medium mb-1">Artifacts Requiring Correction:</p>
                                 <ul className="text-xs list-disc pl-4">
                                   {audit.artifact_correction.map((a) => (
