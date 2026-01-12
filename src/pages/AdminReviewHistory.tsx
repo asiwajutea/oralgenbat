@@ -296,6 +296,22 @@ const AdminReviewHistory = () => {
     }
   };
 
+  const getArtifactIndicator = (artifacts: string[] | null) => {
+    if (!artifacts || artifacts.length === 0) return null;
+    
+    const hasPdf = artifacts.includes('scanned_pdf');
+    const hasMetadata = artifacts.includes('mobile_metadata');
+    
+    if (hasPdf && hasMetadata) {
+      return { letter: 'B', label: 'Both PDF and Metadata need correction' };
+    } else if (hasPdf) {
+      return { letter: 'P', label: 'PDF needs correction' };
+    } else if (hasMetadata) {
+      return { letter: 'M', label: 'Metadata needs correction' };
+    }
+    return null;
+  };
+
   // Export functions
   const exportToCSV = async () => {
     setIsExporting(true);
@@ -401,45 +417,87 @@ const AdminReviewHistory = () => {
       if (!allAudits?.length) return;
 
       const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const maxLineWidth = pageWidth - margin * 2;
+      
       doc.setFontSize(18);
-      doc.text("Review History Report", 14, 20);
+      doc.text("Review History Report", margin, 20);
       doc.setFontSize(10);
-      doc.text(`Generated: ${format(new Date(), "PPp")}`, 14, 28);
-      doc.text(`Total Records: ${allAudits.length}`, 14, 34);
+      doc.text(`Generated: ${format(new Date(), "PPp")}`, margin, 28);
+      doc.text(`Total Records: ${allAudits.length}`, margin, 34);
 
       let y = 45;
       doc.setFontSize(9);
       
-      allAudits.slice(0, 50).forEach((a, i) => {
-        if (y > 260) {
+      allAudits.forEach((a, i) => {
+        // Calculate feedback text height (only for failed audits)
+        let feedbackLines: string[] = [];
+        let actionPlanLines: string[] = [];
+        
+        if (a.status === "Audit Failed" && a.review_comment) {
+          feedbackLines = doc.splitTextToSize(`Review Feedback: ${a.review_comment}`, maxLineWidth);
+        }
+        
+        if (a.status === "Audit Failed" && a.action_plan) {
+          actionPlanLines = doc.splitTextToSize(`Action Plan: ${a.action_plan}`, maxLineWidth);
+        }
+        
+        // Calculate space needed for this entry
+        let entryHeight = 20; // Base height for title + status + date
+        if (a.artifact_correction?.length) entryHeight += 5;
+        entryHeight += feedbackLines.length * 4;
+        entryHeight += actionPlanLines.length * 4;
+        
+        // Check if we need a new page before starting entry
+        if (y + entryHeight > 280) {
           doc.addPage();
           y = 20;
         }
+        
+        // Render entry
         doc.setFont("helvetica", "bold");
-        doc.text(`${i + 1}. ${a.file_name}`, 14, y);
+        doc.text(`${i + 1}. ${a.file_name}`, margin, y);
         doc.setFont("helvetica", "normal");
         y += 5;
-        doc.text(`Status: ${a.status === "Audit Passed" ? "Passed" : "Failed"} | Reviewer: ${a.reviewed_by || "-"} | Duration: ${formatDuration(a.review_duration_seconds)}`, 14, y);
+        
+        doc.text(`Status: ${a.status === "Audit Passed" ? "Passed" : "Failed"} | Reviewer: ${a.reviewed_by || "-"} | Duration: ${formatDuration(a.review_duration_seconds)}`, margin, y);
         y += 5;
-        doc.text(`Date: ${a.reviewed_at ? format(new Date(a.reviewed_at), "PPp") : "-"}`, 14, y);
+        
+        doc.text(`Date: ${a.reviewed_at ? format(new Date(a.reviewed_at), "PPp") : "-"}`, margin, y);
+        y += 5;
+        
         if (a.artifact_correction?.length) {
+          doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}`, margin, y);
           y += 5;
-          doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}`, 14, y);
         }
-        // Only include feedback for failed interviews
-        if (a.status === "Audit Failed" && a.review_comment) {
-          y += 5;
-          const feedbackText = a.review_comment.length > 100 
-            ? a.review_comment.substring(0, 100) + "..." 
-            : a.review_comment;
-          doc.text(`Feedback: ${feedbackText}`, 14, y);
+        
+        // Full Review Feedback for failed audits (no truncation)
+        if (feedbackLines.length > 0) {
+          feedbackLines.forEach((line: string) => {
+            if (y > 280) {
+              doc.addPage();
+              y = 20;
+            }
+            doc.text(line, margin, y);
+            y += 4;
+          });
         }
-        y += 8;
+        
+        // Full Action Plan for failed audits (no truncation)
+        if (actionPlanLines.length > 0) {
+          actionPlanLines.forEach((line: string) => {
+            if (y > 280) {
+              doc.addPage();
+              y = 20;
+            }
+            doc.text(line, margin, y);
+            y += 4;
+          });
+        }
+        
+        y += 6; // Space between entries
       });
-
-      if (allAudits.length > 50) {
-        doc.text(`... and ${allAudits.length - 50} more records. Export as CSV for complete data.`, 14, y);
-      }
 
       doc.save(`review-history-${format(new Date(), "yyyy-MM-dd")}.pdf`);
     } finally {
@@ -657,42 +715,37 @@ const AdminReviewHistory = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {audit.status === "Audit Failed" && audit.artifact_correction?.length ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge 
-                                  variant="destructive" 
-                                  className="cursor-help gap-1"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  Failed
-                                  <span className="inline-flex items-center justify-center w-4 h-4 text-xs rounded-full bg-white/20">
-                                    {audit.artifact_correction.length}
-                                  </span>
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent 
-                                className="max-w-xs"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <p className="font-medium mb-1">Artifacts Requiring Correction:</p>
-                                <ul className="text-xs list-disc pl-4">
-                                  {audit.artifact_correction.map((a) => (
-                                    <li key={a} className="flex items-center gap-1">
-                                      {a === 'scanned_pdf' ? <FileText className="h-3 w-3" /> : <Smartphone className="h-3 w-3" />}
-                                      {getArtifactLabel(a)}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : (
+                        <div className="flex items-center gap-1.5">
                           <Badge variant={audit.status === "Audit Passed" ? "default" : "destructive"}>
                             {audit.status === "Audit Passed" ? "Passed" : "Failed"}
                           </Badge>
-                        )}
+                          
+                          {audit.status === "Audit Failed" && (() => {
+                            const indicator = getArtifactIndicator(audit.artifact_correction);
+                            if (!indicator) return null;
+                            
+                            return (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span 
+                                      className="inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-orange-100 text-orange-700 border border-orange-300 cursor-help"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {indicator.letter}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent 
+                                    side="top" 
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <p className="text-xs">{indicator.label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          })()}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {getAssignmentBadge(audit) || <span className="text-muted-foreground text-sm">-</span>}
