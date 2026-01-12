@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -9,8 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditPagination } from "@/components/AuditPagination";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
-import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList } from "lucide-react";
+import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone } from "lucide-react";
+import { jsPDF } from "jspdf";
 
 interface ReviewedAudit {
   id: string;
@@ -23,6 +26,7 @@ interface ReviewedAudit {
   is_re_audit: boolean;
   re_audit_count: number;
   review_duration_seconds: number | null;
+  artifact_correction: string[] | null;
 }
 
 interface AssignmentInfo {
@@ -32,12 +36,12 @@ interface AssignmentInfo {
 }
 
 const AdminReviewHistory = () => {
-  const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   // Fetch unique reviewers for filter dropdown
   const { data: reviewers } = useQuery({
@@ -118,7 +122,7 @@ const AdminReviewHistory = () => {
     queryFn: async () => {
       let query = supabase
         .from("audits")
-        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds", { count: "exact" })
+        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction", { count: "exact" })
         .not("reviewed_at", "is", null)
         .order("reviewed_at", { ascending: false });
 
@@ -228,6 +232,156 @@ const AdminReviewHistory = () => {
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
     setItemsPerPage(newItemsPerPage);
     setCurrentPage(1);
+  };
+
+  const getArtifactLabel = (artifact: string) => {
+    switch (artifact) {
+      case 'scanned_pdf':
+        return 'Scanned PDF';
+      case 'mobile_metadata':
+        return 'Mobile Metadata';
+      default:
+        return artifact;
+    }
+  };
+
+  // Export functions
+  const exportToCSV = async () => {
+    setIsExporting(true);
+    try {
+      // Fetch all filtered data for export
+      let query = supabase
+        .from("audits")
+        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction")
+        .not("reviewed_at", "is", null)
+        .order("reviewed_at", { ascending: false });
+
+      if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+      if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
+      if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+
+      const { data: allAudits } = await query;
+      if (!allAudits?.length) return;
+
+      const headers = ["Interview ID", "Reviewer", "Status", "Review Date", "Duration", "Re-audit Count", "Artifacts to Correct", "Comments"];
+      const rows = allAudits.map(a => [
+        a.file_name,
+        a.reviewed_by || "-",
+        a.status === "Audit Passed" ? "Passed" : "Failed",
+        a.reviewed_at ? format(new Date(a.reviewed_at), "PPp") : "-",
+        formatDuration(a.review_duration_seconds),
+        a.re_audit_count || 0,
+        a.artifact_correction?.map(getArtifactLabel).join(", ") || "-",
+        a.review_comment || "-"
+      ]);
+
+      const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${v}"`).join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `review-history-${format(new Date(), "yyyy-MM-dd")}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      let query = supabase
+        .from("audits")
+        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction")
+        .not("reviewed_at", "is", null)
+        .order("reviewed_at", { ascending: false });
+
+      if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+      if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
+      if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+
+      const { data: allAudits } = await query;
+      if (!allAudits?.length) return;
+
+      const headers = ["Interview ID", "Reviewer", "Status", "Review Date", "Duration", "Re-audit Count", "Artifacts to Correct", "Comments"];
+      const rows = allAudits.map(a => [
+        a.file_name,
+        a.reviewed_by || "-",
+        a.status === "Audit Passed" ? "Passed" : "Failed",
+        a.reviewed_at ? format(new Date(a.reviewed_at), "PPp") : "-",
+        formatDuration(a.review_duration_seconds),
+        a.re_audit_count || 0,
+        a.artifact_correction?.map(getArtifactLabel).join(", ") || "-",
+        a.review_comment || "-"
+      ]);
+
+      const csv = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+      const blob = new Blob([csv], { type: "application/vnd.ms-excel" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `review-history-${format(new Date(), "yyyy-MM-dd")}.xls`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportToPDF = async () => {
+    setIsExporting(true);
+    try {
+      let query = supabase
+        .from("audits")
+        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction")
+        .not("reviewed_at", "is", null)
+        .order("reviewed_at", { ascending: false });
+
+      if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+      if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
+      if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+
+      const { data: allAudits } = await query;
+      if (!allAudits?.length) return;
+
+      const doc = new jsPDF();
+      doc.setFontSize(18);
+      doc.text("Review History Report", 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${format(new Date(), "PPp")}`, 14, 28);
+      doc.text(`Total Records: ${allAudits.length}`, 14, 34);
+
+      let y = 45;
+      doc.setFontSize(9);
+      
+      allAudits.slice(0, 50).forEach((a, i) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.setFont("helvetica", "bold");
+        doc.text(`${i + 1}. ${a.file_name}`, 14, y);
+        doc.setFont("helvetica", "normal");
+        y += 5;
+        doc.text(`Status: ${a.status === "Audit Passed" ? "Passed" : "Failed"} | Reviewer: ${a.reviewed_by || "-"} | Duration: ${formatDuration(a.review_duration_seconds)}`, 14, y);
+        y += 5;
+        doc.text(`Date: ${a.reviewed_at ? format(new Date(a.reviewed_at), "PPp") : "-"}`, 14, y);
+        if (a.artifact_correction?.length) {
+          y += 5;
+          doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}`, 14, y);
+        }
+        y += 8;
+      });
+
+      if (allAudits.length > 50) {
+        doc.text(`... and ${allAudits.length - 50} more records. Export as CSV for complete data.`, 14, y);
+      }
+
+      doc.save(`review-history-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (isLoading) {
@@ -369,6 +523,20 @@ const AdminReviewHistory = () => {
             ))}
           </SelectContent>
         </Select>
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" disabled={isExporting} className="gap-2">
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={exportToCSV}>Export as CSV</DropdownMenuItem>
+            <DropdownMenuItem onClick={exportToExcel}>Export as Excel</DropdownMenuItem>
+            <DropdownMenuItem onClick={exportToPDF}>Export as PDF</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Table */}
@@ -395,11 +563,11 @@ const AdminReviewHistory = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.audits.map((audit, index) => (
+                {data?.audits.map((audit, index) => (
                     <TableRow
                       key={audit.id}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/review/${audit.id}`)}
+                      onClick={() => window.open(`/review/${audit.id}`, '_blank')}
                     >
                       <TableCell className="font-medium">
                         {(currentPage - 1) * itemsPerPage + index + 1}
@@ -414,11 +582,35 @@ const AdminReviewHistory = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={audit.status === "Audit Passed" ? "default" : "destructive"}
-                        >
-                          {audit.status === "Audit Passed" ? "Passed" : "Failed"}
-                        </Badge>
+                        {audit.status === "Audit Failed" && audit.artifact_correction?.length ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="destructive" className="cursor-help gap-1">
+                                  Failed
+                                  <span className="inline-flex items-center justify-center w-4 h-4 text-xs rounded-full bg-white/20">
+                                    {audit.artifact_correction.length}
+                                  </span>
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p className="font-medium mb-1">Artifacts Requiring Correction:</p>
+                                <ul className="text-xs list-disc pl-4">
+                                  {audit.artifact_correction.map((a) => (
+                                    <li key={a} className="flex items-center gap-1">
+                                      {a === 'scanned_pdf' ? <FileText className="h-3 w-3" /> : <Smartphone className="h-3 w-3" />}
+                                      {getArtifactLabel(a)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <Badge variant={audit.status === "Audit Passed" ? "default" : "destructive"}>
+                            {audit.status === "Audit Passed" ? "Passed" : "Failed"}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {getAssignmentBadge(audit) || <span className="text-muted-foreground text-sm">-</span>}
