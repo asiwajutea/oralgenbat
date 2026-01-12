@@ -447,7 +447,7 @@ const AdminReviewHistory = () => {
         .from("audits")
         .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction")
         .not("reviewed_at", "is", null)
-        .order("reviewed_at", { ascending: false });
+        .order("file_name", { ascending: true });
 
       if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
