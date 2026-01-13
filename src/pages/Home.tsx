@@ -21,6 +21,7 @@ import {
 import { format, subHours } from "date-fns";
 import { AdminStatsCard } from "@/components/AdminStatsCard";
 import { AuditorStatsCard } from "@/components/AuditorStatsCard";
+import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { toast } from "sonner";
 
 const Home = () => {
@@ -244,6 +245,9 @@ const Home = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Recent Achievement Badge */}
+        <RecentAchievementBadge />
 
         {/* Stats Cards */}
         <AdminStatsCard />
