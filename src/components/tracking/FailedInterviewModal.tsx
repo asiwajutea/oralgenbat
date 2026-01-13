@@ -76,7 +76,19 @@ export function FailedInterviewModal({
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      if (!interview || !session?.user.id) throw new Error("Missing data");
+      if (!interview) throw new Error("No interview selected");
+      
+      // Validate session and user ID
+      const userId = session?.user?.id;
+      if (!userId) throw new Error("You must be logged in to submit");
+      
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId)) {
+        throw new Error("Invalid session. Please log out and log back in.");
+      }
+      
+      if (!userRole) throw new Error("User role not found. Please refresh the page.");
       
       setIsUploading(true);
       
@@ -118,7 +130,7 @@ export function FailedInterviewModal({
         .from("re_audit_submissions")
         .insert([{
           audit_id: interview.id,
-          submitted_by: session.user.id,
+          submitted_by: userId,
           submitted_by_role: userRole as "admin" | "auditor" | "contractor" | "data_entry_clerk" | "field_manager" | "quality_assurance_manager" | "super_admin",
           replaced_pdf: !!pdfFile,
           replaced_zip: !!zipFile,

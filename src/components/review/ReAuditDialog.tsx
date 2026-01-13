@@ -56,7 +56,36 @@ export const ReAuditDialog = ({
   };
 
   const handleSubmit = async () => {
-    if (!session?.user) return;
+    // Validate session and user ID
+    const userId = session?.user?.id;
+    if (!userId) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to submit.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      toast({
+        title: "Session Error",
+        description: "Invalid session. Please log out and log back in.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!userRole) {
+      toast({
+        title: "Error",
+        description: "User role not found. Please refresh the page.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Require at least one file replacement
     if (!replacePdf && !replaceZip) {
@@ -125,7 +154,7 @@ export const ReAuditDialog = ({
       // Call the database function to mark for re-audit
       const { error: reauditError } = await supabase.rpc("mark_audit_for_reaudit", {
         _audit_id: auditId,
-        _submitted_by: session.user.id,
+        _submitted_by: userId,
         _submitted_by_role: userRole as any,
         _comment: comment.trim() || null,
         _new_pdf_url: newPdfUrl,
