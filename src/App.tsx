@@ -34,6 +34,7 @@ import TeamAssignments from "./pages/TeamAssignments";
 import DataEntryPortal from "./pages/DataEntryPortal";
 import InterviewTracking from "./pages/InterviewTracking";
 import ZipDiagnostics from "./pages/ZipDiagnostics";
+import Achievements from "./pages/Achievements";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -231,6 +232,16 @@ const App = () => (
                       <InterviewTracking />
                     </Layout>
                   </TrackingRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/achievements"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Achievements />
+                  </Layout>
                 </ProtectedRoute>
               }
             />

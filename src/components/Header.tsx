@@ -3,17 +3,19 @@ import { NavLink } from "@/components/NavLink";
 import UserMenu from "@/components/UserMenu";
 import MobileNav from "@/components/MobileNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import NotificationBell from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger } from "@/components/ui/navigation-menu";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+
 const Header = () => {
-  const {
-    userRole
-  } = useAuth();
+  const { userRole } = useAuth();
   const location = useLocation();
   const isReviewsActive = location.pathname.startsWith('/admin/review-history') || location.pathname.startsWith('/admin/team-assignments');
-  return <header className="border-b bg-card sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-card/95">
+  
+  return (
+    <header className="border-b bg-card sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-card/95">
       <div className="container flex items-center justify-between h-14 sm:h-16 px-4 sm:px-6">
         {/* Left: Mobile Nav + Logo */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -31,27 +33,38 @@ const Header = () => {
           <NavLink to="/interviews" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
             Interviews
           </NavLink>
-          {userRole === 'field_manager' && <>
+          {userRole === 'field_manager' && (
+            <>
               <NavLink to="/field-manager-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 My Dashboard
               </NavLink>
               <NavLink to="/team-management" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 Team Management
               </NavLink>
-            </>}
-          {userRole === 'contractor' && <NavLink to="/contractor-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+            </>
+          )}
+          {userRole === 'contractor' && (
+            <NavLink to="/contractor-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               My Dashboard
-            </NavLink>}
-          {(userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && <NavLink to="/admin/team-approvals" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+            </NavLink>
+          )}
+          {(userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && (
+            <NavLink to="/admin/team-approvals" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Team Approvals
-            </NavLink>}
-          {(userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && <NavLink to="/interview-tracking" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+            </NavLink>
+          )}
+          {(userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && (
+            <NavLink to="/interview-tracking" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Tracking
-            </NavLink>}
-          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin') && <NavLink to="/data-entry" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+            </NavLink>
+          )}
+          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin') && (
+            <NavLink to="/data-entry" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Data Entry
-            </NavLink>}
-          {(userRole === 'admin' || userRole === 'super_admin') && <>
+            </NavLink>
+          )}
+          {(userRole === 'admin' || userRole === 'super_admin') && (
+            <>
               <NavLink to="/admin" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 Manage Users
               </NavLink>
@@ -59,7 +72,6 @@ const Header = () => {
                 Analytics
               </NavLink>
               
-              {/* All Reviews Dropdown */}
               <NavigationMenu>
                 <NavigationMenuList>
                   <NavigationMenuItem>
@@ -92,20 +104,26 @@ const Header = () => {
               <NavLink to="/admin/locked-interviews" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 Locks
               </NavLink>
-            </>}
-          {userRole === 'auditor' && <NavLink to="/review-history" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+            </>
+          )}
+          {userRole === 'auditor' && (
+            <NavLink to="/review-history" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               My Reviews
-            </NavLink>}
+            </NavLink>
+          )}
         </nav>
         
-        {/* Right: Theme Toggle + User Menu */}
+        {/* Right: Notifications + Theme Toggle + User Menu */}
         <div className="flex items-center gap-2">
+          <NotificationBell />
           <div className="hidden sm:block">
             <ThemeToggle />
           </div>
           <UserMenu />
         </div>
       </div>
-    </header>;
+    </header>
+  );
 };
+
 export default Header;

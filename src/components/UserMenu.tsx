@@ -14,7 +14,7 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, Shield, User, Moon, Sun, Building2, Check } from "lucide-react";
+import { LogOut, Shield, User, Moon, Sun, Building2, Check, Trophy } from "lucide-react";
 import { useTheme } from "next-themes";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -117,6 +117,10 @@ const UserMenu = () => {
         <DropdownMenuItem onClick={() => navigate('/profile')}>
           <User className="mr-2 h-4 w-4" />
           <span>Profile</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/achievements')}>
+          <Trophy className="mr-2 h-4 w-4" />
+          <span>Achievements</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={toggleTheme} className="sm:hidden">
           {theme === "dark" ? (
