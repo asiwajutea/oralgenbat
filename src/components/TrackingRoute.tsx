@@ -27,8 +27,8 @@ export const TrackingRoute = ({ children }: TrackingRouteProps) => {
   }
 
   // Block auditors from accessing this page
-  // Allow field_manager, contractor, admin, super_admin
-  const allowedRoles = ['field_manager', 'contractor', 'admin', 'super_admin'];
+  // Allow field_manager, contractor, admin, super_admin, sub_contractor
+  const allowedRoles = ['field_manager', 'contractor', 'admin', 'super_admin', 'sub_contractor'];
   if (!allowedRoles.includes(userRole || '')) {
     return <Navigate to="/" replace />;
   }

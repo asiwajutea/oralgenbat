@@ -483,6 +483,7 @@ const AdminDashboard = () => {
                                     <SelectItem value="data_entry_clerk">Data Entry Clerk</SelectItem>
                                     <SelectItem value="field_manager">Field Manager</SelectItem>
                                     <SelectItem value="quality_assurance_manager">Quality Assurance Manager</SelectItem>
+                                    <SelectItem value="sub_contractor">Sub-contractor</SelectItem>
                                     <SelectItem value="super_admin">Super Admin</SelectItem>
                                   </SelectContent>
                                 </Select>

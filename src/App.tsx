@@ -8,6 +8,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { PresenceProvider } from "@/components/PresenceProvider";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
+import FullAdminRoute from "@/components/FullAdminRoute";
+import NonSubContractorRoute from "@/components/NonSubContractorRoute";
 import { FieldManagerRoute } from "@/components/FieldManagerRoute";
 import { ContractorRoute } from "@/components/ContractorRoute";
 import { ApproverRoute } from "@/components/ApproverRoute";
@@ -72,21 +74,21 @@ const App = () => (
             <Route
               path="/interviews"
               element={
-                <ProtectedRoute>
+                <NonSubContractorRoute>
                   <Layout>
                     <Index />
                   </Layout>
-                </ProtectedRoute>
+                </NonSubContractorRoute>
               }
             />
             <Route
               path="/review/:auditId"
               element={
-                <ProtectedRoute>
+                <NonSubContractorRoute>
                   <Layout>
                     <ReviewInterview />
                   </Layout>
-                </ProtectedRoute>
+                </NonSubContractorRoute>
               }
             />
             <Route
@@ -178,39 +180,39 @@ const App = () => (
             <Route
               path="/admin/review-history"
               element={
-                <AdminRoute>
+                <FullAdminRoute>
                   <Layout>
                     <AdminReviewHistory />
                   </Layout>
-                </AdminRoute>
+                </FullAdminRoute>
               }
             />
             <Route
               path="/admin/locked-interviews"
               element={
-                <AdminRoute>
+                <FullAdminRoute>
                   <LockedInterviews />
-                </AdminRoute>
+                </FullAdminRoute>
               }
             />
             <Route
               path="/admin/team-assignments"
               element={
-                <AdminRoute>
+                <FullAdminRoute>
                   <Layout>
                     <TeamAssignments />
                   </Layout>
-                </AdminRoute>
+                </FullAdminRoute>
               }
             />
             <Route
               path="/admin/zip-diagnostics"
               element={
-                <AdminRoute>
+                <FullAdminRoute>
                   <Layout>
                     <ZipDiagnostics />
                   </Layout>
-                </AdminRoute>
+                </FullAdminRoute>
               }
             />
             <Route

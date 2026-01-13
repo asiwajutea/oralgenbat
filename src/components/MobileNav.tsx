@@ -51,6 +51,7 @@ const MobileNav = () => {
 
   const isActive = (path: string) => location.pathname === path;
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isSubContractor = userRole === 'sub_contractor';
 
   const NavItem = ({ to, icon: Icon, children }: { to: string; icon: React.ElementType; children: React.ReactNode }) => (
     <Link
@@ -112,16 +113,25 @@ const MobileNav = () => {
               <NavItem to="/admin/team-approvals" icon={Shield}>Team Approvals</NavItem>
             )}
             
-            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin) && (
+            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
               <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>
             )}
             
-            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && (
+            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin || isSubContractor) && (
               <NavItem to="/data-entry" icon={Database}>Data Entry</NavItem>
             )}
             
             {userRole === 'auditor' && (
               <NavItem to="/review-history" icon={History}>My Reviews</NavItem>
+            )}
+            
+            {isSubContractor && (
+              <>
+                <Separator className="my-3" />
+                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sub-contractor</p>
+                <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
+                <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
+              </>
             )}
             
             {isAdmin && (

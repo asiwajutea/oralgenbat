@@ -1,8 +1,13 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+interface SubContractorRouteProps {
+  children: ReactNode;
+}
+
+export const SubContractorRoute = ({ children }: SubContractorRouteProps) => {
   const { user, userRole, isApproved, loading } = useAuth();
 
   if (loading) {
@@ -21,12 +26,11 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/pending-approval" replace />;
   }
 
-  // Check if user is admin, super_admin, or sub_contractor
-  if (userRole !== 'admin' && userRole !== 'super_admin' && userRole !== 'sub_contractor') {
+  // Allow sub_contractor, admin, and super_admin
+  const allowedRoles = ['sub_contractor', 'admin', 'super_admin'];
+  if (!allowedRoles.includes(userRole || '')) {
     return <Navigate to="/" replace />;
   }
-
+  
   return <>{children}</>;
 };
-
-export default AdminRoute;

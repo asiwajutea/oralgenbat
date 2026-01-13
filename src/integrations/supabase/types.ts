@@ -1019,6 +1019,7 @@ export type Database = {
         | "super_admin"
         | "data_entry_clerk"
         | "quality_assurance_manager"
+        | "sub_contractor"
       audit_status:
         | "Pending"
         | "Audit Passed"
@@ -1159,6 +1160,7 @@ export const Constants = {
         "super_admin",
         "data_entry_clerk",
         "quality_assurance_manager",
+        "sub_contractor",
       ],
       audit_status: [
         "Pending",

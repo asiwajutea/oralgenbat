@@ -2,7 +2,12 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
 
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+/**
+ * Route guard for pages that only admin and super_admin can access.
+ * This explicitly excludes sub_contractor role.
+ * Used for: Review History, Team Assignments, Zip Diagnostics, Locked Interviews
+ */
+const FullAdminRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, userRole, isApproved, loading } = useAuth();
 
   if (loading) {
@@ -21,12 +26,12 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/pending-approval" replace />;
   }
 
-  // Check if user is admin, super_admin, or sub_contractor
-  if (userRole !== 'admin' && userRole !== 'super_admin' && userRole !== 'sub_contractor') {
+  // Only admin and super_admin - explicitly excludes sub_contractor
+  if (userRole !== 'admin' && userRole !== 'super_admin') {
     return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
 };
 
-export default AdminRoute;
+export default FullAdminRoute;
