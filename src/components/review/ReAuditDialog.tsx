@@ -121,34 +121,48 @@ export const ReAuditDialog = ({
       let newPdfUrl = null;
       let newZipUrl = null;
 
-      // Upload new PDF if selected
+      // Upload new PDF if selected - use unique path to avoid UPDATE permission issues
       if (replacePdf && pdfFile) {
-        const pdfPath = `${auditId}/${pdfFile.name}`;
+        const timestamp = Date.now();
+        const pdfPath = `${auditId}/reaudit_${timestamp}_${pdfFile.name}`;
+        console.log("ReAuditDialog: Uploading PDF to path:", pdfPath);
+        
         const { error: pdfError } = await supabase.storage
           .from("audit-pdfs")
-          .upload(pdfPath, pdfFile, { upsert: true });
+          .upload(pdfPath, pdfFile, { upsert: false });
 
-        if (pdfError) throw pdfError;
+        if (pdfError) {
+          console.error("ReAuditDialog:pdfUploadError", pdfError);
+          throw new Error(`PDF upload failed: ${pdfError.message || JSON.stringify(pdfError)}`);
+        }
         
         const { data: pdfData } = supabase.storage
           .from("audit-pdfs")
           .getPublicUrl(pdfPath);
         newPdfUrl = pdfData.publicUrl;
+        console.log("ReAuditDialog: PDF uploaded successfully:", newPdfUrl);
       }
 
-      // Upload new ZIP if selected
+      // Upload new ZIP if selected - use unique path to avoid UPDATE permission issues
       if (replaceZip && zipFile) {
-        const zipPath = `${auditId}/${zipFile.name}`;
+        const timestamp = Date.now();
+        const zipPath = `${auditId}/reaudit_${timestamp}_${zipFile.name}`;
+        console.log("ReAuditDialog: Uploading ZIP to path:", zipPath);
+        
         const { error: zipError } = await supabase.storage
           .from("mobile-zips")
-          .upload(zipPath, zipFile, { upsert: true });
+          .upload(zipPath, zipFile, { upsert: false });
 
-        if (zipError) throw zipError;
+        if (zipError) {
+          console.error("ReAuditDialog:zipUploadError", zipError);
+          throw new Error(`ZIP upload failed: ${zipError.message || JSON.stringify(zipError)}`);
+        }
         
         const { data: zipData } = supabase.storage
           .from("mobile-zips")
           .getPublicUrl(zipPath);
         newZipUrl = zipData.publicUrl;
+        console.log("ReAuditDialog: ZIP uploaded successfully:", newZipUrl);
       }
 
       // Call the database function to mark for re-audit
