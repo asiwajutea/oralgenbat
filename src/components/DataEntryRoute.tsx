@@ -26,8 +26,8 @@ export const DataEntryRoute = ({ children }: DataEntryRouteProps) => {
     return <Navigate to="/pending-approval" replace />;
   }
 
-  // Allow data entry clerks, QA managers, admins, and super admins
-  const allowedRoles = ['data_entry_clerk', 'quality_assurance_manager', 'admin', 'super_admin'];
+  // Allow data entry clerks, QA managers, admins, super admins, and sub_contractors
+  const allowedRoles = ['data_entry_clerk', 'quality_assurance_manager', 'admin', 'super_admin', 'sub_contractor'];
   if (!allowedRoles.includes(userRole || '')) {
     return <Navigate to="/" replace />;
   }

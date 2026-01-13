@@ -15,7 +15,7 @@ const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
   phone: z.string().min(10, "Phone number must be at least 10 characters"),
   contractorId: z.enum(["NG68", "NG71", "NG75"], { errorMap: () => ({ message: "Please select a contractor ID" }) }),
-  role: z.enum(["field_manager", "auditor", "contractor", "data_entry_clerk", "quality_assurance_manager"], { errorMap: () => ({ message: "Please select a role" }) }),
+  role: z.enum(["field_manager", "auditor", "contractor", "sub_contractor", "data_entry_clerk", "quality_assurance_manager"], { errorMap: () => ({ message: "Please select a role" }) }),
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -248,6 +248,7 @@ const Auth = () => {
                       <SelectItem value="data_entry_clerk">Data Entry Clerk</SelectItem>
                       <SelectItem value="field_manager">Field Manager</SelectItem>
                       <SelectItem value="quality_assurance_manager">Quality Assurance Manager</SelectItem>
+                      <SelectItem value="sub_contractor">Sub-contractor</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

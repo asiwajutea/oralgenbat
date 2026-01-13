@@ -53,15 +53,25 @@ const Header = () => {
               Team Approvals
             </NavLink>
           )}
-          {(userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && (
+          {(userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'sub_contractor') && (
             <NavLink to="/interview-tracking" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Tracking
             </NavLink>
           )}
-          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin') && (
+          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'sub_contractor') && (
             <NavLink to="/data-entry" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Data Entry
             </NavLink>
+          )}
+          {userRole === 'sub_contractor' && (
+            <>
+              <NavLink to="/admin" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                Manage Users
+              </NavLink>
+              <NavLink to="/analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                Analytics
+              </NavLink>
+            </>
           )}
           {(userRole === 'admin' || userRole === 'super_admin') && (
             <>
