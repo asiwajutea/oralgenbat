@@ -33,6 +33,9 @@ const Home = () => {
   const isAuditor = userRole === 'auditor';
   const isFieldManager = userRole === 'field_manager';
   const isContractor = userRole === 'contractor';
+  
+  // Use active_contractor_id if set, otherwise fall back to contractor_id
+  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
 
   // Get user's team interviewer codes for field managers
   const { data: teamInterviewerCodes = [] } = useQuery({
@@ -89,9 +92,9 @@ const Home = () => {
       }
       
       // For contractors, filter by contractor ID in file_name
-      if (isContractor && profile?.contractor_id) {
+      if (isContractor && effectiveContractorId) {
         results = results.filter(interview => 
-          interview.file_name.startsWith(profile.contractor_id)
+          interview.file_name.startsWith(effectiveContractorId)
         );
       }
       
@@ -159,9 +162,9 @@ const Home = () => {
       }
       
       // For contractors, filter by contractor ID in file_name
-      if (isContractor && profile?.contractor_id) {
+      if (isContractor && effectiveContractorId) {
         results = results.filter(interview => 
-          interview.file_name.startsWith(profile.contractor_id)
+          interview.file_name.startsWith(effectiveContractorId)
         );
       }
       

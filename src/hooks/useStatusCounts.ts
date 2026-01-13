@@ -24,11 +24,15 @@ export const useStatusCounts = () => {
   const { userRole, profile } = useAuth();
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isAuditor = userRole === 'auditor';
+  const isContractor = userRole === 'contractor';
+  
+  // Use active_contractor_id if set, otherwise fall back to contractor_id
+  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
 
   return useQuery({
-    queryKey: ["status-counts", userRole, profile?.full_name],
+    queryKey: ["status-counts", userRole, profile?.full_name, effectiveContractorId],
     queryFn: async (): Promise<{ counts: StatusCounts; totalNames: TotalNames }> => {
-      // Get all audits with their metadata for total_names
+      // Get all audits with their metadata for total_names and contractor filtering
       const { data: audits, error } = await supabase
         .from("audits")
         .select(`
@@ -39,7 +43,7 @@ export const useStatusCounts = () => {
           reviewed_by,
           file_url,
           mobile_zip_url,
-          interview_metadata(total_names)
+          interview_metadata(total_names, contractor_id)
         `);
 
       if (error) throw error;
@@ -65,9 +69,16 @@ export const useStatusCounts = () => {
       };
 
       audits?.forEach((audit) => {
-        const metadata = audit.interview_metadata as { total_names: number | null }[] | null;
+        const metadata = audit.interview_metadata as { total_names: number | null; contractor_id: string | null }[] | null;
         const hasMetadata = metadata && metadata.length > 0;
         const names = metadata?.[0]?.total_names || 0;
+        const auditContractorId = metadata?.[0]?.contractor_id || null;
+        
+        // For contractors, skip audits that don't belong to them
+        if (isContractor && effectiveContractorId && auditContractorId !== effectiveContractorId) {
+          return;
+        }
+        
         // Complete artifacts = has PDF AND has successfully extracted metadata (not just ZIP URL)
         // This excludes corrupted ZIPs where the ZIP was uploaded but processing failed
         const hasCompleteArtifacts = !!audit.file_url && hasMetadata;

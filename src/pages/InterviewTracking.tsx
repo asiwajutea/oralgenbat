@@ -93,6 +93,9 @@ const InterviewTracking = () => {
   const isSuperAdmin = userRole === 'super_admin';
   const isFieldManager = userRole === 'field_manager';
   const isContractor = userRole === 'contractor';
+  
+  // Use active_contractor_id if set, otherwise fall back to contractor_id
+  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
 
   // Get field managers assigned to this admin
   const { data: assignedFieldManagers = [] } = useQuery({
@@ -139,7 +142,7 @@ const InterviewTracking = () => {
 
   // Main interviews query - now fetches all statuses
   const { data: interviews = [], isLoading } = useQuery({
-    queryKey: ["tracking-interviews", userRole, profile?.contractor_id, teamAssignments],
+    queryKey: ["tracking-interviews", userRole, effectiveContractorId, teamAssignments],
     queryFn: async () => {
       // Get audits with all statuses (not just passed)
       const { data: audits, error: auditsError } = await supabase
@@ -202,8 +205,8 @@ const InterviewTracking = () => {
       });
       
       // Apply role-based filtering
-      if (isContractor && profile?.contractor_id) {
-        results = results.filter(r => (r as any).contractor_id === profile.contractor_id);
+      if (isContractor && effectiveContractorId) {
+        results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
       } else if (isFieldManager && teamAssignments.length > 0) {
         const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
         results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
