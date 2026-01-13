@@ -15,11 +15,14 @@ const ContractorDashboard = () => {
   const [selectedAudit, setSelectedAudit] = useState<any>(null);
   const [reauditDialogOpen, setReauditDialogOpen] = useState(false);
 
+  // Use active_contractor_id if set, otherwise fall back to contractor_id
+  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
+
   // Fetch audits for contractor
   const { data: audits, isLoading, refetch } = useQuery({
-    queryKey: ["contractor-audits", profile?.contractor_id, filters],
+    queryKey: ["contractor-audits", effectiveContractorId, filters],
     queryFn: async () => {
-      if (!profile?.contractor_id) return [];
+      if (!effectiveContractorId) return [];
 
       let query = supabase
         .from("audits")
@@ -32,7 +35,7 @@ const ContractorDashboard = () => {
             field_manager
           )
         `)
-        .eq("interview_metadata.contractor_id", profile.contractor_id)
+        .eq("interview_metadata.contractor_id", effectiveContractorId)
         .order("uploaded_at", { ascending: false });
 
       // Apply filters
@@ -44,7 +47,7 @@ const ContractorDashboard = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!profile?.contractor_id,
+    enabled: !!effectiveContractorId,
   });
 
   // Calculate statistics
@@ -73,7 +76,7 @@ const ContractorDashboard = () => {
     setReauditDialogOpen(true);
   };
 
-  if (!profile?.contractor_id) {
+  if (!effectiveContractorId) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
@@ -98,7 +101,7 @@ const ContractorDashboard = () => {
             <div>
               <h1 className="text-3xl font-bold">Contractor Dashboard</h1>
               <p className="text-muted-foreground">
-                Monitor all interviews for contractor: <span className="font-semibold">{profile.contractor_id}</span>
+                Monitor all interviews for contractor: <span className="font-semibold">{effectiveContractorId}</span>
               </p>
             </div>
 

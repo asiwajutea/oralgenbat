@@ -75,12 +75,28 @@ export const ContractorAssignmentDialog = ({
 
     setAdding(true);
     try {
+      // First, ensure the user's original contractor_id is in assignments
+      // This is needed so the contractor switcher shows both contractors
+      const originalExists = assignments.some(a => a.contractor_id === currentContractorId);
+      
+      if (!originalExists && currentContractorId) {
+        await supabase
+          .from("user_contractor_assignments")
+          .insert({
+            user_id: userId,
+            contractor_id: currentContractorId,
+            is_primary: true,
+            assigned_by: currentUser?.id,
+          });
+      }
+
+      // Now add the new contractor
       const { error } = await supabase
         .from("user_contractor_assignments")
         .insert({
           user_id: userId,
           contractor_id: newContractorId.trim(),
-          is_primary: assignments.length === 0, // First one is primary
+          is_primary: !originalExists && !currentContractorId, // Only primary if no existing contractors
           assigned_by: currentUser?.id,
         });
 
