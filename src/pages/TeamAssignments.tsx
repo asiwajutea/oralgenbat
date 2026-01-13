@@ -29,6 +29,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditPagination } from "@/components/AuditPagination";
@@ -52,6 +58,7 @@ import {
   Clock,
   Download,
   Loader2,
+  History,
 } from "lucide-react";
 import {
   useTeams,
@@ -87,6 +94,10 @@ const TeamAssignments = () => {
   const [showManageTeams, setShowManageTeams] = useState(false);
   const [unassignDialog, setUnassignDialog] = useState<{ open: boolean; assignment: Assignment | null }>({ open: false, assignment: null });
   const [exportingTeamId, setExportingTeamId] = useState<string | null>(null);
+  
+  // Export history pagination
+  const [exportHistoryPage, setExportHistoryPage] = useState(1);
+  const [exportHistoryItemsPerPage, setExportHistoryItemsPerPage] = useState(10);
   
   // Expanded team sections for By Team view
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
@@ -183,6 +194,19 @@ const TeamAssignments = () => {
     });
     return grouped;
   }, [assignments]);
+
+  // Sort export batches by date descending and paginate
+  const sortedExportBatches = useMemo(() => {
+    return [...exportBatches].sort((a, b) => 
+      new Date(b.exported_at).getTime() - new Date(a.exported_at).getTime()
+    );
+  }, [exportBatches]);
+
+  const exportHistoryTotalPages = Math.ceil(sortedExportBatches.length / exportHistoryItemsPerPage);
+  const paginatedExportBatches = sortedExportBatches.slice(
+    (exportHistoryPage - 1) * exportHistoryItemsPerPage,
+    exportHistoryPage * exportHistoryItemsPerPage
+  );
 
   const toggleSelectAll = () => {
     if (selectedInterviews.size === paginatedUnassigned.length) {
@@ -395,6 +419,75 @@ const TeamAssignments = () => {
         assignedCount={assignments.length}
         assignedNames={assignedNames}
       />
+
+      {/* Export History Accordion - At Top */}
+      {exportBatches.length > 0 && (
+        <Accordion type="single" collapsible defaultValue="export-history">
+          <AccordionItem value="export-history" className="border rounded-lg">
+            <AccordionTrigger className="px-4 py-3 hover:no-underline">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4" />
+                <span className="font-semibold">Export History</span>
+                <Badge variant="secondary">{exportBatches.length} batches</Badge>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Files</TableHead>
+                    <TableHead>Names</TableHead>
+                    <TableHead>Exported At</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedExportBatches.map((batch) => {
+                    const team = teams.find(t => t.id === batch.team_id);
+                    return (
+                      <TableRow key={batch.id}>
+                        <TableCell>{team?.name || 'Unknown Team'}</TableCell>
+                        <TableCell>{batch.total_files} PDFs</TableCell>
+                        <TableCell>{batch.total_names.toLocaleString()}</TableCell>
+                        <TableCell>{format(new Date(batch.exported_at), "MMM d, yyyy h:mm a")}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => team && handleExportTeamPDFs(team, batch.export_batch_id)}
+                            disabled={!team || exportingTeamId === team?.id}
+                          >
+                            {exportingTeamId === team?.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              
+              {/* Pagination */}
+              {exportHistoryTotalPages > 1 && (
+                <div className="mt-4">
+                  <AuditPagination
+                    currentPage={exportHistoryPage}
+                    totalPages={exportHistoryTotalPages}
+                    totalCount={exportBatches.length}
+                    itemsPerPage={exportHistoryItemsPerPage}
+                    onPageChange={setExportHistoryPage}
+                    onItemsPerPageChange={setExportHistoryItemsPerPage}
+                  />
+                </div>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -763,39 +856,6 @@ const TeamAssignments = () => {
                             ))}
                           </TableBody>
                         </Table>
-                      )}
-                      
-                      {/* Export History for this team */}
-                      {getTeamBatches(team.id).length > 0 && (
-                        <div className="mt-4 pt-4 border-t">
-                          <h4 className="text-sm font-medium mb-2">Export History</h4>
-                          <div className="space-y-2">
-                            {getTeamBatches(team.id).map((batch) => (
-                              <div key={batch.id} className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm">
-                                <div>
-                                  <span className="font-medium">{batch.total_files} PDFs</span>
-                                  <span className="text-muted-foreground mx-2">•</span>
-                                  <span>{batch.total_names.toLocaleString()} names</span>
-                                  <span className="text-muted-foreground mx-2">•</span>
-                                  <span className="text-muted-foreground">
-                                    {format(new Date(batch.exported_at), "MMM d, yyyy h:mm a")}
-                                  </span>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleExportTeamPDFs(team, batch.export_batch_id);
-                                  }}
-                                  disabled={exportingTeamId === team.id}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
                       )}
                     </CardContent>
                   )}

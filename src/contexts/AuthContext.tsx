@@ -9,6 +9,7 @@ interface Profile {
   email: string;
   phone: string;
   contractor_id: string;
+  active_contractor_id: string | null;
   is_approved: boolean;
 }
 

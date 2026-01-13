@@ -443,9 +443,14 @@ const AdminReviewHistory = () => {
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
+      // Fetch audits with contractor_id from interview_metadata
       let query = supabase
         .from("audits")
-        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction")
+        .select(`
+          id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, 
+          is_re_audit, re_audit_count, review_duration_seconds, artifact_correction,
+          interview_metadata(contractor_id)
+        `)
         .not("reviewed_at", "is", null)
         .order("file_name", { ascending: true });
 
@@ -458,16 +463,68 @@ const AdminReviewHistory = () => {
 
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 14;
       const maxLineWidth = pageWidth - margin * 2;
+      let pageNum = 1;
       
-      doc.setFontSize(18);
-      doc.text("Review History Report", margin, 20);
-      doc.setFontSize(10);
-      doc.text(`Generated: ${format(new Date(), "PPp")}`, margin, 28);
-      doc.text(`Total Records: ${allAudits.length}`, margin, 34);
+      // Helper function to add header to each page
+      const addPageHeader = (isFirstPage: boolean = false) => {
+        // Draw header bar
+        doc.setFillColor(31, 41, 55); // Dark gray/slate
+        doc.rect(0, 0, pageWidth, isFirstPage ? 25 : 15, 'F');
+        
+        if (isFirstPage) {
+          // Logo placeholder (circle with letters)
+          doc.setFillColor(59, 130, 246); // Blue
+          doc.circle(margin + 8, 12.5, 8, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "bold");
+          doc.text("BAC", margin + 8, 14, { align: 'center' });
+          
+          // Title
+          doc.setFontSize(16);
+          doc.text("Backend Audit Center", margin + 22, 15);
+        } else {
+          // Smaller header for subsequent pages
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "bold");
+          doc.text("Backend Audit Center - Review History Report", margin, 10);
+          doc.text(`Page ${pageNum}`, pageWidth - margin, 10, { align: 'right' });
+        }
+        
+        // Reset text color
+        doc.setTextColor(0, 0, 0);
+      };
+      
+      // Add first page header
+      addPageHeader(true);
+      
+      // Get unique contractor IDs from audits
+      const contractorIds = [...new Set(allAudits.map(a => {
+        const metadata = a.interview_metadata;
+        if (Array.isArray(metadata) && metadata.length > 0) {
+          return metadata[0]?.contractor_id || 'Unknown';
+        }
+        return 'Unknown';
+      }).filter(id => id !== 'Unknown'))];
+      
+      // Report subtitle and metadata
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Review History Report", margin, 35);
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${format(new Date(), "PPp")}`, margin, 42);
+      doc.text(`Total Records: ${allAudits.length}`, margin + 70, 42);
+      if (contractorIds.length > 0) {
+        doc.text(`Contractor(s): ${contractorIds.slice(0, 3).join(', ')}${contractorIds.length > 3 ? '...' : ''}`, margin + 130, 42);
+      }
 
-      let y = 45;
+      let y = 52;
       doc.setFontSize(9);
       
       allAudits.forEach((a, i) => {
@@ -484,59 +541,65 @@ const AdminReviewHistory = () => {
         }
         
         // Calculate space needed for this entry
-        let entryHeight = 20; // Base height for title + status + date
-        if (a.artifact_correction?.length) entryHeight += 5;
-        entryHeight += feedbackLines.length * 4;
-        entryHeight += actionPlanLines.length * 4;
+        let entryHeight = 18; // Base height for title + status + date (reduced from 20)
+        if (a.artifact_correction?.length) entryHeight += 4;
+        entryHeight += feedbackLines.length * 3.5;
+        entryHeight += actionPlanLines.length * 3.5;
         
-        // Check if we need a new page before starting entry
-        if (y + entryHeight > 280) {
+        // Check if we need a new page before starting entry (increased threshold to 285)
+        if (y + entryHeight > 285) {
           doc.addPage();
-          y = 20;
+          pageNum++;
+          addPageHeader(false);
+          y = 22;
         }
         
         // Render entry
         doc.setFont("helvetica", "bold");
         doc.text(`${i + 1}. ${a.file_name}`, margin, y);
         doc.setFont("helvetica", "normal");
-        y += 5;
+        y += 4.5;
         
         doc.text(`Status: ${a.status === "Audit Passed" ? "Passed" : "Failed"} | Reviewer: ${a.reviewed_by || "-"} | Duration: ${formatDuration(a.review_duration_seconds)}`, margin, y);
-        y += 5;
+        y += 4.5;
         
         doc.text(`Date: ${a.reviewed_at ? format(new Date(a.reviewed_at), "PPp") : "-"}`, margin, y);
-        y += 5;
+        y += 4.5;
         
         if (a.artifact_correction?.length) {
           doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}`, margin, y);
-          y += 5;
+          y += 4;
         }
         
         // Full Review Feedback for failed audits (no truncation)
         if (feedbackLines.length > 0) {
           feedbackLines.forEach((line: string) => {
-            if (y > 280) {
+            if (y > 285) {
               doc.addPage();
-              y = 20;
+              pageNum++;
+              addPageHeader(false);
+              y = 22;
             }
             doc.text(line, margin, y);
-            y += 4;
+            y += 3.5;
           });
         }
         
         // Full Action Plan for failed audits (no truncation)
         if (actionPlanLines.length > 0) {
           actionPlanLines.forEach((line: string) => {
-            if (y > 280) {
+            if (y > 285) {
               doc.addPage();
-              y = 20;
+              pageNum++;
+              addPageHeader(false);
+              y = 22;
             }
             doc.text(line, margin, y);
-            y += 4;
+            y += 3.5;
           });
         }
         
-        y += 6; // Space between entries
+        y += 4; // Reduced space between entries (from 6 to 4)
       });
 
       doc.save(`review-history-${format(new Date(), "yyyy-MM-dd")}.pdf`);
