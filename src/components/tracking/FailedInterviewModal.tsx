@@ -22,12 +22,14 @@ import {
   Upload, 
   Loader2, 
   CheckCircle,
-  XCircle 
+  XCircle,
+  ExternalLink
 } from "lucide-react";
 
 interface FailedInterviewData {
   id: string;
   file_name: string;
+  file_url: string | null;
   review_comment: string | null;
   action_plan: string | null;
   artifact_correction: string[] | null;
@@ -218,9 +220,21 @@ export function FailedInterviewModal({
           <div className="p-4 bg-muted/50 rounded-lg space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Interview ID</span>
-              <code className="text-sm bg-background px-2 py-1 rounded">
-                {interview.file_name}
-              </code>
+              <div className="flex items-center gap-2">
+                <code className="text-sm bg-background px-2 py-1 rounded">
+                  {interview.file_name}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => interview.file_url && window.open(interview.file_url, '_blank')}
+                  disabled={!interview.file_url}
+                  className="gap-1"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  View PDF
+                </Button>
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Status</span>
