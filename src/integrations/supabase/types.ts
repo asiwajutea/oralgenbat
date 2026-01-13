@@ -502,6 +502,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_contractor_id: string | null
           approved_at: string | null
           approved_by: string | null
           contractor_id: string
@@ -514,6 +515,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          active_contractor_id?: string | null
           approved_at?: string | null
           approved_by?: string | null
           contractor_id: string
@@ -526,6 +528,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          active_contractor_id?: string | null
           approved_at?: string | null
           approved_by?: string | null
           contractor_id?: string
@@ -665,6 +668,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_contractor_assignments: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          contractor_id: string
+          created_at: string | null
+          id: string
+          is_primary: boolean | null
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          contractor_id: string
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          contractor_id?: string
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
       }
       user_presence: {
         Row: {

@@ -12,10 +12,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock, Trash2, Bell, X, Circle, History } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Trash2, Bell, X, Circle, History, Building2 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SessionHistoryDialog } from "@/components/SessionHistoryDialog";
+import { ContractorAssignmentDialog } from "@/components/ContractorAssignmentDialog";
 
 interface UserProfile {
   id: string;
@@ -50,6 +51,7 @@ const AdminDashboard = () => {
   const [showClearStorageDialog, setShowClearStorageDialog] = useState(false);
   const [clearingStorage, setClearingStorage] = useState(false);
   const [sessionHistoryUser, setSessionHistoryUser] = useState<UserProfile | null>(null);
+  const [contractorAssignUser, setContractorAssignUser] = useState<UserProfile | null>(null);
 
   // Fetch admin notifications (AI credit warnings)
   const { data: notifications = [] } = useQuery({
@@ -554,15 +556,26 @@ const AdminDashboard = () => {
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
                                 {userRole === 'super_admin' && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setSessionHistoryUser(user)}
-                                    title="View Session History"
-                                    className="h-8 w-8 p-0"
-                                  >
-                                    <History className="h-4 w-4" />
-                                  </Button>
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setContractorAssignUser(user)}
+                                      title="Manage Contractors"
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      <Building2 className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setSessionHistoryUser(user)}
+                                      title="View Session History"
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      <History className="h-4 w-4" />
+                                    </Button>
+                                  </>
                                 )}
                                 {!user.is_approved ? (
                                   <Button
@@ -659,6 +672,16 @@ const AdminDashboard = () => {
           onOpenChange={(open) => !open && setSessionHistoryUser(null)}
           userId={sessionHistoryUser?.id || ""}
           userName={sessionHistoryUser?.full_name || ""}
+        />
+
+        {/* Contractor Assignment Dialog */}
+        <ContractorAssignmentDialog
+          open={!!contractorAssignUser}
+          onOpenChange={(open) => !open && setContractorAssignUser(null)}
+          userId={contractorAssignUser?.id || ""}
+          userName={contractorAssignUser?.full_name || ""}
+          currentContractorId={contractorAssignUser?.contractor_id || ""}
+          onUpdate={fetchUsers}
         />
       </div>
     </div>
