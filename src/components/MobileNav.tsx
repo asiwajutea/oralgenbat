@@ -96,7 +96,9 @@ const MobileNav = () => {
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
             <NavItem to="/" icon={Home}>Home</NavItem>
-            <NavItem to="/interviews" icon={ClipboardList}>Interviews</NavItem>
+            {(userRole === 'auditor' || isAdmin) && (
+              <NavItem to="/interviews" icon={ClipboardList}>Interviews</NavItem>
+            )}
             
             {userRole === 'field_manager' && (
               <>

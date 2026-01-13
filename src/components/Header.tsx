@@ -30,9 +30,11 @@ const Header = () => {
           <NavLink to="/" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
             Home
           </NavLink>
-          <NavLink to="/interviews" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-            Interviews
-          </NavLink>
+          {(userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin') && (
+            <NavLink to="/interviews" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+              Interviews
+            </NavLink>
+          )}
           {userRole === 'field_manager' && (
             <>
               <NavLink to="/field-manager-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
