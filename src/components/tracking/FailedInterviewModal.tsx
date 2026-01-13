@@ -87,13 +87,13 @@ export function FailedInterviewModal({
       if (pdfFile) {
         const pdfPath = `audits/${interview.id}/resubmit_${Date.now()}.pdf`;
         const { error: pdfError } = await supabase.storage
-          .from("interview-pdfs")
+          .from("audit-pdfs")
           .upload(pdfPath, pdfFile);
         
         if (pdfError) throw new Error("Failed to upload PDF: " + pdfError.message);
         
         const { data: pdfUrlData } = supabase.storage
-          .from("interview-pdfs")
+          .from("audit-pdfs")
           .getPublicUrl(pdfPath);
         newPdfUrl = pdfUrlData.publicUrl;
       }
@@ -102,13 +102,13 @@ export function FailedInterviewModal({
       if (zipFile) {
         const zipPath = `audits/${interview.id}/resubmit_${Date.now()}.zip`;
         const { error: zipError } = await supabase.storage
-          .from("interview-photos")
+          .from("mobile-zips")
           .upload(zipPath, zipFile);
         
         if (zipError) throw new Error("Failed to upload ZIP: " + zipError.message);
         
         const { data: zipUrlData } = supabase.storage
-          .from("interview-photos")
+          .from("mobile-zips")
           .getPublicUrl(zipPath);
         newZipUrl = zipUrlData.publicUrl;
       }

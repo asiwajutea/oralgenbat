@@ -15,9 +15,10 @@ import {
   Calendar,
   Users,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  BarChart3
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import {
   Table,
@@ -27,12 +28,84 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { AuditPagination } from "@/components/AuditPagination";
 
 const DataEntryPortal = () => {
   const { user, profile } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchedId, setSearchedId] = useState("");
+  const [dateFilter, setDateFilter] = useState<"today" | "week" | "month" | "all">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Get date filter start date
+  const getDateFilterStart = (filter: "today" | "week" | "month" | "all") => {
+    const now = new Date();
+    switch (filter) {
+      case "today":
+        return startOfDay(now).toISOString();
+      case "week":
+        return startOfWeek(now, { weekStartsOn: 1 }).toISOString();
+      case "month":
+        return startOfMonth(now).toISOString();
+      default:
+        return null;
+    }
+  };
+
+  // Stats query
+  const { data: stats, isLoading: isLoadingStats } = useQuery({
+    queryKey: ["data-entry-stats", user?.id, dateFilter],
+    queryFn: async () => {
+      if (!user?.id) return { totalInterviews: 0, totalNames: 0 };
+      
+      const startDate = getDateFilterStart(dateFilter);
+      
+      let query = supabase
+        .from("interview_assignments")
+        .select(`
+          id,
+          audit_id,
+          entry_completed_at
+        `)
+        .eq("entry_completed_by", user.id)
+        .eq("entry_status", "data_entry_complete");
+      
+      if (startDate) {
+        query = query.gte("entry_completed_at", startDate);
+      }
+      
+      const { data: assignments, error } = await query;
+      
+      if (error) throw error;
+      if (!assignments || assignments.length === 0) {
+        return { totalInterviews: 0, totalNames: 0 };
+      }
+      
+      // Get total names from metadata
+      const auditIds = assignments.map(a => a.audit_id);
+      const { data: metadataList } = await supabase
+        .from("interview_metadata")
+        .select("total_names")
+        .in("audit_id", auditIds);
+      
+      const totalNames = metadataList?.reduce((sum, m) => sum + (m.total_names || 0), 0) || 0;
+      
+      return {
+        totalInterviews: assignments.length,
+        totalNames
+      };
+    },
+    enabled: !!user?.id,
+  });
 
   // Search for interview by ID
   const { data: searchResult, isLoading: isSearching } = useQuery({
@@ -105,34 +178,67 @@ const DataEntryPortal = () => {
     onSuccess: () => {
       toast.success("Interview marked as completed!");
       queryClient.invalidateQueries({ queryKey: ["data-entry-search"] });
-      queryClient.invalidateQueries({ queryKey: ["recent-completions"] });
+      queryClient.invalidateQueries({ queryKey: ["completions"] });
+      queryClient.invalidateQueries({ queryKey: ["data-entry-stats"] });
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to update status");
     },
   });
 
-  // Get recent completions by this user
-  const { data: recentCompletions = [] } = useQuery({
-    queryKey: ["recent-completions", user?.id],
+  // Get all completions with pagination
+  const { data: completionsData, isLoading: isLoadingCompletions } = useQuery({
+    queryKey: ["completions", user?.id, currentPage, itemsPerPage],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) return { data: [], totalCount: 0 };
+      
+      // Get total count
+      const { count } = await supabase
+        .from("interview_assignments")
+        .select("id", { count: "exact", head: true })
+        .eq("entry_completed_by", user.id)
+        .eq("entry_status", "data_entry_complete");
+      
+      // Get paginated results
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
       
       const { data, error } = await supabase
         .from("interview_assignments")
         .select(`
           id,
           entry_completed_at,
+          audit_id,
           audits(file_name),
           data_entry_teams(name)
         `)
         .eq("entry_completed_by", user.id)
         .eq("entry_status", "data_entry_complete")
         .order("entry_completed_at", { ascending: false })
-        .limit(10);
+        .range(from, to);
       
       if (error) throw error;
-      return data || [];
+      
+      // Get total_names for each completion
+      if (data && data.length > 0) {
+        const auditIds = data.map(d => d.audit_id);
+        const { data: metadataList } = await supabase
+          .from("interview_metadata")
+          .select("audit_id, total_names")
+          .in("audit_id", auditIds);
+        
+        const metadataMap = new Map(metadataList?.map(m => [m.audit_id, m.total_names]) || []);
+        
+        return {
+          data: data.map(d => ({
+            ...d,
+            total_names: metadataMap.get(d.audit_id) || 0
+          })),
+          totalCount: count || 0
+        };
+      }
+      
+      return { data: data || [], totalCount: count || 0 };
     },
     enabled: !!user?.id,
   });
@@ -151,6 +257,15 @@ const DataEntryPortal = () => {
     }
   };
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (value: number) => {
+    setItemsPerPage(value);
+    setCurrentPage(1);
+  };
+
   const getStatusBadge = (status: string | null | undefined) => {
     switch (status) {
       case "data_entry_complete":
@@ -164,6 +279,8 @@ const DataEntryPortal = () => {
     }
   };
 
+  const totalPages = Math.ceil((completionsData?.totalCount || 0) / itemsPerPage);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
       <div className="container py-8 space-y-8">
@@ -174,6 +291,68 @@ const DataEntryPortal = () => {
             Search for interviews and mark them as completed
           </p>
         </div>
+
+        {/* Stats Cards */}
+        <Card>
+          <CardHeader className="pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                My Performance
+              </CardTitle>
+              <Select value={dateFilter} onValueChange={(value: "today" | "week" | "month" | "all") => setDateFilter(value)}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="week">This Week</SelectItem>
+                  <SelectItem value="month">This Month</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-primary/20">
+                    <FileText className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Interviews Completed</p>
+                    <p className="text-2xl font-bold">
+                      {isLoadingStats ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        stats?.totalInterviews || 0
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-green-500/20">
+                    <Users className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Names Entered</p>
+                    <p className="text-2xl font-bold">
+                      {isLoadingStats ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        stats?.totalNames?.toLocaleString() || 0
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Search Section */}
         <Card>
@@ -332,52 +511,75 @@ const DataEntryPortal = () => {
           </Card>
         )}
 
-        {/* Recent Completions */}
+        {/* All Completions with Pagination */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600" />
-              My Recent Completions
+              My Completions
             </CardTitle>
             <CardDescription>
-              Interviews you've recently marked as complete
+              All interviews you've marked as complete
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {recentCompletions.length === 0 ? (
+            {isLoadingCompletions ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (completionsData?.data?.length || 0) === 0 ? (
               <p className="text-muted-foreground text-center py-8">
                 No completions yet
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">SN</TableHead>
-                    <TableHead>Interview ID</TableHead>
-                    <TableHead>Team</TableHead>
-                    <TableHead>Completed At</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentCompletions.map((completion: any, index: number) => (
-                    <TableRow key={completion.id}>
-                      <TableCell className="font-medium">{index + 1}</TableCell>
-                      <TableCell className="font-medium">
-                        {completion.audits?.file_name || "Unknown"}
-                      </TableCell>
-                      <TableCell>
-                        {completion.data_entry_teams?.name || "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        {completion.entry_completed_at 
-                          ? format(new Date(completion.entry_completed_at), "PPp")
-                          : "N/A"
-                        }
-                      </TableCell>
+              <div className="space-y-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">SN</TableHead>
+                      <TableHead>Interview ID</TableHead>
+                      <TableHead>Team</TableHead>
+                      <TableHead>Total Names</TableHead>
+                      <TableHead>Completed At</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {completionsData?.data.map((completion: any, index: number) => (
+                      <TableRow key={completion.id}>
+                        <TableCell className="font-medium">
+                          {(currentPage - 1) * itemsPerPage + index + 1}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {completion.audits?.file_name || "Unknown"}
+                        </TableCell>
+                        <TableCell>
+                          {completion.data_entry_teams?.name || "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          {completion.total_names || 0}
+                        </TableCell>
+                        <TableCell>
+                          {completion.entry_completed_at 
+                            ? format(new Date(completion.entry_completed_at), "PPp")
+                            : "N/A"
+                          }
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                
+                {totalPages > 0 && (
+                  <AuditPagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={completionsData?.totalCount || 0}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={handlePageChange}
+                    onItemsPerPageChange={handleItemsPerPageChange}
+                  />
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
