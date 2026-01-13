@@ -35,17 +35,21 @@ const TeamApprovals = () => {
   const { session, userRole, profile } = useAuth();
   const queryClient = useQueryClient();
   const isSuperAdmin = userRole === "super_admin";
+  
+  // Use active_contractor_id for contractor filtering (except super_admin)
+  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
+  const isContractor = userRole === 'contractor';
 
   const { data: pendingRequests, isLoading, error } = useQuery({
-    queryKey: ["pending-team-assignments", profile?.contractor_id],
+    queryKey: ["pending-team-assignments", effectiveContractorId],
     queryFn: async () => {
       let query = supabase
         .from("team_assignments")
         .select("*")
         .eq("status", "pending");
 
-      if (userRole === 'contractor' && profile?.contractor_id) {
-        query = query.eq("contractor_id", profile.contractor_id);
+      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+        query = query.eq("contractor_id", effectiveContractorId);
       }
 
       const { data: assignments, error: assignmentsError } = await query.order("created_at", { ascending: false });
@@ -70,15 +74,15 @@ const TeamApprovals = () => {
 
   // Fetch approved teams grouped by field manager
   const { data: approvedTeams, isLoading: loadingTeams } = useQuery({
-    queryKey: ["approved-teams", profile?.contractor_id],
+    queryKey: ["approved-teams", effectiveContractorId],
     queryFn: async () => {
       let query = supabase
         .from("team_assignments")
         .select("*")
         .eq("status", "approved");
 
-      if (userRole === 'contractor' && profile?.contractor_id) {
-        query = query.eq("contractor_id", profile.contractor_id);
+      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+        query = query.eq("contractor_id", effectiveContractorId);
       }
 
       const { data: assignments, error: assignmentsError } = await query.order("field_manager_id");
@@ -126,7 +130,7 @@ const TeamApprovals = () => {
 
   // Fetch all field managers for reassignment dropdown
   const { data: allFieldManagers } = useQuery({
-    queryKey: ["all-field-managers", profile?.contractor_id],
+    queryKey: ["all-field-managers", effectiveContractorId],
     queryFn: async () => {
       const { data: fieldManagerRoles } = await supabase
         .from("user_roles")
@@ -143,8 +147,8 @@ const TeamApprovals = () => {
         .in("id", managerIds)
         .eq("is_approved", true);
 
-      if (userRole === 'contractor' && profile?.contractor_id) {
-        profilesQuery = profilesQuery.eq("contractor_id", profile.contractor_id);
+      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+        profilesQuery = profilesQuery.eq("contractor_id", effectiveContractorId);
       }
 
       const { data: managers } = await profilesQuery.order("full_name");
@@ -155,14 +159,14 @@ const TeamApprovals = () => {
 
   // Fetch unassigned interviewers
   const { data: unassignedInterviewers, isLoading: loadingUnassigned } = useQuery({
-    queryKey: ["unassigned-interviewers", profile?.contractor_id],
+    queryKey: ["unassigned-interviewers", effectiveContractorId],
     queryFn: async () => {
       let metadataQuery = supabase
         .from("interview_metadata")
         .select("interviewer_code, interviewer_name, contractor_id");
 
-      if (userRole === 'contractor' && profile?.contractor_id) {
-        metadataQuery = metadataQuery.eq("contractor_id", profile.contractor_id);
+      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+        metadataQuery = metadataQuery.eq("contractor_id", effectiveContractorId);
       }
 
       const { data: allInterviewers, error: interviewersError } = await metadataQuery;
@@ -187,8 +191,8 @@ const TeamApprovals = () => {
         .select("interviewer_code")
         .eq("status", "approved");
 
-      if (userRole === 'contractor' && profile?.contractor_id) {
-        assignmentsQuery = assignmentsQuery.eq("contractor_id", profile.contractor_id);
+      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+        assignmentsQuery = assignmentsQuery.eq("contractor_id", effectiveContractorId);
       }
 
       const { data: approvedAssignments } = await assignmentsQuery;

@@ -63,7 +63,11 @@ const Index = () => {
   const hideReviewButton = userRole === 'field_manager' || userRole === 'contractor';
   const canUpload = userRole !== 'auditor'; // Auditors cannot upload files
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-
+  const isSuperAdmin = userRole === 'super_admin';
+  
+  // Contractor filtering - use active_contractor_id if available
+  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
+  const isContractor = userRole === 'contractor';
   // Update filters when URL search param changes
   useEffect(() => {
     if (searchFromUrl) {
@@ -74,9 +78,33 @@ const Index = () => {
   const fetchAudits = async () => {
     try {
       setIsLoading(true);
+      
+      // For non-super-admin contractors, filter by contractor_id via interview_metadata
+      let contractorAuditIds: string[] | null = null;
+      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+        const { data: contractorAudits } = await supabase
+          .from("interview_metadata")
+          .select("audit_id")
+          .eq("contractor_id", effectiveContractorId);
+        
+        contractorAuditIds = contractorAudits?.map(a => a.audit_id).filter(Boolean) as string[] || [];
+        
+        if (contractorAuditIds.length === 0) {
+          setAudits([]);
+          setTotalCount(0);
+          setIsLoading(false);
+          return;
+        }
+      }
+      
       let query = supabase
         .from("audits")
         .select("*", { count: "exact" });
+
+      // Apply contractor filter if applicable
+      if (contractorAuditIds) {
+        query = query.in("id", contractorAuditIds);
+      }
 
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
@@ -183,7 +211,7 @@ const Index = () => {
 
   useEffect(() => {
     fetchAudits();
-  }, [currentPage, filters, itemsPerPage]);
+  }, [currentPage, filters, itemsPerPage, effectiveContractorId]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
