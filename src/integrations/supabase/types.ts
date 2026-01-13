@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      achievements: {
+        Row: {
+          badge_color: string | null
+          category: string
+          code: string
+          created_at: string | null
+          criteria_field: string | null
+          criteria_type: string
+          criteria_value: number
+          description: string
+          icon: string
+          id: string
+          name: string
+        }
+        Insert: {
+          badge_color?: string | null
+          category: string
+          code: string
+          created_at?: string | null
+          criteria_field?: string | null
+          criteria_type: string
+          criteria_value: number
+          description: string
+          icon: string
+          id?: string
+          name: string
+        }
+        Update: {
+          badge_color?: string | null
+          category?: string
+          code?: string
+          created_at?: string | null
+          criteria_field?: string | null
+          criteria_type?: string
+          criteria_value?: number
+          description?: string
+          icon?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       admin_notifications: {
         Row: {
           created_at: string | null
@@ -669,6 +711,70 @@ export type Database = {
           },
         ]
       }
+      user_achievement_progress: {
+        Row: {
+          achievement_id: string
+          current_value: number | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          achievement_id: string
+          current_value?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          achievement_id?: string
+          current_value?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_achievement_progress_achievement_id_fkey"
+            columns: ["achievement_id"]
+            isOneToOne: false
+            referencedRelation: "achievements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_achievements: {
+        Row: {
+          achievement_id: string
+          earned_at: string | null
+          id: string
+          progress_value: number | null
+          user_id: string
+        }
+        Insert: {
+          achievement_id: string
+          earned_at?: string | null
+          id?: string
+          progress_value?: number | null
+          user_id: string
+        }
+        Update: {
+          achievement_id?: string
+          earned_at?: string | null
+          id?: string
+          progress_value?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_achievements_achievement_id_fkey"
+            columns: ["achievement_id"]
+            isOneToOne: false
+            referencedRelation: "achievements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_contractor_assignments: {
         Row: {
           assigned_at: string | null
@@ -695,6 +801,78 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_primary?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_notification_settings: {
+        Row: {
+          created_at: string | null
+          id: string
+          notify_failed_audit: boolean | null
+          notify_inactivity: boolean | null
+          notify_milestones: boolean | null
+          notify_new_interviews: boolean | null
+          notify_re_audit: boolean | null
+          push_subscription: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notify_failed_audit?: boolean | null
+          notify_inactivity?: boolean | null
+          notify_milestones?: boolean | null
+          notify_new_interviews?: boolean | null
+          notify_re_audit?: boolean | null
+          push_subscription?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notify_failed_audit?: boolean | null
+          notify_inactivity?: boolean | null
+          notify_milestones?: boolean | null
+          notify_new_interviews?: boolean | null
+          notify_re_audit?: boolean | null
+          push_subscription?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          metadata: Json | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          metadata?: Json | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          metadata?: Json | null
+          title?: string
+          type?: string
           user_id?: string
         }
         Relationships: []
