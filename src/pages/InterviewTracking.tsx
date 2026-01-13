@@ -47,6 +47,7 @@ import { toast } from "@/hooks/use-toast";
 interface TrackingInterview {
   id: string;
   file_name: string;
+  file_url: string | null;
   status: string;
   reviewed_at: string | null;
   review_comment: string | null;
@@ -185,6 +186,7 @@ const InterviewTracking = () => {
         return {
           id: audit.id,
           file_name: audit.file_name,
+          file_url: audit.file_url,
           status: audit.status,
           reviewed_at: audit.reviewed_at,
           review_comment: audit.review_comment,
