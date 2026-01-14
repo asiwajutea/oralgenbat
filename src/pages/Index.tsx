@@ -65,9 +65,11 @@ const Index = () => {
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isSuperAdmin = userRole === 'super_admin';
   
-  // Contractor filtering - use active_contractor_id if available
+  // Contractor/Auditor filtering - use active_contractor_id if available
   const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
   const isContractor = userRole === 'contractor';
+  const isAuditor = userRole === 'auditor';
+  const shouldFilterByContractor = (isContractor || isAuditor) && !isSuperAdmin;
   // Update filters when URL search param changes
   useEffect(() => {
     if (searchFromUrl) {
@@ -79,9 +81,9 @@ const Index = () => {
     try {
       setIsLoading(true);
       
-      // For non-super-admin contractors, filter by contractor_id via interview_metadata
+      // For non-super-admin contractors/auditors, filter by contractor_id via interview_metadata
       let contractorAuditIds: string[] | null = null;
-      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+      if (shouldFilterByContractor && effectiveContractorId) {
         const { data: contractorAudits } = await supabase
           .from("interview_metadata")
           .select("audit_id")

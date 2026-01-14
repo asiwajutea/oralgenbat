@@ -54,7 +54,6 @@ export const useNotifications = () => {
       return data as Notification[];
     },
     enabled: !!user?.id,
-    refetchInterval: 30000, // Refetch every 30 seconds
   });
 
   // Fetch notification settings
