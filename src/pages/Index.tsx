@@ -65,11 +65,19 @@ const Index = () => {
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isSuperAdmin = userRole === 'super_admin';
   
-  // Contractor/Auditor filtering - use active_contractor_id if available
-  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
+  // Contractor/Auditor filtering - use active_contractor_id if available for auditors, regular contractor_id for contractors
+  // For auditors: if they have active_contractor_id set, use that; otherwise show all
+  // For contractors: use their contractor_id
   const isContractor = userRole === 'contractor';
   const isAuditor = userRole === 'auditor';
-  const shouldFilterByContractor = (isContractor || isAuditor) && !isSuperAdmin;
+  
+  // Auditors MUST have active_contractor_id set to see filtered results
+  // Contractors always use their contractor_id
+  const effectiveContractorId = isAuditor 
+    ? profile?.active_contractor_id  // Auditors only use active_contractor_id
+    : profile?.contractor_id;        // Contractors use their own contractor_id
+  
+  const shouldFilterByContractor = (isContractor || (isAuditor && profile?.active_contractor_id)) && !isSuperAdmin;
   // Update filters when URL search param changes
   useEffect(() => {
     if (searchFromUrl) {

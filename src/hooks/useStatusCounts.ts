@@ -25,9 +25,14 @@ export const useStatusCounts = () => {
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isAuditor = userRole === 'auditor';
   const isContractor = userRole === 'contractor';
+  const isFieldManager = userRole === 'field_manager';
   
-  // Use active_contractor_id if set, otherwise fall back to contractor_id
-  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
+  // Auditors MUST use active_contractor_id to filter
+  // Contractors use their contractor_id
+  // Field managers need separate handling (by team members)
+  const effectiveContractorId = isAuditor 
+    ? profile?.active_contractor_id  // Auditors only filter when they have active_contractor_id
+    : profile?.contractor_id;        // Contractors use their own contractor_id
 
   return useQuery({
     queryKey: ["status-counts", userRole, profile?.full_name, effectiveContractorId],
@@ -74,8 +79,8 @@ export const useStatusCounts = () => {
         const names = metadata?.[0]?.total_names || 0;
         const auditContractorId = metadata?.[0]?.contractor_id || null;
         
-        // For contractors, skip audits that don't belong to them
-        if (isContractor && effectiveContractorId && auditContractorId !== effectiveContractorId) {
+        // For contractors and auditors with active_contractor_id, skip audits that don't belong to them
+        if ((isContractor || (isAuditor && profile?.active_contractor_id)) && effectiveContractorId && auditContractorId !== effectiveContractorId) {
           return;
         }
         

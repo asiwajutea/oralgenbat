@@ -73,6 +73,7 @@ const FieldManagerDashboard = () => {
     reaudit: audits?.filter((a) => a.is_re_audit && a.status === "Awaiting Review").length || 0,
     passed: audits?.filter((a) => a.status === "Audit Passed").length || 0,
     failed: audits?.filter((a) => a.status === "Audit Failed").length || 0,
+    missingArtifacts: audits?.filter((a) => !a.file_url || !a.mobile_zip_url).length || 0,
   };
 
   const handleReaudit = (audit: any) => {
@@ -123,8 +124,43 @@ const FieldManagerDashboard = () => {
               </p>
             </div>
 
-            {/* Statistics Cards */}
-            <div className="grid gap-4 md:grid-cols-5">
+            {/* Statistics Cards - Compact on mobile, full on desktop */}
+            {/* Mobile: Compact horizontal scroll */}
+            <div className="flex gap-2 overflow-x-auto pb-2 md:hidden -mx-2 px-2">
+              <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
+                <FileCheck className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">{stats.total}</span>
+                <span className="text-xs text-muted-foreground">Total</span>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
+                <AlertCircle className="h-4 w-4 text-orange-500" />
+                <span className="text-sm font-medium">{stats.awaiting}</span>
+                <span className="text-xs text-muted-foreground">Awaiting</span>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
+                <AlertCircle className="h-4 w-4 text-red-500" />
+                <span className="text-sm font-medium">{stats.reaudit}</span>
+                <span className="text-xs text-muted-foreground">Re-Audit</span>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-sm font-medium">{stats.passed}</span>
+                <span className="text-xs text-muted-foreground">Passed</span>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
+                <XCircle className="h-4 w-4 text-red-500" />
+                <span className="text-sm font-medium">{stats.failed}</span>
+                <span className="text-xs text-muted-foreground">Failed</span>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
+                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                <span className="text-sm font-medium">{stats.missingArtifacts}</span>
+                <span className="text-xs text-muted-foreground">Missing</span>
+              </div>
+            </div>
+
+            {/* Desktop: Full grid layout */}
+            <div className="hidden md:grid gap-4 md:grid-cols-6">
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -191,6 +227,20 @@ const FieldManagerDashboard = () => {
                   <div className="flex items-center gap-2">
                     <XCircle className="h-5 w-5 text-red-500" />
                     <span className="text-2xl font-bold">{stats.failed}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Missing Artifacts
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-yellow-500" />
+                    <span className="text-2xl font-bold">{stats.missingArtifacts}</span>
                   </div>
                 </CardContent>
               </Card>

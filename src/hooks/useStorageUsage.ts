@@ -87,7 +87,7 @@ export const useStorageUsage = () => {
         storage_limit_gb: STORAGE_LIMIT_GB
       };
     },
-    refetchInterval: 60000, // Refresh every minute
-    staleTime: 30000, // Consider data stale after 30 seconds
+    // Removed refetchInterval - data only refreshes on manual refresh
+    staleTime: Infinity, // Data stays fresh until manually refreshed
   });
 };
