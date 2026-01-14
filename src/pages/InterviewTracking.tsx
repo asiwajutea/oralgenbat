@@ -633,7 +633,16 @@ const InterviewTracking = () => {
                         <TableCell className="font-medium">
                           {(currentPage - 1) * itemsPerPage + index + 1}
                         </TableCell>
-                        <TableCell className="font-medium font-mono text-sm">{interview.file_name}</TableCell>
+                        <TableCell 
+                          className={`font-medium font-mono text-sm ${interview.status === "Audit Failed" ? "cursor-pointer hover:text-primary underline md:no-underline md:cursor-default" : ""}`}
+                          onClick={() => {
+                            if (interview.status === "Audit Failed") {
+                              handleViewFailed(interview);
+                            }
+                          }}
+                        >
+                          {interview.file_name}
+                        </TableCell>
                         <TableCell>{interview.field_manager || "-"}</TableCell>
                         <TableCell>{interview.total_names || "-"}</TableCell>
                         <TableCell className="max-w-[150px] truncate">
