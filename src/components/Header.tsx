@@ -10,8 +10,12 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 const Header = () => {
-  const { userRole } = useAuth();
+  const { userRole, profile } = useAuth();
   const location = useLocation();
+  
+  // Get active contractor for display
+  const activeContractorId = profile?.active_contractor_id || profile?.contractor_id;
+  const isAuditor = userRole === 'auditor';
   const isReviewsActive = location.pathname.startsWith('/admin/review-history') || location.pathname.startsWith('/admin/team-assignments');
   
   return (
@@ -125,8 +129,14 @@ const Header = () => {
           )}
         </nav>
         
-        {/* Right: Notifications + Theme Toggle + User Menu */}
+        {/* Right: Contractor Indicator + Notifications + Theme Toggle + User Menu */}
         <div className="flex items-center gap-2">
+          {isAuditor && activeContractorId && (
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 border border-primary/20 rounded-md">
+              <span className="text-xs font-medium text-primary">Viewing:</span>
+              <span className="text-xs font-bold text-primary">{activeContractorId}</span>
+            </div>
+          )}
           <NotificationBell />
           <div className="hidden sm:block">
             <ThemeToggle />
