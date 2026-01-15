@@ -23,10 +23,12 @@ import {
   AlertTriangle,
   CheckCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ExternalLink
 } from "lucide-react";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -307,13 +309,13 @@ const DataEntryPortal = () => {
   // State for collapsible pending issues
   const [pendingIssuesOpen, setPendingIssuesOpen] = useState(true);
 
-  // Pending flagged issues (unresolved) that the current user created
-  const { data: pendingFlaggedIssues = [] } = useQuery({
+  // Pending flagged issues (unresolved) that the current user created - with resolver names
+  const { data: pendingFlaggedIssuesData } = useQuery({
     queryKey: ["pending-flagged-issues", user?.id],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) return { issues: [], totalCount: 0 };
       
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from("interview_assignments")
         .select(`
           id,
@@ -321,24 +323,47 @@ const DataEntryPortal = () => {
           issue_comment,
           flagged_at,
           issue_resolved_at,
+          issue_resolved_by,
           resolve_comment,
           entry_status,
           audits(file_name)
-        `)
+        `, { count: "exact" })
         .eq("flagged_by", user.id)
         .eq("is_flagged_for_issue", true)
-        .order("flagged_at", { ascending: false })
-        .limit(20);
+        .order("flagged_at", { ascending: false });
       
       if (error) throw error;
-      // Filter to show unresolved OR recently resolved (within 7 days) that haven't been marked complete
-      return (data || []).filter((issue: any) => 
+      
+      // Filter to show unresolved OR resolved that haven't been marked complete
+      const filtered = (data || []).filter((issue: any) => 
         !issue.issue_resolved_at || 
         (issue.issue_resolved_at && issue.entry_status !== "data_entry_complete")
       );
+      
+      // Fetch resolver names for resolved issues
+      const resolverIds = [...new Set(filtered.filter(d => d.issue_resolved_by).map(d => d.issue_resolved_by))];
+      const resolverNames: Record<string, string> = {};
+      
+      for (const resolverId of resolverIds) {
+        const { data: name } = await supabase.rpc("get_user_display_name", { _user_id: resolverId });
+        if (name) resolverNames[resolverId] = name;
+      }
+      
+      return {
+        issues: filtered.map(issue => ({
+          ...issue,
+          resolverName: issue.issue_resolved_by ? resolverNames[issue.issue_resolved_by] || "Unknown" : null
+        })),
+        totalCount: count || 0
+      };
     },
     enabled: !!user?.id,
   });
+
+  const pendingFlaggedIssues = pendingFlaggedIssuesData?.issues || [];
+  const totalFlaggedCount = pendingFlaggedIssuesData?.totalCount || 0;
+  const displayedIssues = pendingFlaggedIssues.slice(0, 3);
+  const hasMoreIssues = pendingFlaggedIssues.length > 3;
 
   const handleSearch = () => {
     if (!searchQuery.trim()) {
@@ -448,7 +473,7 @@ const DataEntryPortal = () => {
           </Card>
         )}
 
-        {/* Pending Flagged Issues (Collapsible) */}
+        {/* Pending Flagged Issues (Collapsible with Chat UI) */}
         {pendingFlaggedIssues.length > 0 && (
           <Collapsible open={pendingIssuesOpen} onOpenChange={setPendingIssuesOpen}>
             <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
@@ -457,7 +482,7 @@ const DataEntryPortal = () => {
                   <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                      Your Flagged Issues ({pendingFlaggedIssues.length})
+                      Your Flagged Issues ({totalFlaggedCount})
                     </CardTitle>
                     {pendingIssuesOpen ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -468,62 +493,101 @@ const DataEntryPortal = () => {
                 </CollapsibleTrigger>
               </CardHeader>
               <CollapsibleContent>
-                <CardContent className="pb-4">
-                  <ul className="text-sm space-y-3">
-                    {pendingFlaggedIssues.map((issue: any) => {
-                      const isResolved = !!issue.issue_resolved_at;
-                      const isCompleted = issue.entry_status === "data_entry_complete";
-                      
-                      return (
-                        <li key={issue.id} className="flex flex-col gap-2 p-3 rounded-lg bg-background/50 border">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {isResolved ? (
-                                <Badge className="bg-green-100 text-green-700 gap-1 text-xs">
-                                  <CheckCircle className="h-3 w-3" />
-                                  Resolved
-                                </Badge>
-                              ) : (
-                                <Badge variant="destructive" className="gap-1 text-xs">
-                                  <Flag className="h-3 w-3" />
-                                  Pending
-                                </Badge>
-                              )}
-                              <span className="font-mono text-sm">{issue.audits?.file_name}</span>
-                              <span className="text-muted-foreground text-xs">
-                                flagged {issue.flagged_at && format(new Date(issue.flagged_at), "MMM d")}
-                              </span>
-                            </div>
-                            {isResolved && !isCompleted && (
-                              <Button
-                                size="sm"
-                                onClick={() => markCompletedMutation.mutate(issue.id)}
-                                disabled={markCompletedMutation.isPending}
-                                className="gap-1"
-                              >
-                                {markCompletedMutation.isPending ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <CheckCircle2 className="h-3 w-3" />
-                                )}
-                                Mark Complete
-                              </Button>
+                <CardContent className="pb-4 space-y-4">
+                  {displayedIssues.map((issue: any) => {
+                    const isResolved = !!issue.issue_resolved_at;
+                    const isCompleted = issue.entry_status === "data_entry_complete";
+                    
+                    return (
+                      <div key={issue.id} className="p-4 rounded-lg bg-background border">
+                        {/* Header with file name and status */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-medium text-sm">{issue.audits?.file_name}</span>
+                            {isResolved ? (
+                              <Badge className="bg-green-100 text-green-700 gap-1 text-xs">
+                                <CheckCircle className="h-3 w-3" />
+                                Resolved
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" className="gap-1 text-xs">
+                                <Flag className="h-3 w-3" />
+                                Pending
+                              </Badge>
                             )}
                           </div>
+                          {isResolved && !isCompleted && (
+                            <Button
+                              size="sm"
+                              onClick={() => markCompletedMutation.mutate(issue.id)}
+                              disabled={markCompletedMutation.isPending}
+                              className="gap-1"
+                            >
+                              {markCompletedMutation.isPending ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3 w-3" />
+                              )}
+                              Mark Complete
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {/* Chat-like conversation */}
+                        <div className="space-y-3">
+                          {/* User's message (right-aligned) */}
                           {issue.issue_comment && (
-                            <p className="text-sm text-muted-foreground italic pl-2 border-l-2 border-yellow-400">
-                              Your issue: "{issue.issue_comment}"
-                            </p>
+                            <div className="flex justify-end">
+                              <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2">
+                                <p className="text-sm">{issue.issue_comment}</p>
+                                <p className="text-xs opacity-70 mt-1 text-right">
+                                  You • {issue.flagged_at && format(new Date(issue.flagged_at), "MMM d, h:mm a")}
+                                </p>
+                              </div>
+                            </div>
                           )}
+                          
+                          {/* Manager's reply (left-aligned) */}
                           {issue.resolve_comment && (
-                            <p className="text-sm text-muted-foreground italic pl-2 border-l-2 border-green-400">
-                              Manager reply: "{issue.resolve_comment}"
-                            </p>
+                            <div className="flex justify-start">
+                              <div className="max-w-[85%] bg-muted rounded-2xl rounded-bl-md px-4 py-2">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <User className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-xs font-medium">{issue.resolverName || "Manager"}</span>
+                                </div>
+                                <p className="text-sm">{issue.resolve_comment}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {issue.issue_resolved_at && format(new Date(issue.issue_resolved_at), "MMM d, h:mm a")}
+                                </p>
+                              </div>
+                            </div>
                           )}
-                        </li>
-                      );
-                    })}
-                  </ul>
+                          
+                          {/* Awaiting response indicator */}
+                          {!isResolved && (
+                            <div className="flex justify-start">
+                              <div className="text-xs text-muted-foreground italic flex items-center gap-1">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Awaiting response...
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* View More Link */}
+                  {hasMoreIssues && (
+                    <div className="text-center pt-2">
+                      <Link to="/data-entry/flagged-issues">
+                        <Button variant="outline" size="sm" className="gap-2">
+                          View All Issues
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
                 </CardContent>
               </CollapsibleContent>
             </Card>
