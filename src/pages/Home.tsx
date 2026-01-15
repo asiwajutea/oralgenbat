@@ -5,6 +5,7 @@ import ContractorDashboard from "@/components/home/ContractorDashboard";
 import AdminDashboard from "@/components/home/AdminDashboard";
 import SubContractorDashboard from "@/components/home/SubContractorDashboard";
 import QAManagerDashboard from "@/components/home/QAManagerDashboard";
+import DataEntryClerkDashboard from "@/components/home/DataEntryClerkDashboard";
 
 const Home = () => {
   const { userRole, profile } = useAuth();
@@ -21,6 +22,8 @@ const Home = () => {
         return <SubContractorDashboard />;
       case 'quality_assurance_manager':
         return <QAManagerDashboard />;
+      case 'data_entry_clerk':
+        return <DataEntryClerkDashboard />;
       case 'admin':
       case 'super_admin':
         return <AdminDashboard />;
