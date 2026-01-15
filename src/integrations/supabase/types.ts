@@ -307,6 +307,61 @@ export type Database = {
         }
         Relationships: []
       }
+      field_manager_subcontractor_assignments: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          created_at: string | null
+          field_manager_id: string
+          id: string
+          is_active: boolean | null
+          notes: string | null
+          sub_contractor_id: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          created_at?: string | null
+          field_manager_id: string
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          sub_contractor_id: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          created_at?: string | null
+          field_manager_id?: string
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          sub_contractor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_manager_subcontractor_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_manager_subcontractor_assignments_field_manager_id_fkey"
+            columns: ["field_manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_manager_subcontractor_assignments_sub_contractor_id_fkey"
+            columns: ["sub_contractor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       interview_assignments: {
         Row: {
           assigned_at: string | null
