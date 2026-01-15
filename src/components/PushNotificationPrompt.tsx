@@ -41,8 +41,11 @@ export function PushNotificationPrompt() {
   }, [user]);
 
   const handleEnable = async () => {
-    await requestPermission();
-    setOpen(false);
+    const granted = await requestPermission();
+    // Only close if permission was granted
+    if (granted || Notification.permission === "granted") {
+      setOpen(false);
+    }
   };
 
   const handleDismiss = () => {

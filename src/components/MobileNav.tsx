@@ -133,7 +133,7 @@ const MobileNav = () => {
                 <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sub-contractor</p>
                 <NavItem to="/subcontractor-team-management" icon={Users}>Team Management</NavItem>
                 <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
-                <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
+                <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
               </>
             )}
             
@@ -142,7 +142,11 @@ const MobileNav = () => {
                 <Separator className="my-3" />
                 <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Admin</p>
                 <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
-                <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
+                {userRole === 'super_admin' ? (
+                  <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
+                ) : (
+                  <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
+                )}
                 <NavItem to="/admin/review-history" icon={History}>Review History</NavItem>
                 <NavItem to="/admin/team-assignments" icon={FolderOpen}>Team Assignments</NavItem>
                 <NavItem to="/admin/zip-diagnostics" icon={FileText}>ZIP Diagnostics</NavItem>

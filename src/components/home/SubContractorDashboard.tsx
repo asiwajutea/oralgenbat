@@ -39,17 +39,20 @@ const SubContractorDashboard = () => {
       if (error) throw error;
       if (!assignments || assignments.length === 0) return [];
       
-      // Then get the profiles for these field managers
+      // Use RPC to get field manager names (bypasses RLS)
       const fmIds = assignments.map(a => a.field_manager_id);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", fmIds);
+      const profilePromises = fmIds.map(async (fmId) => {
+        const { data: name } = await supabase.rpc("get_user_display_name", { 
+          _user_id: fmId 
+        });
+        return { id: fmId, full_name: name || "Unknown" };
+      });
+      const profiles = await Promise.all(profilePromises);
       
       // Combine the data
       return assignments.map(a => ({
         field_manager_id: a.field_manager_id,
-        full_name: profiles?.find(p => p.id === a.field_manager_id)?.full_name || "Unknown"
+        full_name: profiles.find(p => p.id === a.field_manager_id)?.full_name || "Unknown"
       }));
     },
     enabled: !!user?.id,
@@ -150,7 +153,7 @@ const SubContractorDashboard = () => {
                 </p>
               </div>
             </div>
-            <Button onClick={() => navigate("/analytics")} className="gap-2">
+            <Button onClick={() => navigate("/my-analytics")} className="gap-2">
               <BarChart3 className="h-4 w-4" />
               View Analytics
             </Button>
@@ -278,11 +281,11 @@ const SubContractorDashboard = () => {
             <Button 
               variant="outline" 
               className="w-full justify-between"
-              onClick={() => navigate("/analytics")}
+              onClick={() => navigate("/my-analytics")}
             >
               <span className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
-                Analytics Dashboard
+                My Analytics
               </span>
               <ArrowRight className="h-4 w-4" />
             </Button>
