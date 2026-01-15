@@ -102,8 +102,28 @@ const InterviewTracking = () => {
     startDate: "",
     endDate: "",
     metadataStatus: "",
+    contractor: "",
   });
   const [showFilters, setShowFilters] = useState(false);
+
+  // Get user's contractor assignments for multi-contractor users
+  const { data: userContractorAssignments = [] } = useQuery({
+    queryKey: ["user-contractor-assignments", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      
+      const { data, error } = await supabase
+        .from("user_contractor_assignments")
+        .select("contractor_id")
+        .eq("user_id", user.id);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
+
+  const hasMultipleContractors = userContractorAssignments.length > 1;
 
   // Failed interview modal
   const [selectedInterview, setSelectedInterview] = useState<TrackingInterview | null>(null);
@@ -279,7 +299,8 @@ const InterviewTracking = () => {
   const filterOptions = useMemo(() => {
     const fieldManagers = [...new Set(interviews.map(i => i.field_manager).filter(Boolean))];
     const statuses = [...new Set(interviews.map(i => i.status).filter(Boolean))];
-    return { fieldManagers, statuses };
+    const contractors = [...new Set(interviews.map(i => (i as any).contractor_id).filter(Boolean))];
+    return { fieldManagers, statuses, contractors };
   }, [interviews]);
 
   // Apply filters and search
@@ -296,13 +317,23 @@ const InterviewTracking = () => {
       
       // Apply other filters
       if (filters.fieldManager && interview.field_manager !== filters.fieldManager) return false;
-      if (filters.status && interview.status !== filters.status) return false;
+      
+      // Status filter - special case for "With Issues"
+      if (filters.status === "With Issues") {
+        if (!interview.is_flagged_for_issue || interview.issue_resolved_at) return false;
+      } else if (filters.status && interview.status !== filters.status) {
+        return false;
+      }
+      
       if (filters.startDate && interview.interview_date && interview.interview_date < filters.startDate) return false;
       if (filters.endDate && interview.interview_date && interview.interview_date > filters.endDate) return false;
       
       // Metadata status filter
       if (filters.metadataStatus === "with_metadata" && !interview.has_metadata) return false;
       if (filters.metadataStatus === "without_metadata" && interview.has_metadata) return false;
+      
+      // Contractor filter
+      if (filters.contractor && (interview as any).contractor_id !== filters.contractor) return false;
       
       return true;
     });
@@ -375,11 +406,22 @@ const InterviewTracking = () => {
       startDate: "",
       endDate: "",
       metadataStatus: "",
+      contractor: "",
     });
     setSearchQuery("");
   };
 
   const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery;
+
+  // Build status options including "With Issues"
+  const statusFilterOptions = useMemo(() => {
+    const options = [...filterOptions.statuses];
+    // Add "With Issues" as a special filter option
+    if (!options.includes("With Issues")) {
+      options.push("With Issues");
+    }
+    return options.sort((a, b) => (a ?? '').localeCompare(b ?? ''));
+  }, [filterOptions.statuses]);
 
   // Check if user can resolve issues (field managers, admins, super admins, sub_contractors)
   const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin || isSubContractor;
@@ -665,7 +707,7 @@ const InterviewTracking = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Statuses</SelectItem>
-                      {[...filterOptions.statuses].sort((a, b) => (a ?? '').localeCompare(b ?? '')).map(s => (
+                      {statusFilterOptions.map(s => (
                         <SelectItem key={s} value={s!}>{s}</SelectItem>
                       ))}
                     </SelectContent>
@@ -684,6 +726,22 @@ const InterviewTracking = () => {
                     </SelectContent>
                   </Select>
                 </div>
+                {hasMultipleContractors && (
+                  <div>
+                    <Label className="text-sm">Contractor</Label>
+                    <Select value={filters.contractor} onValueChange={(v) => setFilters({ ...filters, contractor: v === "all" ? "" : v })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Contractors</SelectItem>
+                        {filterOptions.contractors.map(c => (
+                          <SelectItem key={c} value={c!}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div>
                   <Label className="text-sm">Start Date</Label>
                   <Input

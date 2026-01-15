@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -10,9 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, FileText, CheckCircle, Loader2, Calendar, User } from "lucide-react";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ViewIssueDialogProps {
   open: boolean;
@@ -23,6 +24,7 @@ interface ViewIssueDialogProps {
     file_url: string | null;
     issue_comment: string | null;
     flagged_at: string | null;
+    flagged_by: string | null;
     assignment_id: string | null;
   } | null;
   onResolve: (assignmentId: string, comment?: string) => Promise<void>;
@@ -38,6 +40,27 @@ export const ViewIssueDialog = ({
 }: ViewIssueDialogProps) => {
   const [resolveComment, setResolveComment] = useState("");
 
+  // Fetch the clerk's name who flagged the issue
+  const { data: clerkProfile } = useQuery({
+    queryKey: ["clerk-profile", interview?.flagged_by],
+    queryFn: async () => {
+      if (!interview?.flagged_by) return null;
+      
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", interview.flagged_by)
+        .single();
+      
+      if (error) {
+        console.error("Error fetching clerk profile:", error);
+        return null;
+      }
+      return data;
+    },
+    enabled: !!interview?.flagged_by && open,
+  });
+
   const handleResolve = async () => {
     if (!interview?.assignment_id) return;
     await onResolve(interview.assignment_id, resolveComment.trim() || undefined);
@@ -52,6 +75,8 @@ export const ViewIssueDialog = ({
   };
 
   if (!interview) return null;
+
+  const clerkName = clerkProfile?.full_name || clerkProfile?.email || "Unknown Clerk";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -87,7 +112,7 @@ export const ViewIssueDialog = ({
           <div>
             <Label className="text-sm font-medium flex items-center gap-2 mb-2">
               <User className="h-4 w-4" />
-              Issue from Data Entry Clerk
+              Issue from <span className="text-primary">{clerkName}</span>
             </Label>
             <div className="rounded-lg border p-3 bg-destructive/5 border-destructive/20">
               <p className="text-sm whitespace-pre-wrap">
