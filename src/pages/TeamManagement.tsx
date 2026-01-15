@@ -26,7 +26,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Users, UserPlus, Trash2, Loader2 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const TeamManagement = () => {
   const { session, profile } = useAuth();
@@ -34,6 +41,7 @@ const TeamManagement = () => {
   const [selectedInterviewer, setSelectedInterviewer] = useState<string | null>(null);
   const [requestNotes, setRequestNotes] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Fetch available interviewers from interview_metadata
   const { data: availableInterviewers, isLoading: loadingInterviewers } = useQuery({
@@ -188,25 +196,25 @@ const TeamManagement = () => {
 
   return (
     <Layout>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Team Management</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl sm:text-3xl font-bold">Team Management</h1>
+            <p className="text-sm text-muted-foreground">
               Manage your interviewer team assignments
             </p>
           </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
           {/* My Team Section */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <Users className="h-5 w-5" />
                 My Team ({teamAssignments?.length || 0})
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 Your current interviewer assignments and requests
               </CardDescription>
             </CardHeader>
@@ -216,41 +224,92 @@ const TeamManagement = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : teamAssignments && teamAssignments.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">SN</TableHead>
-                      <TableHead>Interviewer Code</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                isMobile ? (
+                  <Accordion type="single" collapsible className="space-y-2">
                     {teamAssignments.map((assignment, index) => (
-                      <TableRow key={assignment.id}>
-                        <TableCell className="font-medium">{index + 1}</TableCell>
-                        <TableCell className="font-medium">
-                          {assignment.interviewer_code}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(assignment.status)}</TableCell>
-                        <TableCell>
+                      <AccordionItem
+                        key={assignment.id}
+                        value={assignment.id}
+                        className="border rounded-lg px-3"
+                      >
+                        <AccordionTrigger className="hover:no-underline py-3">
+                          <div className="flex items-center gap-2 text-left">
+                            <Badge variant="secondary" className="text-xs font-mono">
+                              {assignment.interviewer_code}
+                            </Badge>
+                            {getStatusBadge(assignment.status)}
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-3 space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">SN:</span>
+                              <span className="ml-2 font-medium">{index + 1}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Status:</span>
+                              <span className="ml-2">{assignment.status}</span>
+                            </div>
+                          </div>
+                          {assignment.notes && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">Notes:</span>
+                              <p className="mt-1">{assignment.notes}</p>
+                            </div>
+                          )}
                           {assignment.status === "pending" && (
                             <Button
-                              variant="ghost"
+                              variant="destructive"
                               size="sm"
-                              onClick={() =>
-                                deleteAssignmentMutation.mutate(assignment.id)
-                              }
+                              className="w-full"
+                              onClick={() => deleteAssignmentMutation.mutate(assignment.id)}
                               disabled={deleteAssignmentMutation.isPending}
                             >
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Request
                             </Button>
                           )}
-                        </TableCell>
-                      </TableRow>
+                        </AccordionContent>
+                      </AccordionItem>
                     ))}
-                  </TableBody>
-                </Table>
+                  </Accordion>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">SN</TableHead>
+                        <TableHead>Interviewer Code</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {teamAssignments.map((assignment, index) => (
+                        <TableRow key={assignment.id}>
+                          <TableCell className="font-medium">{index + 1}</TableCell>
+                          <TableCell className="font-medium">
+                            {assignment.interviewer_code}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(assignment.status)}</TableCell>
+                          <TableCell>
+                            {assignment.status === "pending" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  deleteAssignmentMutation.mutate(assignment.id)
+                                }
+                                disabled={deleteAssignmentMutation.isPending}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
               ) : (
                 <div className="text-center p-8 text-muted-foreground">
                   No team assignments yet. Request interviewers from the available
@@ -262,12 +321,12 @@ const TeamManagement = () => {
 
           {/* Available Interviewers Section */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <UserPlus className="h-5 w-5" />
                 Available Interviewers
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 Interviewers from your contractor that you can request
               </CardDescription>
             </CardHeader>
@@ -277,35 +336,82 @@ const TeamManagement = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : unassignedInterviewers && unassignedInterviewers.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">SN</TableHead>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                isMobile ? (
+                  <Accordion type="single" collapsible className="space-y-2">
                     {unassignedInterviewers.map((interviewer, index) => (
-                      <TableRow key={interviewer.code}>
-                        <TableCell className="font-medium">{index + 1}</TableCell>
-                        <TableCell className="font-medium">
-                          {interviewer.code}
-                        </TableCell>
-                        <TableCell>{interviewer.name || "N/A"}</TableCell>
-                        <TableCell>
+                      <AccordionItem
+                        key={interviewer.code}
+                        value={interviewer.code}
+                        className="border rounded-lg px-3"
+                      >
+                        <AccordionTrigger className="hover:no-underline py-3">
+                          <div className="flex items-center gap-2 text-left">
+                            <Badge variant="secondary" className="text-xs font-mono">
+                              {interviewer.code}
+                            </Badge>
+                            <span className="text-sm font-medium truncate">
+                              {interviewer.name || "N/A"}
+                            </span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-3 space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">SN:</span>
+                              <span className="ml-2 font-medium">{index + 1}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Code:</span>
+                              <span className="ml-2 font-mono">{interviewer.code}</span>
+                            </div>
+                          </div>
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">Name:</span>
+                            <span className="ml-2">{interviewer.name || "N/A"}</span>
+                          </div>
                           <Button
                             size="sm"
+                            className="w-full"
                             onClick={() => handleRequestAssignment(interviewer)}
                           >
+                            <UserPlus className="h-4 w-4 mr-2" />
                             Request
                           </Button>
-                        </TableCell>
-                      </TableRow>
+                        </AccordionContent>
+                      </AccordionItem>
                     ))}
-                  </TableBody>
-                </Table>
+                  </Accordion>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">SN</TableHead>
+                        <TableHead>Code</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {unassignedInterviewers.map((interviewer, index) => (
+                        <TableRow key={interviewer.code}>
+                          <TableCell className="font-medium">{index + 1}</TableCell>
+                          <TableCell className="font-medium">
+                            {interviewer.code}
+                          </TableCell>
+                          <TableCell>{interviewer.name || "N/A"}</TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              onClick={() => handleRequestAssignment(interviewer)}
+                            >
+                              Request
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
               ) : (
                 <div className="text-center p-8 text-muted-foreground">
                   All interviewers have been assigned or requested.

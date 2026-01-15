@@ -30,11 +30,13 @@ import {
 } from "@/components/ui/accordion";
 import { CheckCircle, XCircle, Loader2, Users, UserPlus, Link2 } from "lucide-react";
 import { format } from "date-fns";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const TeamApprovals = () => {
   const { session, userRole, profile } = useAuth();
   const queryClient = useQueryClient();
   const isSuperAdmin = userRole === "super_admin";
+  const isMobile = useIsMobile();
   
   // Use active_contractor_id for contractor filtering (except super_admin)
   const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
@@ -580,71 +582,141 @@ const TeamApprovals = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : pendingRequests && pendingRequests.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[600px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Field Manager</TableHead>
-                        <TableHead>Interviewer</TableHead>
-                        <TableHead className="hidden sm:table-cell">Contractor</TableHead>
-                        <TableHead className="hidden md:table-cell">Request Date</TableHead>
-                        <TableHead className="hidden lg:table-cell">Notes</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pendingRequests.map((request) => (
-                        <TableRow key={request.id}>
-                          <TableCell>
+                isMobile ? (
+                  <Accordion type="single" collapsible className="space-y-2">
+                    {pendingRequests.map((request) => (
+                      <AccordionItem
+                        key={request.id}
+                        value={request.id}
+                        className="border rounded-lg px-3"
+                      >
+                        <AccordionTrigger className="hover:no-underline py-3">
+                          <div className="flex items-center gap-2 text-left">
+                            <Badge variant="secondary" className="text-xs font-mono">
+                              {request.interviewer_code}
+                            </Badge>
+                            <span className="text-sm truncate">
+                              {(request.manager as any)?.full_name || "Unknown"}
+                            </span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-3 space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-sm">
                             <div>
-                              <div className="font-medium text-sm">
-                                {(request.manager as any)?.full_name || "Unknown"}
-                              </div>
-                              <div className="text-xs text-muted-foreground hidden sm:block">
-                                {(request.manager as any)?.email}
-                              </div>
+                              <span className="text-muted-foreground">Manager:</span>
+                              <p className="font-medium">{(request.manager as any)?.full_name || "Unknown"}</p>
                             </div>
-                          </TableCell>
-                          <TableCell className="font-medium text-sm">
-                            {request.interviewer_code}
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell">
-                            <Badge variant="outline" className="text-xs">{request.contractor_id}</Badge>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                            {format(new Date(request.created_at), "MMM d, yyyy")}
-                          </TableCell>
-                          <TableCell className="hidden lg:table-cell max-w-[150px] truncate text-sm">
-                            {request.notes || "-"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 sm:gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleApprove(request.id)}
-                                disabled={updateAssignmentMutation.isPending}
-                                className="gap-1 h-8 text-xs"
-                              >
-                                <CheckCircle className="h-3 w-3" />
-                                <span className="hidden sm:inline">Approve</span>
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleReject(request.id)}
-                                disabled={updateAssignmentMutation.isPending}
-                                className="gap-1 h-8 text-xs"
-                              >
-                                <XCircle className="h-3 w-3" />
-                                <span className="hidden sm:inline">Reject</span>
-                              </Button>
+                            <div>
+                              <span className="text-muted-foreground">Email:</span>
+                              <p className="text-xs truncate">{(request.manager as any)?.email}</p>
                             </div>
-                          </TableCell>
+                            <div>
+                              <span className="text-muted-foreground">Contractor:</span>
+                              <Badge variant="outline" className="text-xs mt-1">{request.contractor_id}</Badge>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Requested:</span>
+                              <p className="text-sm">{format(new Date(request.created_at), "MMM d, yyyy")}</p>
+                            </div>
+                          </div>
+                          {request.notes && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">Notes:</span>
+                              <p className="mt-1">{request.notes}</p>
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApprove(request.id)}
+                              disabled={updateAssignmentMutation.isPending}
+                              className="flex-1 gap-1"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleReject(request.id)}
+                              disabled={updateAssignmentMutation.isPending}
+                              className="flex-1 gap-1"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              Reject
+                            </Button>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[600px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Field Manager</TableHead>
+                          <TableHead>Interviewer</TableHead>
+                          <TableHead className="hidden sm:table-cell">Contractor</TableHead>
+                          <TableHead className="hidden md:table-cell">Request Date</TableHead>
+                          <TableHead className="hidden lg:table-cell">Notes</TableHead>
+                          <TableHead>Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingRequests.map((request) => (
+                          <TableRow key={request.id}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium text-sm">
+                                  {(request.manager as any)?.full_name || "Unknown"}
+                                </div>
+                                <div className="text-xs text-muted-foreground hidden sm:block">
+                                  {(request.manager as any)?.email}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium text-sm">
+                              {request.interviewer_code}
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell">
+                              <Badge variant="outline" className="text-xs">{request.contractor_id}</Badge>
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                              {format(new Date(request.created_at), "MMM d, yyyy")}
+                            </TableCell>
+                            <TableCell className="hidden lg:table-cell max-w-[150px] truncate text-sm">
+                              {request.notes || "-"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 sm:gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleApprove(request.id)}
+                                  disabled={updateAssignmentMutation.isPending}
+                                  className="gap-1 h-8 text-xs"
+                                >
+                                  <CheckCircle className="h-3 w-3" />
+                                  <span className="hidden sm:inline">Approve</span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleReject(request.id)}
+                                  disabled={updateAssignmentMutation.isPending}
+                                  className="gap-1 h-8 text-xs"
+                                >
+                                  <XCircle className="h-3 w-3" />
+                                  <span className="hidden sm:inline">Reject</span>
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )
               ) : (
                 <div className="text-center p-12 text-muted-foreground">
                   <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -752,28 +824,41 @@ const TeamApprovals = () => {
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : unassignedInterviewers && unassignedInterviewers.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[500px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Interviewer</TableHead>
-                        <TableHead className="hidden sm:table-cell">Name</TableHead>
-                        <TableHead className="hidden md:table-cell">Contractor</TableHead>
-                        <TableHead>Assign To Team</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {unassignedInterviewers.map(interviewer => (
-                        <TableRow key={interviewer.code}>
-                          <TableCell>
-                            <div className="font-medium text-sm">{interviewer.code}</div>
-                            <div className="text-xs text-muted-foreground sm:hidden">{interviewer.name || "-"}</div>
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell text-sm">{interviewer.name || "-"}</TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <Badge variant="outline" className="text-xs">{interviewer.contractor_id}</Badge>
-                          </TableCell>
-                          <TableCell>
+                isMobile ? (
+                  <Accordion type="single" collapsible className="space-y-2">
+                    {unassignedInterviewers.map(interviewer => (
+                      <AccordionItem
+                        key={interviewer.code}
+                        value={interviewer.code}
+                        className="border rounded-lg px-3"
+                      >
+                        <AccordionTrigger className="hover:no-underline py-3">
+                          <div className="flex items-center gap-2 text-left">
+                            <Badge variant="secondary" className="text-xs font-mono">
+                              {interviewer.code}
+                            </Badge>
+                            <span className="text-sm font-medium truncate">
+                              {interviewer.name || "N/A"}
+                            </span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-3 space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Code:</span>
+                              <p className="font-mono">{interviewer.code}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Name:</span>
+                              <p>{interviewer.name || "N/A"}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-muted-foreground">Contractor:</span>
+                              <Badge variant="outline" className="text-xs ml-2">{interviewer.contractor_id}</Badge>
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-sm text-muted-foreground block mb-2">Assign to Field Manager:</span>
                             <Select
                               onValueChange={(fieldManagerId) => {
                                 assignAgentMutation.mutate({
@@ -783,7 +868,7 @@ const TeamApprovals = () => {
                                 });
                               }}
                             >
-                              <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs">
+                              <SelectTrigger className="w-full h-9">
                                 <SelectValue placeholder="Select FM..." />
                               </SelectTrigger>
                               <SelectContent>
@@ -797,12 +882,64 @@ const TeamApprovals = () => {
                                   ))}
                               </SelectContent>
                             </Select>
-                          </TableCell>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[500px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Interviewer</TableHead>
+                          <TableHead className="hidden sm:table-cell">Name</TableHead>
+                          <TableHead className="hidden md:table-cell">Contractor</TableHead>
+                          <TableHead>Assign To Team</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {unassignedInterviewers.map(interviewer => (
+                          <TableRow key={interviewer.code}>
+                            <TableCell>
+                              <div className="font-medium text-sm">{interviewer.code}</div>
+                              <div className="text-xs text-muted-foreground sm:hidden">{interviewer.name || "-"}</div>
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell text-sm">{interviewer.name || "-"}</TableCell>
+                            <TableCell className="hidden md:table-cell">
+                              <Badge variant="outline" className="text-xs">{interviewer.contractor_id}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                onValueChange={(fieldManagerId) => {
+                                  assignAgentMutation.mutate({
+                                    interviewerCode: interviewer.code,
+                                    fieldManagerId,
+                                    contractorId: interviewer.contractor_id,
+                                  });
+                                }}
+                              >
+                                <SelectTrigger className="w-full sm:w-[180px] h-8 text-xs">
+                                  <SelectValue placeholder="Select FM..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {allFieldManagers
+                                    ?.filter(manager => manager.contractor_id === interviewer.contractor_id)
+                                    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                                    .map(manager => (
+                                      <SelectItem key={manager.id} value={manager.id}>
+                                        {manager.full_name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )
               ) : (
                 <div className="text-center p-8 text-muted-foreground">
                   <UserPlus className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -831,38 +968,49 @@ const TeamApprovals = () => {
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : allFieldManagers && allFieldManagers.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table className="min-w-[500px]">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Field Manager</TableHead>
-                          <TableHead className="hidden sm:table-cell">Contractor</TableHead>
-                          <TableHead className="hidden md:table-cell">Current Admin</TableHead>
-                          <TableHead>Assign To Admin</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {allFieldManagers.map(fm => {
-                          const currentAdmin = getAdminForFm(fm.id);
-                          return (
-                            <TableRow key={fm.id}>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium text-sm">{fm.full_name}</div>
-                                  <div className="text-xs text-muted-foreground">{fm.email}</div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden sm:table-cell">
-                                <Badge variant="outline" className="text-xs">{fm.contractor_id}</Badge>
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {currentAdmin ? (
-                                  <Badge variant="secondary" className="text-xs">{currentAdmin.full_name}</Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">Not assigned</span>
+                  isMobile ? (
+                    <Accordion type="single" collapsible className="space-y-2">
+                      {allFieldManagers.map(fm => {
+                        const currentAdmin = getAdminForFm(fm.id);
+                        return (
+                          <AccordionItem
+                            key={fm.id}
+                            value={fm.id}
+                            className="border rounded-lg px-3"
+                          >
+                            <AccordionTrigger className="hover:no-underline py-3">
+                              <div className="flex items-center gap-2 text-left">
+                                <span className="text-sm font-medium truncate">
+                                  {fm.full_name}
+                                </span>
+                                {currentAdmin && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    → {currentAdmin.full_name}
+                                  </Badge>
                                 )}
-                              </TableCell>
-                              <TableCell>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-3 space-y-3">
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Name:</span>
+                                  <p className="font-medium">{fm.full_name}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Email:</span>
+                                  <p className="text-xs truncate">{fm.email}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Contractor:</span>
+                                  <Badge variant="outline" className="text-xs mt-1">{fm.contractor_id}</Badge>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Current Admin:</span>
+                                  <p className="text-sm">{currentAdmin?.full_name || "Not assigned"}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-sm text-muted-foreground block mb-2">Assign to Admin:</span>
                                 <Select
                                   value={currentAdmin?.id || ""}
                                   onValueChange={(adminId) => {
@@ -874,7 +1022,7 @@ const TeamApprovals = () => {
                                     }
                                   }}
                                 >
-                                  <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                                  <SelectTrigger className="w-full h-9">
                                     <SelectValue placeholder="Select admin..." />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -885,13 +1033,75 @@ const TeamApprovals = () => {
                                     ))}
                                   </SelectContent>
                                 </Select>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        );
+                      })}
+                    </Accordion>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table className="min-w-[500px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Field Manager</TableHead>
+                            <TableHead className="hidden sm:table-cell">Contractor</TableHead>
+                            <TableHead className="hidden md:table-cell">Current Admin</TableHead>
+                            <TableHead>Assign To Admin</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {allFieldManagers.map(fm => {
+                            const currentAdmin = getAdminForFm(fm.id);
+                            return (
+                              <TableRow key={fm.id}>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium text-sm">{fm.full_name}</div>
+                                    <div className="text-xs text-muted-foreground">{fm.email}</div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell">
+                                  <Badge variant="outline" className="text-xs">{fm.contractor_id}</Badge>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell">
+                                  {currentAdmin ? (
+                                    <Badge variant="secondary" className="text-xs">{currentAdmin.full_name}</Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">Not assigned</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={currentAdmin?.id || ""}
+                                    onValueChange={(adminId) => {
+                                      if (adminId && adminId !== currentAdmin?.id) {
+                                        assignFmToAdminMutation.mutate({
+                                          fieldManagerId: fm.id,
+                                          adminId,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                                      <SelectValue placeholder="Select admin..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {[...allAdmins].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(admin => (
+                                        <SelectItem key={admin.id} value={admin.id}>
+                                          {admin.full_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
                 ) : (
                   <div className="text-center p-8 text-muted-foreground">
                     <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -921,38 +1131,49 @@ const TeamApprovals = () => {
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : allFieldManagers && allFieldManagers.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table className="min-w-[500px]">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Field Manager</TableHead>
-                          <TableHead className="hidden sm:table-cell">Contractor</TableHead>
-                          <TableHead className="hidden md:table-cell">Current Sub-Contractor</TableHead>
-                          <TableHead>Assign To Sub-Contractor</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {allFieldManagers.map(fm => {
-                          const currentSubContractor = getSubContractorForFm(fm.id);
-                          return (
-                            <TableRow key={fm.id}>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium text-sm">{fm.full_name}</div>
-                                  <div className="text-xs text-muted-foreground">{fm.email}</div>
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden sm:table-cell">
-                                <Badge variant="outline" className="text-xs">{fm.contractor_id}</Badge>
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                {currentSubContractor ? (
-                                  <Badge variant="secondary" className="text-xs">{currentSubContractor.full_name}</Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">Not assigned</span>
+                  isMobile ? (
+                    <Accordion type="single" collapsible className="space-y-2">
+                      {allFieldManagers.map(fm => {
+                        const currentSubContractor = getSubContractorForFm(fm.id);
+                        return (
+                          <AccordionItem
+                            key={fm.id}
+                            value={fm.id}
+                            className="border rounded-lg px-3"
+                          >
+                            <AccordionTrigger className="hover:no-underline py-3">
+                              <div className="flex items-center gap-2 text-left">
+                                <span className="text-sm font-medium truncate">
+                                  {fm.full_name}
+                                </span>
+                                {currentSubContractor && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    → {currentSubContractor.full_name}
+                                  </Badge>
                                 )}
-                              </TableCell>
-                              <TableCell>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-3 space-y-3">
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">Name:</span>
+                                  <p className="font-medium">{fm.full_name}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Email:</span>
+                                  <p className="text-xs truncate">{fm.email}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Contractor:</span>
+                                  <Badge variant="outline" className="text-xs mt-1">{fm.contractor_id}</Badge>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Current Sub-Contractor:</span>
+                                  <p className="text-sm">{currentSubContractor?.full_name || "Not assigned"}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-sm text-muted-foreground block mb-2">Assign to Sub-Contractor:</span>
                                 <Select
                                   value={currentSubContractor?.id || ""}
                                   onValueChange={(subContractorId) => {
@@ -964,7 +1185,7 @@ const TeamApprovals = () => {
                                     }
                                   }}
                                 >
-                                  <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                                  <SelectTrigger className="w-full h-9">
                                     <SelectValue placeholder="Select sub-contractor..." />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -975,13 +1196,75 @@ const TeamApprovals = () => {
                                     ))}
                                   </SelectContent>
                                 </Select>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        );
+                      })}
+                    </Accordion>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table className="min-w-[500px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Field Manager</TableHead>
+                            <TableHead className="hidden sm:table-cell">Contractor</TableHead>
+                            <TableHead className="hidden md:table-cell">Current Sub-Contractor</TableHead>
+                            <TableHead>Assign To Sub-Contractor</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {allFieldManagers.map(fm => {
+                            const currentSubContractor = getSubContractorForFm(fm.id);
+                            return (
+                              <TableRow key={fm.id}>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium text-sm">{fm.full_name}</div>
+                                    <div className="text-xs text-muted-foreground">{fm.email}</div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell">
+                                  <Badge variant="outline" className="text-xs">{fm.contractor_id}</Badge>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell">
+                                  {currentSubContractor ? (
+                                    <Badge variant="secondary" className="text-xs">{currentSubContractor.full_name}</Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">Not assigned</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={currentSubContractor?.id || ""}
+                                    onValueChange={(subContractorId) => {
+                                      if (subContractorId && subContractorId !== currentSubContractor?.id) {
+                                        assignFmToSubContractorMutation.mutate({
+                                          fieldManagerId: fm.id,
+                                          subContractorId,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                                      <SelectValue placeholder="Select sub-contractor..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {[...allSubContractors].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(sc => (
+                                        <SelectItem key={sc.id} value={sc.id}>
+                                          {sc.full_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
                 ) : (
                   <div className="text-center p-8 text-muted-foreground">
                     <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
