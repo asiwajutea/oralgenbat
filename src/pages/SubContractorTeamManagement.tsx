@@ -562,7 +562,7 @@ const SubContractorTeamManagement = () => {
                       placeholder="Search by code or name..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="max-w-sm"
+                      className="flex-1 max-w-sm"
                     />
                   </div>
 
@@ -573,59 +573,142 @@ const SubContractorTeamManagement = () => {
                         : "No agents match your search."}
                     </p>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Interviewer Code</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Assign To</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredUnassigned.slice(0, 20).map((agent) => (
-                          <TableRow key={agent.code}>
-                            <TableCell className="font-mono">{agent.code}</TableCell>
-                            <TableCell>{agent.name}</TableCell>
-                            <TableCell>
-                              <Select
-                                value={assignSelections[agent.code] || ""}
-                                onValueChange={(v) =>
-                                  setAssignSelections({ ...assignSelections, [agent.code]: v })
-                                }
-                              >
-                                <SelectTrigger className="w-[180px]">
-                                  <SelectValue placeholder="Select manager" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {assignedManagers.map((m: any) => (
-                                    <SelectItem key={m.field_manager_id} value={m.field_manager_id}>
-                                      {m.profiles?.full_name || "Unknown"}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                className="gap-1"
-                                disabled={!assignSelections[agent.code] || assignAgentMutation.isPending}
-                                onClick={() =>
-                                  assignAgentMutation.mutate({
-                                    code: agent.code,
-                                    managerId: assignSelections[agent.code],
-                                  })
-                                }
-                              >
-                                <UserPlus className="h-3 w-3" />
-                                Assign
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    <>
+                      {/* Desktop Table View */}
+                      <div className="hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Interviewer Code</TableHead>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Assign To</TableHead>
+                              <TableHead className="text-right">Action</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredUnassigned.slice(0, 20).map((agent) => (
+                              <TableRow key={agent.code}>
+                                <TableCell className="font-mono">{agent.code}</TableCell>
+                                <TableCell>{agent.name}</TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={assignSelections[agent.code] || ""}
+                                    onValueChange={(v) =>
+                                      setAssignSelections({ ...assignSelections, [agent.code]: v })
+                                    }
+                                  >
+                                    <SelectTrigger className="w-[180px]">
+                                      <SelectValue placeholder="Select manager" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {assignedManagers.map((m: any) => (
+                                        <SelectItem key={m.field_manager_id} value={m.field_manager_id}>
+                                          {m.profiles?.full_name || "Unknown"}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    size="sm"
+                                    className="gap-1"
+                                    disabled={!assignSelections[agent.code] || assignAgentMutation.isPending}
+                                    onClick={() =>
+                                      assignAgentMutation.mutate({
+                                        code: agent.code,
+                                        managerId: assignSelections[agent.code],
+                                      })
+                                    }
+                                  >
+                                    <UserPlus className="h-3 w-3" />
+                                    Assign
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      {/* Mobile Accordion View */}
+                      <div className="md:hidden">
+                        <Accordion type="single" collapsible className="space-y-2">
+                          {filteredUnassigned.slice(0, 20).map((agent, index) => (
+                            <AccordionItem
+                              key={agent.code}
+                              value={agent.code}
+                              className="border rounded-lg bg-card"
+                            >
+                              <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                                <div className="flex items-center justify-between w-full pr-2">
+                                  <div className="flex items-center gap-3">
+                                    <Badge variant="secondary" className="font-mono text-xs">
+                                      {agent.code}
+                                    </Badge>
+                                    <span className="text-sm font-medium truncate max-w-[140px]">
+                                      {agent.name}
+                                    </span>
+                                  </div>
+                                </div>
+                              </AccordionTrigger>
+                              <AccordionContent className="px-4 pb-4">
+                                <div className="space-y-4">
+                                  {/* Agent Details */}
+                                  <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                      <p className="text-muted-foreground text-xs">Code</p>
+                                      <p className="font-mono font-medium">{agent.code}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground text-xs">Name</p>
+                                      <p className="font-medium">{agent.name}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Assign To Field */}
+                                  <div className="space-y-2">
+                                    <p className="text-xs text-muted-foreground">Assign to Field Manager</p>
+                                    <Select
+                                      value={assignSelections[agent.code] || ""}
+                                      onValueChange={(v) =>
+                                        setAssignSelections({ ...assignSelections, [agent.code]: v })
+                                      }
+                                    >
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select manager" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {assignedManagers.map((m: any) => (
+                                          <SelectItem key={m.field_manager_id} value={m.field_manager_id}>
+                                            {m.profiles?.full_name || "Unknown"}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  {/* Action Button */}
+                                  <Button
+                                    className="w-full gap-2"
+                                    disabled={!assignSelections[agent.code] || assignAgentMutation.isPending}
+                                    onClick={() =>
+                                      assignAgentMutation.mutate({
+                                        code: agent.code,
+                                        managerId: assignSelections[agent.code],
+                                      })
+                                    }
+                                  >
+                                    <UserPlus className="h-4 w-4" />
+                                    Assign Agent
+                                  </Button>
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          ))}
+                        </Accordion>
+                      </div>
+                    </>
                   )}
                   {filteredUnassigned.length > 20 && (
                     <p className="text-sm text-muted-foreground text-center">
