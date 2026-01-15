@@ -146,6 +146,26 @@ const ContractorDashboard = () => {
     enabled: !!contractorId,
   });
 
+  // Get unique agents count from interview_metadata
+  const { data: uniqueAgentsCount = 0 } = useQuery({
+    queryKey: ["contractor-unique-agents", contractorId],
+    queryFn: async () => {
+      if (!contractorId) return 0;
+      
+      const { data, error } = await supabase
+        .from("interview_metadata")
+        .select("interviewer_code")
+        .eq("contractor_id", contractorId);
+      
+      if (error) throw error;
+      
+      // Count unique interviewer codes
+      const uniqueCodes = new Set((data || []).map(d => d.interviewer_code));
+      return uniqueCodes.size;
+    },
+    enabled: !!contractorId,
+  });
+
   // Get pending approval count
   const { data: pendingApprovalsCount = 0 } = useQuery({
     queryKey: ["contractor-pending-approvals", contractorId],
@@ -209,7 +229,8 @@ const ContractorDashboard = () => {
     ? Math.round((stats.passed / (stats.passed + stats.failed)) * 100)
     : 0;
 
-  const totalAgents = fieldManagerStats.reduce((acc, fm) => acc + fm.agentCount, 0);
+  // Use unique agents from interview_metadata instead of team_assignments
+  const totalAgents = uniqueAgentsCount;
 
   return (
     <div className="space-y-6">
