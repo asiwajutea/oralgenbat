@@ -287,6 +287,7 @@ const DataEntryPortal = () => {
           id,
           audit_id,
           issue_resolved_at,
+          resolve_comment,
           audits(file_name)
         `)
         .eq("flagged_by", user.id)
@@ -387,13 +388,20 @@ const DataEntryPortal = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
-              <ul className="text-sm space-y-1">
+              <ul className="text-sm space-y-2">
                 {resolvedIssues.map((issue: any) => (
-                  <li key={issue.id} className="flex items-center gap-2">
-                    <span className="font-mono">{issue.audits?.file_name}</span>
-                    <span className="text-muted-foreground">
-                      resolved {issue.issue_resolved_at && format(new Date(issue.issue_resolved_at), "MMM d")}
-                    </span>
+                  <li key={issue.id} className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono">{issue.audits?.file_name}</span>
+                      <span className="text-muted-foreground">
+                        resolved {issue.issue_resolved_at && format(new Date(issue.issue_resolved_at), "MMM d")}
+                      </span>
+                    </div>
+                    {issue.resolve_comment && (
+                      <p className="text-sm text-muted-foreground italic pl-2 border-l-2 border-blue-300">
+                        "{issue.resolve_comment}"
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
