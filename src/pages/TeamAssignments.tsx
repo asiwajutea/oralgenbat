@@ -68,6 +68,7 @@ import {
   useUnassignInterview,
   useUpdateTypingStatus,
   useExportBatches,
+  useBulkMarkComplete,
   UnassignedInterview,
   Assignment,
   Team,
@@ -94,6 +95,7 @@ const TeamAssignments = () => {
   const [showManageTeams, setShowManageTeams] = useState(false);
   const [unassignDialog, setUnassignDialog] = useState<{ open: boolean; assignment: Assignment | null }>({ open: false, assignment: null });
   const [exportingTeamId, setExportingTeamId] = useState<string | null>(null);
+  const [selectedAssignedInterviews, setSelectedAssignedInterviews] = useState<Set<string>>(new Set());
   
   // Export history pagination
   const [exportHistoryPage, setExportHistoryPage] = useState(1);
@@ -110,6 +112,7 @@ const TeamAssignments = () => {
   const assignInterviews = useAssignInterviews();
   const unassignInterview = useUnassignInterview();
   const updateTypingStatus = useUpdateTypingStatus();
+  const bulkMarkComplete = useBulkMarkComplete();
 
   // Real-time subscription for assignment notifications
   useEffect(() => {
@@ -263,6 +266,34 @@ const TeamAssignments = () => {
       assignmentId: assignment.id,
       status: newStatus,
     });
+  };
+
+  // Toggle selection for assigned interviews (bulk mark complete)
+  const toggleSelectAssigned = (id: string) => {
+    const newSelected = new Set(selectedAssignedInterviews);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedAssignedInterviews(newSelected);
+  };
+
+  // Get incomplete assignments for bulk selection
+  const incompleteAssignments = assignments.filter(a => a.entry_status !== 'data_entry_complete');
+  
+  const toggleSelectAllAssigned = () => {
+    if (selectedAssignedInterviews.size === incompleteAssignments.length) {
+      setSelectedAssignedInterviews(new Set());
+    } else {
+      setSelectedAssignedInterviews(new Set(incompleteAssignments.map(a => a.id)));
+    }
+  };
+
+  const handleBulkMarkComplete = async () => {
+    if (selectedAssignedInterviews.size === 0) return;
+    await bulkMarkComplete.mutateAsync(Array.from(selectedAssignedInterviews));
+    setSelectedAssignedInterviews(new Set());
   };
 
   const toggleTeamExpanded = (teamId: string) => {
@@ -674,6 +705,35 @@ const TeamAssignments = () => {
 
         {/* Assigned Tab */}
         <TabsContent value="assigned" className="space-y-4">
+          {/* Bulk Actions Bar */}
+          {selectedAssignedInterviews.size > 0 && (
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+              <span className="text-sm font-medium">
+                {selectedAssignedInterviews.size} selected
+              </span>
+              <Button
+                size="sm"
+                onClick={handleBulkMarkComplete}
+                disabled={bulkMarkComplete.isPending}
+                className="gap-1"
+              >
+                {bulkMarkComplete.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                Mark as Completed
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedAssignedInterviews(new Set())}
+              >
+                Clear Selection
+              </Button>
+            </div>
+          )}
+          
           <Card>
             <CardContent className="p-0">
               {assignments.length === 0 ? (
@@ -684,6 +744,13 @@ const TeamAssignments = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={incompleteAssignments.length > 0 && selectedAssignedInterviews.size === incompleteAssignments.length}
+                          onCheckedChange={toggleSelectAllAssigned}
+                          disabled={incompleteAssignments.length === 0}
+                        />
+                      </TableHead>
                       <TableHead>Interview</TableHead>
                       <TableHead>Team</TableHead>
                       <TableHead>Names</TableHead>
@@ -694,9 +761,21 @@ const TeamAssignments = () => {
                   </TableHeader>
                   <TableBody>
                     {assignments.map((assignment) => (
-                      <TableRow key={assignment.id}>
+                      <TableRow key={assignment.id} className={assignment.is_flagged_for_issue && !assignment.issue_resolved_at ? "bg-orange-50 dark:bg-orange-950/20" : ""}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedAssignedInterviews.has(assignment.id)}
+                            onCheckedChange={() => toggleSelectAssigned(assignment.id)}
+                            disabled={assignment.entry_status === 'data_entry_complete'}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium font-mono text-sm">
-                          {assignment.audit?.file_name || "-"}
+                          <div className="flex items-center gap-2">
+                            {assignment.audit?.file_name || "-"}
+                            {assignment.is_flagged_for_issue && !assignment.issue_resolved_at && (
+                              <Badge variant="destructive" className="text-[10px]">Issue</Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge>{assignment.team?.name || "-"}</Badge>

@@ -317,7 +317,13 @@ export type Database = {
           entry_status: string | null
           export_batch_id: string | null
           exported_at: string | null
+          flagged_at: string | null
+          flagged_by: string | null
           id: string
+          is_flagged_for_issue: boolean | null
+          issue_comment: string | null
+          issue_resolved_at: string | null
+          issue_resolved_by: string | null
           notes: string | null
           team_id: string
           total_names: number | null
@@ -333,7 +339,13 @@ export type Database = {
           entry_status?: string | null
           export_batch_id?: string | null
           exported_at?: string | null
+          flagged_at?: string | null
+          flagged_by?: string | null
           id?: string
+          is_flagged_for_issue?: boolean | null
+          issue_comment?: string | null
+          issue_resolved_at?: string | null
+          issue_resolved_by?: string | null
           notes?: string | null
           team_id: string
           total_names?: number | null
@@ -349,7 +361,13 @@ export type Database = {
           entry_status?: string | null
           export_batch_id?: string | null
           exported_at?: string | null
+          flagged_at?: string | null
+          flagged_by?: string | null
           id?: string
+          is_flagged_for_issue?: boolean | null
+          issue_comment?: string | null
+          issue_resolved_at?: string | null
+          issue_resolved_by?: string | null
           notes?: string | null
           team_id?: string
           total_names?: number | null

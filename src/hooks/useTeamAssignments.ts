@@ -34,6 +34,12 @@ export interface Assignment {
   entry_status: string | null;
   entry_completed_at: string | null;
   entry_completed_by: string | null;
+  is_flagged_for_issue: boolean | null;
+  issue_comment: string | null;
+  flagged_by: string | null;
+  flagged_at: string | null;
+  issue_resolved_at: string | null;
+  issue_resolved_by: string | null;
   audit?: {
     id: string;
     file_name: string;
@@ -294,6 +300,129 @@ export const useDeleteTeam = () => {
     onError: (error) => {
       console.error("Error deleting team:", error);
       toast.error("Failed to delete team");
+    },
+  });
+};
+
+// Bulk mark assignments as complete
+export const useBulkMarkComplete = () => {
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+
+  return useMutation({
+    mutationFn: async (assignmentIds: string[]) => {
+      const { error } = await supabase
+        .from("interview_assignments")
+        .update({
+          entry_status: "data_entry_complete",
+          entry_completed_by: session?.user?.id,
+          entry_completed_at: new Date().toISOString(),
+        })
+        .in("id", assignmentIds);
+
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["data-entry-stats"] });
+      toast.success(`${variables.length} interviews marked as complete`);
+    },
+    onError: (error) => {
+      console.error("Error marking complete:", error);
+      toast.error("Failed to mark interviews as complete");
+    },
+  });
+};
+
+// Undo completion (reset entry status)
+export const useUndoCompletion = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (assignmentId: string) => {
+      const { error } = await supabase
+        .from("interview_assignments")
+        .update({
+          entry_status: "typing_in_progress",
+          entry_completed_by: null,
+          entry_completed_at: null,
+        })
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["completions"] });
+      queryClient.invalidateQueries({ queryKey: ["data-entry-stats"] });
+      toast.success("Completion undone");
+    },
+    onError: (error) => {
+      console.error("Error undoing completion:", error);
+      toast.error("Failed to undo completion");
+    },
+  });
+};
+
+// Flag interview for issue
+export const useFlagForIssue = () => {
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ assignmentId, comment }: { assignmentId: string; comment: string }) => {
+      const { error } = await supabase
+        .from("interview_assignments")
+        .update({
+          is_flagged_for_issue: true,
+          issue_comment: comment,
+          flagged_by: session?.user?.id,
+          flagged_at: new Date().toISOString(),
+        })
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["data-entry-search"] });
+      toast.success("Interview flagged for issue");
+    },
+    onError: (error) => {
+      console.error("Error flagging issue:", error);
+      toast.error("Failed to flag issue");
+    },
+  });
+};
+
+// Resolve issue
+export const useResolveIssue = () => {
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+
+  return useMutation({
+    mutationFn: async (assignmentId: string) => {
+      const { error } = await supabase
+        .from("interview_assignments")
+        .update({
+          issue_resolved_at: new Date().toISOString(),
+          issue_resolved_by: session?.user?.id,
+        })
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      toast.success("Issue marked as resolved");
+    },
+    onError: (error) => {
+      console.error("Error resolving issue:", error);
+      toast.error("Failed to resolve issue");
     },
   });
 };

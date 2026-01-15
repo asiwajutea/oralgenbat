@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import Header from "@/components/Header";
+import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,6 +13,7 @@ const Layout = ({ children }: LayoutProps) => {
       <main className="flex-1">
         {children}
       </main>
+      <PushNotificationPrompt />
     </div>
   );
 };
