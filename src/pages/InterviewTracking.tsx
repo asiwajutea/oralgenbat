@@ -618,9 +618,9 @@ const InterviewTracking = () => {
                             <span className="font-mono text-sm font-medium truncate max-w-[200px]">
                               {interview.file_name}
                             </span>
-                            {interview.status === "Audit Failed" && (
-                              <Badge variant="destructive" className="h-5 text-[10px]">Failed</Badge>
-                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {getStatusBadge(interview.status)}
                           </div>
                           <div className="flex items-center gap-2">
                             {interview.team_assigned ? (
@@ -691,7 +691,19 @@ const InterviewTracking = () => {
                           </div>
                           
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-2 pt-2">
+                          <div className="flex flex-wrap items-center gap-2 pt-2">
+                            {/* View PDF Button - always show if has PDF */}
+                            {interview.has_pdf && interview.file_url && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(interview.file_url!, '_blank')}
+                                className="gap-1"
+                              >
+                                <FileText className="h-3 w-3" />
+                                View PDF
+                              </Button>
+                            )}
                             {interview.status === "Audit Failed" && (
                               <Button
                                 variant="outline"
@@ -856,6 +868,18 @@ const InterviewTracking = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
+                            {/* View PDF Button - always show for interviews with PDF but no metadata */}
+                            {interview.has_pdf && interview.file_url && !interview.has_metadata && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(interview.file_url!, '_blank')}
+                                className="gap-1"
+                              >
+                                <FileText className="h-3 w-3" />
+                                View PDF
+                              </Button>
+                            )}
                             {interview.status === "Audit Failed" && (
                               <Button
                                 variant="outline"

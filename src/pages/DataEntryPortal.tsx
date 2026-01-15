@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Search, 
   CheckCircle2, 
@@ -16,7 +17,11 @@ import {
   Users,
   Loader2,
   AlertCircle,
-  BarChart3
+  BarChart3,
+  Undo2,
+  Flag,
+  AlertTriangle,
+  CheckCircle
 } from "lucide-react";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { toast } from "sonner";
@@ -35,7 +40,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { AuditPagination } from "@/components/AuditPagination";
+import { useUndoCompletion, useFlagForIssue } from "@/hooks/useTeamAssignments";
 
 const DataEntryPortal = () => {
   const { user, profile } = useAuth();
@@ -45,6 +59,14 @@ const DataEntryPortal = () => {
   const [dateFilter, setDateFilter] = useState<"today" | "week" | "month" | "all">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Flag for issue dialog
+  const [showFlagDialog, setShowFlagDialog] = useState(false);
+  const [flagComment, setFlagComment] = useState("");
+  const [flaggingAssignmentId, setFlaggingAssignmentId] = useState<string | null>(null);
+
+  const undoCompletion = useUndoCompletion();
+  const flagForIssue = useFlagForIssue();
 
   // Get date filter start date
   const getDateFilterStart = (filter: "today" | "week" | "month" | "all") => {
@@ -140,6 +162,10 @@ const DataEntryPortal = () => {
           typing_status,
           typing_completed_at,
           team_id,
+          is_flagged_for_issue,
+          issue_comment,
+          flagged_at,
+          issue_resolved_at,
           data_entry_teams(name)
         `)
         .eq("audit_id", audit.id)
@@ -212,6 +238,9 @@ const DataEntryPortal = () => {
           id,
           entry_completed_at,
           audit_id,
+          is_flagged_for_issue,
+          issue_comment,
+          issue_resolved_at,
           audits(file_name),
           data_entry_teams(name)
         `)
@@ -246,6 +275,31 @@ const DataEntryPortal = () => {
     enabled: !!user?.id,
   });
 
+  // Resolved issues query (for notifications)
+  const { data: resolvedIssues = [] } = useQuery({
+    queryKey: ["resolved-issues", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      
+      const { data, error } = await supabase
+        .from("interview_assignments")
+        .select(`
+          id,
+          audit_id,
+          issue_resolved_at,
+          audits(file_name)
+        `)
+        .eq("flagged_by", user.id)
+        .not("issue_resolved_at", "is", null)
+        .order("issue_resolved_at", { ascending: false })
+        .limit(5);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
+
   const handleSearch = () => {
     if (!searchQuery.trim()) {
       toast.error("Please enter an interview ID");
@@ -269,7 +323,35 @@ const DataEntryPortal = () => {
     setCurrentPage(1);
   };
 
-  const getStatusBadge = (status: string | null | undefined) => {
+  const handleFlagForIssue = (assignmentId: string) => {
+    setFlaggingAssignmentId(assignmentId);
+    setFlagComment("");
+    setShowFlagDialog(true);
+  };
+
+  const submitFlag = async () => {
+    if (!flaggingAssignmentId || !flagComment.trim()) {
+      toast.error("Please provide a comment describing the issue");
+      return;
+    }
+    
+    await flagForIssue.mutateAsync({ 
+      assignmentId: flaggingAssignmentId, 
+      comment: flagComment 
+    });
+    
+    setShowFlagDialog(false);
+    setFlagComment("");
+    setFlaggingAssignmentId(null);
+  };
+
+  const getStatusBadge = (status: string | null | undefined, isFlagged?: boolean, isResolved?: boolean) => {
+    if (isFlagged && !isResolved) {
+      return <Badge variant="destructive" className="gap-1"><Flag className="h-3 w-3" />Flagged</Badge>;
+    }
+    if (isFlagged && isResolved) {
+      return <Badge className="bg-blue-100 text-blue-700 gap-1"><CheckCircle className="h-3 w-3" />Resolved</Badge>;
+    }
     switch (status) {
       case "data_entry_complete":
         return <Badge className="bg-green-100 text-green-700">Data Entry Complete</Badge>;
@@ -294,6 +376,30 @@ const DataEntryPortal = () => {
             Search for interviews and mark them as completed
           </p>
         </div>
+
+        {/* Resolved Issues Notification */}
+        {resolvedIssues.length > 0 && (
+          <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-blue-600" />
+                Recently Resolved Issues
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <ul className="text-sm space-y-1">
+                {resolvedIssues.map((issue: any) => (
+                  <li key={issue.id} className="flex items-center gap-2">
+                    <span className="font-mono">{issue.audits?.file_name}</span>
+                    <span className="text-muted-foreground">
+                      resolved {issue.issue_resolved_at && format(new Date(issue.issue_resolved_at), "MMM d")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Cards */}
         <Card>
@@ -402,6 +508,24 @@ const DataEntryPortal = () => {
                 </div>
               ) : searchResult ? (
                 <div className="space-y-6">
+                  {/* Flagged Issue Alert */}
+                  {searchResult.assignment?.is_flagged_for_issue && !searchResult.assignment?.issue_resolved_at && (
+                    <div className="p-4 rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-orange-800 dark:text-orange-200">Issue Flagged</p>
+                          <p className="text-sm text-orange-700 dark:text-orange-300">
+                            {searchResult.assignment.issue_comment}
+                          </p>
+                          <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                            Flagged {searchResult.assignment.flagged_at && format(new Date(searchResult.assignment.flagged_at), "PPp")}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Interview Details */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/50">
@@ -455,39 +579,56 @@ const DataEntryPortal = () => {
                       <Clock className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Entry Status</p>
-                        {getStatusBadge(searchResult.assignment?.entry_status)}
+                        {getStatusBadge(
+                          searchResult.assignment?.entry_status,
+                          searchResult.assignment?.is_flagged_for_issue,
+                          !!searchResult.assignment?.issue_resolved_at
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Action Button */}
                   {searchResult.assignment ? (
-                    <div className="flex items-center justify-between p-4 rounded-lg border">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-lg border gap-4">
                       <div>
                         <p className="font-medium">Update Entry Status</p>
                         <p className="text-sm text-muted-foreground">
-                          Mark this interview as data entry complete
+                          Mark this interview as data entry complete or flag for issue
                         </p>
                       </div>
-                      {searchResult.assignment.entry_status === "data_entry_complete" ? (
-                        <div className="flex items-center gap-2 text-green-600">
-                          <CheckCircle2 className="h-5 w-5" />
-                          <span className="font-medium">Already Completed</span>
-                        </div>
-                      ) : (
-                        <Button
-                          onClick={() => markCompletedMutation.mutate(searchResult.assignment!.id)}
-                          disabled={markCompletedMutation.isPending}
-                          className="gap-2"
-                        >
-                          {markCompletedMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-4 w-4" />
-                          )}
-                          Mark as Completed
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        {searchResult.assignment.entry_status === "data_entry_complete" ? (
+                          <div className="flex items-center gap-2 text-green-600">
+                            <CheckCircle2 className="h-5 w-5" />
+                            <span className="font-medium">Already Completed</span>
+                          </div>
+                        ) : (
+                          <>
+                            <Button
+                              onClick={() => markCompletedMutation.mutate(searchResult.assignment!.id)}
+                              disabled={markCompletedMutation.isPending}
+                              className="gap-2 flex-1 sm:flex-none"
+                            >
+                              {markCompletedMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-4 w-4" />
+                              )}
+                              Mark as Completed
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => handleFlagForIssue(searchResult.assignment!.id)}
+                              disabled={searchResult.assignment.is_flagged_for_issue}
+                              className="gap-2 flex-1 sm:flex-none"
+                            >
+                              <Flag className="h-4 w-4" />
+                              {searchResult.assignment.is_flagged_for_issue ? "Already Flagged" : "Flag Issue"}
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-200 bg-yellow-50">
@@ -543,17 +684,26 @@ const DataEntryPortal = () => {
                       <TableHead>Interview ID</TableHead>
                       <TableHead>Team</TableHead>
                       <TableHead>Total Names</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Completed At</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {completionsData?.data.map((completion: any, index: number) => (
-                      <TableRow key={completion.id}>
+                      <TableRow key={completion.id} className={completion.is_flagged_for_issue && !completion.issue_resolved_at ? "bg-orange-50 dark:bg-orange-950/20" : ""}>
                         <TableCell className="font-medium">
                           {(currentPage - 1) * itemsPerPage + index + 1}
                         </TableCell>
                         <TableCell className="font-medium">
-                          {completion.audits?.file_name || "Unknown"}
+                          <div className="flex items-center gap-2">
+                            {completion.audits?.file_name || "Unknown"}
+                            {completion.is_flagged_for_issue && (
+                              <Badge variant={completion.issue_resolved_at ? "secondary" : "destructive"} className="text-[10px]">
+                                {completion.issue_resolved_at ? "Resolved" : "Issue"}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {completion.data_entry_teams?.name || "N/A"}
@@ -562,10 +712,29 @@ const DataEntryPortal = () => {
                           {completion.total_names || 0}
                         </TableCell>
                         <TableCell>
+                          {getStatusBadge(
+                            "data_entry_complete",
+                            completion.is_flagged_for_issue,
+                            !!completion.issue_resolved_at
+                          )}
+                        </TableCell>
+                        <TableCell>
                           {completion.entry_completed_at 
                             ? format(new Date(completion.entry_completed_at), "PPp")
                             : "N/A"
                           }
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => undoCompletion.mutate(completion.id)}
+                            disabled={undoCompletion.isPending}
+                            className="gap-1 text-muted-foreground hover:text-destructive"
+                          >
+                            <Undo2 className="h-4 w-4" />
+                            Undo
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -587,6 +756,44 @@ const DataEntryPortal = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Flag for Issue Dialog */}
+      <Dialog open={showFlagDialog} onOpenChange={setShowFlagDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag className="h-5 w-5 text-orange-500" />
+              Flag Interview for Issue
+            </DialogTitle>
+            <DialogDescription>
+              Describe the issue with this interview. Managers will be notified.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Describe the issue (e.g., missing data, illegible handwriting, audio quality issues...)"
+            value={flagComment}
+            onChange={(e) => setFlagComment(e.target.value)}
+            rows={4}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFlagDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={submitFlag} 
+              disabled={!flagComment.trim() || flagForIssue.isPending}
+              className="gap-2"
+            >
+              {flagForIssue.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Flag className="h-4 w-4" />
+              )}
+              Flag Issue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

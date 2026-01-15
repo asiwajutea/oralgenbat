@@ -216,7 +216,7 @@ export function FailedInterviewModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto mx-2 sm:mx-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -227,13 +227,13 @@ export function FailedInterviewModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Interview Info */}
-          <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="p-3 sm:p-4 bg-muted/50 rounded-lg space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <span className="text-sm font-medium">Interview ID</span>
-              <div className="flex items-center gap-2">
-                <code className="text-sm bg-background px-2 py-1 rounded">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                <code className="text-sm bg-background px-2 py-1 rounded break-all">
                   {interview.file_name}
                 </code>
                 <Button
@@ -241,7 +241,7 @@ export function FailedInterviewModal({
                   size="sm"
                   onClick={() => interview.file_url && window.open(interview.file_url, '_blank')}
                   disabled={!interview.file_url}
-                  className="gap-1"
+                  className="gap-1 w-full sm:w-auto"
                 >
                   <ExternalLink className="h-3 w-3" />
                   View PDF
@@ -377,13 +377,14 @@ export function FailedInterviewModal({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4">
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
             <Button 
               onClick={handleSubmit} 
               disabled={isUploading || submitMutation.isPending}
+              className="w-full sm:w-auto"
             >
               {isUploading ? (
                 <>
