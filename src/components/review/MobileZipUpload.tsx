@@ -23,7 +23,7 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess, ex
     return null;
   }
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'deleting'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'verifying' | 'processing' | 'deleting'>('idle');
   const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   // Function to delete existing corrupted ZIP and allow fresh upload
@@ -96,29 +96,70 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess, ex
         // Simulate progress for user feedback (since standard upload doesn't provide progress)
         setUploadProgress(100);
         
-        // Wait for storage to fully commit the file
-        console.log('Waiting for storage to finalize...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        // Verify the uploaded file size matches
-        const { data: fileInfo } = await supabase.storage
-          .from("mobile-zips")
-          .list(filePath.split('/')[0]);
-        
-        const uploadedFile = fileInfo?.find(f => f.name === file.name);
-        if (uploadedFile && uploadedFile.metadata?.size) {
-          console.log(`Uploaded file size: ${uploadedFile.metadata.size}, original: ${validatedArrayBuffer.byteLength}`);
-          if (uploadedFile.metadata.size !== validatedArrayBuffer.byteLength) {
-            console.warn('File size mismatch after upload!');
-          }
-        }
-        
         // Get public URL
         const { data: { publicUrl } } = supabase.storage
           .from("mobile-zips")
           .getPublicUrl(filePath);
+        
+        // Verify the file is accessible by fetching it and validating
+        console.log('Verifying upload integrity...');
+        let verified = false;
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          const waitMs = attempt * 2000; // 2s, 4s, 6s, 8s, 10s
+          console.log(`Verification attempt ${attempt}/5, waiting ${waitMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitMs));
           
-        console.log('File available at:', publicUrl);
+          try {
+            const response = await fetch(publicUrl);
+            if (!response.ok) {
+              console.log(`Attempt ${attempt}: HTTP ${response.status}`);
+              continue;
+            }
+            
+            const downloadedBuffer = await response.arrayBuffer();
+            const downloadedBytes = new Uint8Array(downloadedBuffer);
+            
+            // Verify size matches
+            if (downloadedBytes.length !== validatedArrayBuffer.byteLength) {
+              console.log(`Attempt ${attempt}: Size mismatch - got ${downloadedBytes.length}, expected ${validatedArrayBuffer.byteLength}`);
+              continue;
+            }
+            
+            // Verify ZIP signature
+            if (downloadedBytes[0] !== 0x50 || downloadedBytes[1] !== 0x4B) {
+              console.log(`Attempt ${attempt}: Invalid ZIP signature in downloaded file`);
+              continue;
+            }
+            
+            // Verify EOCD exists
+            const searchStart = Math.max(0, downloadedBytes.length - 65536);
+            let foundEOCD = false;
+            for (let i = downloadedBytes.length - 22; i >= searchStart; i--) {
+              if (downloadedBytes[i] === 0x50 && downloadedBytes[i+1] === 0x4B && 
+                  downloadedBytes[i+2] === 0x05 && downloadedBytes[i+3] === 0x06) {
+                foundEOCD = true;
+                break;
+              }
+            }
+            
+            if (!foundEOCD) {
+              console.log(`Attempt ${attempt}: EOCD not found in downloaded file`);
+              continue;
+            }
+            
+            console.log(`✓ Upload verified on attempt ${attempt}`);
+            verified = true;
+            break;
+          } catch (verifyError) {
+            console.log(`Attempt ${attempt}: Verification error -`, verifyError);
+          }
+        }
+        
+        if (!verified) {
+          throw new Error('Upload verification failed after 5 attempts. The file may not have been stored correctly. Please try again.');
+        }
+          
+        console.log('File verified at:', publicUrl);
         resolve(publicUrl);
       } catch (error) {
         console.error('Upload failed:', error);
@@ -283,7 +324,8 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess, ex
         title: "Uploading mobile ZIP file...",
       });
 
-      // Upload with progress tracking using the validated ArrayBuffer
+      setUploadStatus('verifying');
+      // Upload with progress tracking using the validated ArrayBuffer (includes verification)
       const publicUrl = await uploadFileWithProgress(file, filePath, validation.arrayBuffer!);
 
       const { error: updateError } = await supabase
@@ -349,6 +391,8 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess, ex
     switch (uploadStatus) {
       case 'uploading':
         return 'Uploading...';
+      case 'verifying':
+        return 'Verifying upload...';
       case 'processing':
         return 'Processing ZIP...';
       case 'deleting':
@@ -425,6 +469,14 @@ export const MobileZipUpload = ({ auditId, expectedFileName, onUploadSuccess, ex
             <Progress value={uploadProgress} className="h-2" />
             <p className="text-xs text-center text-muted-foreground">
               Uploading: {uploadProgress}%
+            </p>
+          </div>
+        )}
+
+        {isUploading && uploadStatus === 'verifying' && (
+          <div className="w-full max-w-md">
+            <p className="text-sm text-center text-muted-foreground">
+              Verifying upload integrity...
             </p>
           </div>
         )}
