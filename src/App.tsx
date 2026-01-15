@@ -34,6 +34,7 @@ import AdminReviewHistory from "./pages/AdminReviewHistory";
 import LockedInterviews from "./pages/LockedInterviews";
 import TeamAssignments from "./pages/TeamAssignments";
 import DataEntryPortal from "./pages/DataEntryPortal";
+import FlaggedIssuesHistory from "./pages/FlaggedIssuesHistory";
 import InterviewTracking from "./pages/InterviewTracking";
 import ZipDiagnostics from "./pages/ZipDiagnostics";
 import Achievements from "./pages/Achievements";
@@ -222,6 +223,16 @@ const App = () => (
                 <DataEntryRoute>
                   <Layout>
                     <DataEntryPortal />
+                  </Layout>
+                </DataEntryRoute>
+              }
+            />
+            <Route
+              path="/data-entry/flagged-issues"
+              element={
+                <DataEntryRoute>
+                  <Layout>
+                    <FlaggedIssuesHistory />
                   </Layout>
                 </DataEntryRoute>
               }
