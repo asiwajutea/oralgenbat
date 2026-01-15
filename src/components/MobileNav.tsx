@@ -108,7 +108,10 @@ const MobileNav = () => {
             )}
             
             {userRole === 'contractor' && (
-              <NavItem to="/contractor-dashboard" icon={BarChart3}>My Dashboard</NavItem>
+              <>
+                <NavItem to="/contractor-dashboard" icon={BarChart3}>My Dashboard</NavItem>
+                <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
+              </>
             )}
             
             {(userRole === 'contractor' || isAdmin) && (

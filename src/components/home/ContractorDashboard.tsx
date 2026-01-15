@@ -228,7 +228,7 @@ const ContractorDashboard = () => {
                 </p>
               </div>
             </div>
-            <Button onClick={() => navigate("/analytics")} className="gap-2">
+            <Button onClick={() => navigate("/my-analytics")} className="gap-2">
               <BarChart3 className="h-4 w-4" />
               View Analytics
             </Button>
@@ -343,7 +343,7 @@ const ContractorDashboard = () => {
               <Button 
                 variant="outline" 
                 className="w-full justify-between h-auto py-4"
-                onClick={() => navigate("/analytics")}
+                onClick={() => navigate("/my-analytics")}
               >
                 <span className="flex items-center gap-2">
                   <BarChart3 className="h-4 w-4" />
