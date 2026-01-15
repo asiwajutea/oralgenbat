@@ -308,8 +308,8 @@ const DataEntryPortal = () => {
     enabled: !!user?.id,
   });
 
-  // State for collapsible pending issues
-  const [pendingIssuesOpen, setPendingIssuesOpen] = useState(true);
+  // State for collapsible pending issues - collapsed by default
+  const [pendingIssuesOpen, setPendingIssuesOpen] = useState(false);
 
   // Pending flagged issues (unresolved) that the current user created - with resolver names
   const { data: pendingFlaggedIssuesData } = useQuery({
@@ -490,8 +490,8 @@ const DataEntryPortal = () => {
           <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
             <CardHeader className="pb-2">
               <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
-                  <CardTitle className="text-sm flex items-center gap-2">
+                <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent [&:hover]:text-foreground">
+                  <CardTitle className="text-sm flex items-center gap-2 text-foreground">
                     <AlertTriangle className="h-4 w-4 text-yellow-600" />
                     Your Flagged Issues ({totalFlaggedCount})
                   </CardTitle>
