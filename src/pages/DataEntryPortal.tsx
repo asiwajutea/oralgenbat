@@ -24,7 +24,8 @@ import {
   CheckCircle,
   ChevronDown,
   ChevronUp,
-  ExternalLink
+  ExternalLink,
+  X
 } from "lucide-react";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { toast } from "sonner";
@@ -68,6 +69,7 @@ const DataEntryPortal = () => {
   // Flag for issue dialog
   const [showFlagDialog, setShowFlagDialog] = useState(false);
   const [flagComment, setFlagComment] = useState("");
+  const [resolvedIssuesDismissed, setResolvedIssuesDismissed] = useState(false);
   const [flaggingAssignmentId, setFlaggingAssignmentId] = useState<string | null>(null);
 
   const undoCompletion = useUndoCompletion();
@@ -443,13 +445,23 @@ const DataEntryPortal = () => {
         </div>
 
         {/* Resolved Issues Notification */}
-        {resolvedIssues.length > 0 && (
+        {resolvedIssues.length > 0 && !resolvedIssuesDismissed && (
           <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-blue-600" />
-                Recently Resolved Issues
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-blue-600" />
+                  Recently Resolved Issues
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                  onClick={() => setResolvedIssuesDismissed(true)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="pb-4">
               <ul className="text-sm space-y-2">
