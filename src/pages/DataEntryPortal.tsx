@@ -21,7 +21,9 @@ import {
   Undo2,
   Flag,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { toast } from "sonner";
@@ -48,6 +50,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AuditPagination } from "@/components/AuditPagination";
 import { useUndoCompletion, useFlagForIssue } from "@/hooks/useTeamAssignments";
 
@@ -301,6 +304,9 @@ const DataEntryPortal = () => {
     enabled: !!user?.id,
   });
 
+  // State for collapsible pending issues
+  const [pendingIssuesOpen, setPendingIssuesOpen] = useState(true);
+
   // Pending flagged issues (unresolved) that the current user created
   const { data: pendingFlaggedIssues = [] } = useQuery({
     queryKey: ["pending-flagged-issues", user?.id],
@@ -314,16 +320,22 @@ const DataEntryPortal = () => {
           audit_id,
           issue_comment,
           flagged_at,
+          issue_resolved_at,
+          resolve_comment,
+          entry_status,
           audits(file_name)
         `)
         .eq("flagged_by", user.id)
         .eq("is_flagged_for_issue", true)
-        .is("issue_resolved_at", null)
         .order("flagged_at", { ascending: false })
-        .limit(10);
+        .limit(20);
       
       if (error) throw error;
-      return data || [];
+      // Filter to show unresolved OR recently resolved (within 7 days) that haven't been marked complete
+      return (data || []).filter((issue: any) => 
+        !issue.issue_resolved_at || 
+        (issue.issue_resolved_at && issue.entry_status !== "data_entry_complete")
+      );
     },
     enabled: !!user?.id,
   });
@@ -436,39 +448,86 @@ const DataEntryPortal = () => {
           </Card>
         )}
 
-        {/* Pending Flagged Issues (Unresolved) */}
+        {/* Pending Flagged Issues (Collapsible) */}
         {pendingFlaggedIssues.length > 0 && (
-          <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                Your Pending Flagged Issues ({pendingFlaggedIssues.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4">
-              <ul className="text-sm space-y-2">
-                {pendingFlaggedIssues.map((issue: any) => (
-                  <li key={issue.id} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="destructive" className="gap-1 text-xs">
-                        <Flag className="h-3 w-3" />
-                        Pending
-                      </Badge>
-                      <span className="font-mono">{issue.audits?.file_name}</span>
-                      <span className="text-muted-foreground">
-                        flagged {issue.flagged_at && format(new Date(issue.flagged_at), "MMM d")}
-                      </span>
-                    </div>
-                    {issue.issue_comment && (
-                      <p className="text-sm text-muted-foreground italic pl-2 border-l-2 border-yellow-400">
-                        "{issue.issue_comment}"
-                      </p>
+          <Collapsible open={pendingIssuesOpen} onOpenChange={setPendingIssuesOpen}>
+            <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
+              <CardHeader className="pb-2">
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                      Your Flagged Issues ({pendingFlaggedIssues.length})
+                    </CardTitle>
+                    {pendingIssuesOpen ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     )}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
+                  </Button>
+                </CollapsibleTrigger>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent className="pb-4">
+                  <ul className="text-sm space-y-3">
+                    {pendingFlaggedIssues.map((issue: any) => {
+                      const isResolved = !!issue.issue_resolved_at;
+                      const isCompleted = issue.entry_status === "data_entry_complete";
+                      
+                      return (
+                        <li key={issue.id} className="flex flex-col gap-2 p-3 rounded-lg bg-background/50 border">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {isResolved ? (
+                                <Badge className="bg-green-100 text-green-700 gap-1 text-xs">
+                                  <CheckCircle className="h-3 w-3" />
+                                  Resolved
+                                </Badge>
+                              ) : (
+                                <Badge variant="destructive" className="gap-1 text-xs">
+                                  <Flag className="h-3 w-3" />
+                                  Pending
+                                </Badge>
+                              )}
+                              <span className="font-mono text-sm">{issue.audits?.file_name}</span>
+                              <span className="text-muted-foreground text-xs">
+                                flagged {issue.flagged_at && format(new Date(issue.flagged_at), "MMM d")}
+                              </span>
+                            </div>
+                            {isResolved && !isCompleted && (
+                              <Button
+                                size="sm"
+                                onClick={() => markCompletedMutation.mutate(issue.id)}
+                                disabled={markCompletedMutation.isPending}
+                                className="gap-1"
+                              >
+                                {markCompletedMutation.isPending ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="h-3 w-3" />
+                                )}
+                                Mark Complete
+                              </Button>
+                            )}
+                          </div>
+                          {issue.issue_comment && (
+                            <p className="text-sm text-muted-foreground italic pl-2 border-l-2 border-yellow-400">
+                              Your issue: "{issue.issue_comment}"
+                            </p>
+                          )}
+                          {issue.resolve_comment && (
+                            <p className="text-sm text-muted-foreground italic pl-2 border-l-2 border-green-400">
+                              Manager reply: "{issue.resolve_comment}"
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         )}
 
         {/* Stats Cards */}
