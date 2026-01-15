@@ -898,8 +898,8 @@ const InterviewTracking = () => {
                           
                           {/* Action Buttons */}
                           <div className="flex flex-wrap items-center gap-2 pt-2">
-                            {/* View PDF Button - always show if has PDF */}
-                            {interview.has_pdf && interview.file_url && (
+                            {/* View PDF Button - only show for interviews WITHOUT metadata */}
+                            {interview.has_pdf && interview.file_url && !interview.has_metadata && (
                               <Button
                                 variant="outline"
                                 size="sm"

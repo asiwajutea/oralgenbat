@@ -77,8 +77,8 @@ const Header = () => {
               <NavLink to="/admin" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 Manage Users
               </NavLink>
-              <NavLink to="/analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-                Analytics
+              <NavLink to="/my-analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                My Analytics
               </NavLink>
             </>
           )}
@@ -87,9 +87,15 @@ const Header = () => {
               <NavLink to="/admin" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 Manage Users
               </NavLink>
-              <NavLink to="/analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-                Analytics
-              </NavLink>
+              {userRole === 'super_admin' ? (
+                <NavLink to="/analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                  Analytics
+                </NavLink>
+              ) : (
+                <NavLink to="/my-analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                  My Analytics
+                </NavLink>
+              )}
               
               <NavigationMenu>
                 <NavigationMenuList>
