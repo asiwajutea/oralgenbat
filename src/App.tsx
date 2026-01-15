@@ -271,6 +271,16 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <Achievements />
+              </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-analytics"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <RoleAnalyticsDashboard />
                   </Layout>
                 </ProtectedRoute>
               }
