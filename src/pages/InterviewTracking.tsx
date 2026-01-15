@@ -620,9 +620,6 @@ const InterviewTracking = () => {
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            {getStatusBadge(interview.status)}
-                          </div>
-                          <div className="flex items-center gap-2">
                             {interview.team_assigned ? (
                               interview.entry_status === 'data_entry_complete' ? (
                                 <Badge className="h-5 text-[10px] bg-green-500 text-white">
