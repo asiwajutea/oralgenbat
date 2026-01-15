@@ -211,12 +211,12 @@ const InterviewTracking = () => {
     enabled: !!user?.id && (isFieldManager || ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) || isSuperAdmin),
   });
 
-  // Main interviews query - now fetches all statuses
+  // Main interviews query - uses JOIN to avoid large .in() queries that fail silently
   const { data: interviews = [], isLoading } = useQuery({
     queryKey: ["tracking-interviews", userRole, effectiveContractorId, teamAssignments],
     queryFn: async () => {
-      // Get audits with all statuses (not just passed)
-      const { data: audits, error: auditsError } = await supabase
+      // Single query with LEFT JOIN to get audits with their metadata
+      const { data: auditsWithMeta, error: auditsError } = await supabase
         .from("audits")
         .select(`
           id,
@@ -226,44 +226,66 @@ const InterviewTracking = () => {
           reviewed_at,
           review_comment,
           action_plan,
-          artifact_correction
-        `);
-      
-      if (auditsError) throw auditsError;
-      if (!audits || audits.length === 0) return [];
-      
-      // Get metadata for these audits
-      const auditIds = audits.map(a => a.id);
-      const { data: metadata } = await supabase
-        .from("interview_metadata")
-        .select("audit_id, contractor_id, interviewer_code, field_manager, total_names, interviewee_name, interview_date")
-        .in("audit_id", auditIds);
-      
-      // Get interview assignments with entry status and flagging info
-      const { data: assignments } = await supabase
-        .from("interview_assignments")
-        .select(`
-          id,
-          audit_id, 
-          team_id, 
-          entry_status,
-          is_flagged_for_issue,
-          issue_comment,
-          flagged_by,
-          flagged_at,
-          issue_resolved_at,
-          issue_resolved_by,
-          resolve_comment,
-          data_entry_teams(name)
+          artifact_correction,
+          interview_metadata (
+            audit_id,
+            contractor_id,
+            interviewer_code,
+            field_manager,
+            total_names,
+            interviewee_name,
+            interview_date
+          )
         `)
-        .in("audit_id", auditIds);
+        .limit(5000);
       
-      // Create maps
-      const metadataMap = new Map(metadata?.map(m => [m.audit_id, m]) || []);
-      const assignmentMap = new Map(assignments?.map(a => [a.audit_id, a]) || []);
+      if (auditsError) {
+        console.error("Error fetching audits with metadata:", auditsError);
+        throw auditsError;
+      }
       
-      let results: TrackingInterview[] = audits.map(audit => {
-        const meta = metadataMap.get(audit.id);
+      if (!auditsWithMeta || auditsWithMeta.length === 0) return [];
+      
+      // Get interview assignments separately
+      const auditIds = auditsWithMeta.map(a => a.id);
+      
+      // Batch assignments query to avoid URL length issues
+      const batchSize = 200;
+      const allAssignments: any[] = [];
+      
+      for (let i = 0; i < auditIds.length; i += batchSize) {
+        const batch = auditIds.slice(i, i + batchSize);
+        const { data: batchAssignments, error: assignmentsError } = await supabase
+          .from("interview_assignments")
+          .select(`
+            id,
+            audit_id, 
+            team_id, 
+            entry_status,
+            is_flagged_for_issue,
+            issue_comment,
+            flagged_by,
+            flagged_at,
+            issue_resolved_at,
+            issue_resolved_by,
+            resolve_comment,
+            data_entry_teams(name)
+          `)
+          .in("audit_id", batch);
+        
+        if (assignmentsError) {
+          console.error("Error fetching assignments batch:", assignmentsError);
+        } else if (batchAssignments) {
+          allAssignments.push(...batchAssignments);
+        }
+      }
+      
+      const assignmentMap = new Map(allAssignments.map(a => [a.audit_id, a]));
+      
+      let results: TrackingInterview[] = auditsWithMeta.map(audit => {
+        // interview_metadata comes as an array from the nested select (LEFT JOIN)
+        const metaArray = audit.interview_metadata as any[];
+        const meta = metaArray && metaArray.length > 0 ? metaArray[0] : null;
         const assignment = assignmentMap.get(audit.id);
         
         return {
