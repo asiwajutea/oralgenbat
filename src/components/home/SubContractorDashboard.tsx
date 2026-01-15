@@ -29,17 +29,28 @@ const SubContractorDashboard = () => {
     queryFn: async () => {
       if (!user?.id) return [];
       
-      const { data, error } = await supabase
+      // First get the assignments
+      const { data: assignments, error } = await supabase
         .from("field_manager_subcontractor_assignments")
-        .select(`
-          field_manager_id,
-          profiles!field_manager_subcontractor_assignments_field_manager_id_fkey(full_name)
-        `)
+        .select("field_manager_id")
         .eq("sub_contractor_id", user.id)
         .eq("is_active", true);
       
       if (error) throw error;
-      return data || [];
+      if (!assignments || assignments.length === 0) return [];
+      
+      // Then get the profiles for these field managers
+      const fmIds = assignments.map(a => a.field_manager_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", fmIds);
+      
+      // Combine the data
+      return assignments.map(a => ({
+        field_manager_id: a.field_manager_id,
+        full_name: profiles?.find(p => p.id === a.field_manager_id)?.full_name || "Unknown"
+      }));
     },
     enabled: !!user?.id,
   });
@@ -210,7 +221,7 @@ const SubContractorDashboard = () => {
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium text-sm">
-                        {manager.profiles?.full_name || "Unknown"}
+                        {manager.full_name}
                       </span>
                     </div>
                   </div>

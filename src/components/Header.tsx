@@ -71,6 +71,9 @@ const Header = () => {
           )}
           {userRole === 'sub_contractor' && (
             <>
+              <NavLink to="/subcontractor-team-management" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                Team Management
+              </NavLink>
               <NavLink to="/admin" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 Manage Users
               </NavLink>
