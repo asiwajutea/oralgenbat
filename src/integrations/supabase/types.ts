@@ -1011,6 +1011,7 @@ export type Database = {
           total_size_bytes: number
         }[]
       }
+      get_user_display_name: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

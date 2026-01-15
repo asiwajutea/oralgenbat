@@ -40,23 +40,20 @@ export const ViewIssueDialog = ({
 }: ViewIssueDialogProps) => {
   const [resolveComment, setResolveComment] = useState("");
 
-  // Fetch the clerk's name who flagged the issue
-  const { data: clerkProfile } = useQuery({
-    queryKey: ["clerk-profile", interview?.flagged_by],
+  // Fetch the user's name who flagged the issue using security definer function
+  const { data: flaggedByName } = useQuery({
+    queryKey: ["user-display-name", interview?.flagged_by],
     queryFn: async () => {
-      if (!interview?.flagged_by) return null;
+      if (!interview?.flagged_by) return "Unknown User";
       
       const { data, error } = await supabase
-        .from("profiles")
-        .select("full_name, email")
-        .eq("id", interview.flagged_by)
-        .single();
+        .rpc("get_user_display_name", { _user_id: interview.flagged_by });
       
       if (error) {
-        console.error("Error fetching clerk profile:", error);
-        return null;
+        console.error("Error fetching user name:", error);
+        return "Unknown User";
       }
-      return data;
+      return data || "Unknown User";
     },
     enabled: !!interview?.flagged_by && open,
   });
@@ -76,7 +73,7 @@ export const ViewIssueDialog = ({
 
   if (!interview) return null;
 
-  const clerkName = clerkProfile?.full_name || clerkProfile?.email || "Unknown Clerk";
+  const displayName = flaggedByName || "Unknown User";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -112,7 +109,7 @@ export const ViewIssueDialog = ({
           <div>
             <Label className="text-sm font-medium flex items-center gap-2 mb-2">
               <User className="h-4 w-4" />
-              Issue from <span className="text-primary">{clerkName}</span>
+              Issue flagged by <span className="text-primary font-semibold">{displayName}</span>
             </Label>
             <div className="rounded-lg border p-3 bg-destructive/5 border-destructive/20">
               <p className="text-sm whitespace-pre-wrap">
