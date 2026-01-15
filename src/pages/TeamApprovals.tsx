@@ -247,6 +247,50 @@ const TeamApprovals = () => {
     enabled: isSuperAdmin,
   });
 
+  // FM-SubContractor Assignments (Super Admin only)
+  const { data: fmSubContractorAssignments = [], isLoading: loadingFmSubContractor } = useQuery({
+    queryKey: ["fm-subcontractor-assignments"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("field_manager_subcontractor_assignments")
+        .select(`
+          id,
+          field_manager_id,
+          sub_contractor_id,
+          is_active,
+          assigned_at
+        `)
+        .eq("is_active", true);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: isSuperAdmin,
+  });
+
+  // Fetch all sub-contractors (Super Admin only)
+  const { data: allSubContractors = [] } = useQuery({
+    queryKey: ["all-sub-contractors"],
+    queryFn: async () => {
+      const { data: subContractorRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "sub_contractor");
+
+      if (!subContractorRoles || subContractorRoles.length === 0) return [];
+
+      const subContractorIds = subContractorRoles.map(r => r.user_id);
+      const { data: subContractors } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", subContractorIds)
+        .eq("is_approved", true);
+
+      return subContractors || [];
+    },
+    enabled: isSuperAdmin,
+  });
+
   const updateAssignmentMutation = useMutation({
     mutationFn: async ({
       assignmentId,
@@ -422,6 +466,64 @@ const TeamApprovals = () => {
     },
   });
 
+  // FM-SubContractor assignment mutation
+  const assignFmToSubContractorMutation = useMutation({
+    mutationFn: async ({
+      fieldManagerId,
+      subContractorId,
+    }: {
+      fieldManagerId: string;
+      subContractorId: string;
+    }) => {
+      if (!session?.user.id) throw new Error("Not authenticated");
+
+      // Check for existing assignment
+      const { data: existing } = await supabase
+        .from("field_manager_subcontractor_assignments")
+        .select("id")
+        .eq("field_manager_id", fieldManagerId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing
+        const { error } = await supabase
+          .from("field_manager_subcontractor_assignments")
+          .update({
+            sub_contractor_id: subContractorId,
+            assigned_by: session.user.id,
+            assigned_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        // Create new
+        const { error } = await supabase
+          .from("field_manager_subcontractor_assignments")
+          .insert({
+            field_manager_id: fieldManagerId,
+            sub_contractor_id: subContractorId,
+            assigned_by: session.user.id,
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fm-subcontractor-assignments"] });
+      toast({
+        title: "Success",
+        description: "Field manager assigned to sub-contractor.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign field manager.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleApprove = (assignmentId: string) => {
     updateAssignmentMutation.mutate({ assignmentId, status: "approved" });
   };
@@ -434,6 +536,12 @@ const TeamApprovals = () => {
     const assignment = fmAdminAssignments.find(a => a.field_manager_id === fmId);
     if (!assignment) return null;
     return allAdmins.find(a => a.id === assignment.admin_id);
+  };
+
+  const getSubContractorForFm = (fmId: string) => {
+    const assignment = fmSubContractorAssignments.find(a => a.field_manager_id === fmId);
+    if (!assignment) return null;
+    return allSubContractors.find(sc => sc.id === assignment.sub_contractor_id);
   };
 
   return (
@@ -773,6 +881,96 @@ const TeamApprovals = () => {
                                     {[...allAdmins].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(admin => (
                                       <SelectItem key={admin.id} value={admin.id}>
                                         {admin.full_name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="text-center p-8 text-muted-foreground">
+                    <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">No Field Managers</p>
+                    <p className="text-sm">No approved field managers found.</p>
+                  </div>
+                )}
+            </AccordionContent>
+            </AccordionItem>
+          )}
+
+          {/* FM-SubContractor Assignments (Super Admin only) */}
+          {isSuperAdmin && (
+            <AccordionItem value="fm-subcontractor" className="border rounded-lg">
+              <AccordionTrigger className="px-6 hover:no-underline">
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-5 w-5" />
+                  <span className="font-semibold">Field Manager → Sub-Contractor Assignments</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Assign field managers to sub-contractors for interview tracking visibility
+                </p>
+                {loadingFmSubContractor ? (
+                  <div className="flex justify-center p-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : allFieldManagers && allFieldManagers.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[500px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Field Manager</TableHead>
+                          <TableHead className="hidden sm:table-cell">Contractor</TableHead>
+                          <TableHead className="hidden md:table-cell">Current Sub-Contractor</TableHead>
+                          <TableHead>Assign To Sub-Contractor</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {allFieldManagers.map(fm => {
+                          const currentSubContractor = getSubContractorForFm(fm.id);
+                          return (
+                            <TableRow key={fm.id}>
+                              <TableCell>
+                                <div>
+                                  <div className="font-medium text-sm">{fm.full_name}</div>
+                                  <div className="text-xs text-muted-foreground">{fm.email}</div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell">
+                                <Badge variant="outline" className="text-xs">{fm.contractor_id}</Badge>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                {currentSubContractor ? (
+                                  <Badge variant="secondary" className="text-xs">{currentSubContractor.full_name}</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">Not assigned</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  value={currentSubContractor?.id || ""}
+                                  onValueChange={(subContractorId) => {
+                                    if (subContractorId && subContractorId !== currentSubContractor?.id) {
+                                      assignFmToSubContractorMutation.mutate({
+                                        fieldManagerId: fm.id,
+                                        subContractorId,
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                                    <SelectValue placeholder="Select sub-contractor..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {[...allSubContractors].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(sc => (
+                                      <SelectItem key={sc.id} value={sc.id}>
+                                        {sc.full_name}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>

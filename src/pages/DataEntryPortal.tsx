@@ -473,126 +473,134 @@ const DataEntryPortal = () => {
           </Card>
         )}
 
-        {/* Pending Flagged Issues (Collapsible with Chat UI) */}
-        {pendingFlaggedIssues.length > 0 && (
-          <Collapsible open={pendingIssuesOpen} onOpenChange={setPendingIssuesOpen}>
-            <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
-              <CardHeader className="pb-2">
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                      Your Flagged Issues ({totalFlaggedCount})
-                    </CardTitle>
-                    {pendingIssuesOpen ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </CollapsibleTrigger>
-              </CardHeader>
-              <CollapsibleContent>
-                <CardContent className="pb-4 space-y-4">
-                  {displayedIssues.map((issue: any) => {
-                    const isResolved = !!issue.issue_resolved_at;
-                    const isCompleted = issue.entry_status === "data_entry_complete";
-                    
-                    return (
-                      <div key={issue.id} className="p-4 rounded-lg bg-background border">
-                        {/* Header with file name and status */}
-                        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-medium text-sm">{issue.audits?.file_name}</span>
-                            {isResolved ? (
-                              <Badge className="bg-green-100 text-green-700 gap-1 text-xs">
-                                <CheckCircle className="h-3 w-3" />
-                                Resolved
-                              </Badge>
-                            ) : (
-                              <Badge variant="destructive" className="gap-1 text-xs">
-                                <Flag className="h-3 w-3" />
-                                Pending
-                              </Badge>
+        {/* Pending Flagged Issues (Collapsible with Chat UI) - Always show for all users */}
+        <Collapsible open={pendingIssuesOpen} onOpenChange={setPendingIssuesOpen}>
+          <Card className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20">
+            <CardHeader className="pb-2">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    Your Flagged Issues ({totalFlaggedCount})
+                  </CardTitle>
+                  {pendingIssuesOpen ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="pb-4 space-y-4">
+                {pendingFlaggedIssues.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Flag className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No flagged issues.</p>
+                    <p className="text-xs">Flag an interview when you encounter data entry problems.</p>
+                  </div>
+                ) : (
+                  <>
+                    {displayedIssues.map((issue: any) => {
+                      const isResolved = !!issue.issue_resolved_at;
+                      const isCompleted = issue.entry_status === "data_entry_complete";
+                      
+                      return (
+                        <div key={issue.id} className="p-4 rounded-lg bg-background border">
+                          {/* Header with file name and status */}
+                          <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-medium text-sm">{issue.audits?.file_name}</span>
+                              {isResolved ? (
+                                <Badge className="bg-green-100 text-green-700 gap-1 text-xs">
+                                  <CheckCircle className="h-3 w-3" />
+                                  Resolved
+                                </Badge>
+                              ) : (
+                                <Badge variant="destructive" className="gap-1 text-xs">
+                                  <Flag className="h-3 w-3" />
+                                  Pending
+                                </Badge>
+                              )}
+                            </div>
+                            {isResolved && !isCompleted && (
+                              <Button
+                                size="sm"
+                                onClick={() => markCompletedMutation.mutate(issue.id)}
+                                disabled={markCompletedMutation.isPending}
+                                className="gap-1"
+                              >
+                                {markCompletedMutation.isPending ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="h-3 w-3" />
+                                )}
+                                Mark Complete
+                              </Button>
                             )}
                           </div>
-                          {isResolved && !isCompleted && (
-                            <Button
-                              size="sm"
-                              onClick={() => markCompletedMutation.mutate(issue.id)}
-                              disabled={markCompletedMutation.isPending}
-                              className="gap-1"
-                            >
-                              {markCompletedMutation.isPending ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <CheckCircle2 className="h-3 w-3" />
-                              )}
-                              Mark Complete
-                            </Button>
-                          )}
-                        </div>
-                        
-                        {/* Chat-like conversation */}
-                        <div className="space-y-3">
-                          {/* User's message (right-aligned) */}
-                          {issue.issue_comment && (
-                            <div className="flex justify-end">
-                              <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2">
-                                <p className="text-sm">{issue.issue_comment}</p>
-                                <p className="text-xs opacity-70 mt-1 text-right">
-                                  You • {issue.flagged_at && format(new Date(issue.flagged_at), "MMM d, h:mm a")}
-                                </p>
-                              </div>
-                            </div>
-                          )}
                           
-                          {/* Manager's reply (left-aligned) */}
-                          {issue.resolve_comment && (
-                            <div className="flex justify-start">
-                              <div className="max-w-[85%] bg-muted rounded-2xl rounded-bl-md px-4 py-2">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <User className="h-3 w-3 text-muted-foreground" />
-                                  <span className="text-xs font-medium">{issue.resolverName || "Manager"}</span>
+                          {/* Chat-like conversation */}
+                          <div className="space-y-3">
+                            {/* User's message (right-aligned) */}
+                            {issue.issue_comment && (
+                              <div className="flex justify-end">
+                                <div className="max-w-[85%] bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2">
+                                  <p className="text-sm">{issue.issue_comment}</p>
+                                  <p className="text-xs opacity-70 mt-1 text-right">
+                                    You • {issue.flagged_at && format(new Date(issue.flagged_at), "MMM d, h:mm a")}
+                                  </p>
                                 </div>
-                                <p className="text-sm">{issue.resolve_comment}</p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {issue.issue_resolved_at && format(new Date(issue.issue_resolved_at), "MMM d, h:mm a")}
-                                </p>
                               </div>
-                            </div>
-                          )}
-                          
-                          {/* Awaiting response indicator */}
-                          {!isResolved && (
-                            <div className="flex justify-start">
-                              <div className="text-xs text-muted-foreground italic flex items-center gap-1">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                Awaiting response...
+                            )}
+                            
+                            {/* Manager's reply (left-aligned) */}
+                            {issue.resolve_comment && (
+                              <div className="flex justify-start">
+                                <div className="max-w-[85%] bg-muted rounded-2xl rounded-bl-md px-4 py-2">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <User className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-xs font-medium">{issue.resolverName || "Manager"}</span>
+                                  </div>
+                                  <p className="text-sm">{issue.resolve_comment}</p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {issue.issue_resolved_at && format(new Date(issue.issue_resolved_at), "MMM d, h:mm a")}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
+                            
+                            {/* Awaiting response indicator */}
+                            {!isResolved && (
+                              <div className="flex justify-start">
+                                <div className="text-xs text-muted-foreground italic flex items-center gap-1">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  Awaiting response...
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
+                      );
+                    })}
+                    
+                    {/* View More Link */}
+                    {hasMoreIssues && (
+                      <div className="text-center pt-2">
+                        <Link to="/data-entry/flagged-issues">
+                          <Button variant="outline" size="sm" className="gap-2">
+                            View All Issues
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        </Link>
                       </div>
-                    );
-                  })}
-                  
-                  {/* View More Link */}
-                  {hasMoreIssues && (
-                    <div className="text-center pt-2">
-                      <Link to="/data-entry/flagged-issues">
-                        <Button variant="outline" size="sm" className="gap-2">
-                          View All Issues
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
-                      </Link>
-                    </div>
-                  )}
-                </CardContent>
-              </CollapsibleContent>
-            </Card>
-          </Collapsible>
-        )}
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         {/* Stats Cards */}
         <Card>
