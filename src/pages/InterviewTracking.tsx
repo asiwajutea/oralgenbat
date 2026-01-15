@@ -122,15 +122,16 @@ const InterviewTracking = () => {
   const isSuperAdmin = userRole === 'super_admin';
   const isFieldManager = userRole === 'field_manager';
   const isContractor = userRole === 'contractor';
+  const isSubContractor = userRole === 'sub_contractor';
   
   // Use active_contractor_id if set, otherwise fall back to contractor_id
   const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
 
-  // Get field managers assigned to this admin
+  // Get field managers assigned to this admin or sub_contractor
   const { data: assignedFieldManagers = [] } = useQuery({
     queryKey: ["admin-field-managers", user?.id],
     queryFn: async () => {
-      if (!user?.id || !isAdmin) return [];
+      if (!user?.id || (!isAdmin && !isSubContractor)) return [];
       
       const { data, error } = await supabase
         .from("field_manager_admin_assignments")
@@ -141,7 +142,7 @@ const InterviewTracking = () => {
       if (error) throw error;
       return data || [];
     },
-    enabled: isAdmin && !!user?.id,
+    enabled: (isAdmin || isSubContractor) && !!user?.id,
   });
 
   // Get team codes for field managers
@@ -157,7 +158,7 @@ const InterviewTracking = () => {
       
       if (isFieldManager) {
         query = query.eq("field_manager_id", user.id);
-      } else if (isAdmin && assignedFieldManagers.length > 0) {
+      } else if ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) {
         const fmIds = assignedFieldManagers.map((fm: any) => fm.field_manager_id);
         query = query.in("field_manager_id", fmIds);
       }
@@ -166,7 +167,7 @@ const InterviewTracking = () => {
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user?.id && (isFieldManager || (isAdmin && assignedFieldManagers.length > 0) || isSuperAdmin),
+    enabled: !!user?.id && (isFieldManager || ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) || isSuperAdmin),
   });
 
   // Main interviews query - now fetches all statuses
@@ -263,7 +264,7 @@ const InterviewTracking = () => {
       } else if (isFieldManager && teamAssignments.length > 0) {
         const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
         results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
-      } else if (isAdmin && teamAssignments.length > 0) {
+      } else if ((isAdmin || isSubContractor) && teamAssignments.length > 0) {
         const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
         results = results.filter(r => (r as any).interviewer_code && assignedCodes.includes((r as any).interviewer_code));
       }
@@ -380,8 +381,8 @@ const InterviewTracking = () => {
 
   const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery;
 
-  // Check if user can resolve issues (field managers, admins, super admins)
-  const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin;
+  // Check if user can resolve issues (field managers, admins, super admins, sub_contractors)
+  const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin || isSubContractor;
 
   const handleViewIssue = (interview: TrackingInterview) => {
     setSelectedIssueInterview(interview);
@@ -532,7 +533,7 @@ const InterviewTracking = () => {
             <h1 className="text-2xl sm:text-3xl font-bold">Interview Tracking</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1">
               {isSuperAdmin ? "View all interviews" :
-               isAdmin ? "View interviews from your assigned field managers" :
+               (isAdmin || isSubContractor) ? "View interviews from your assigned field managers" :
                isFieldManager ? "View interviews from your team" :
                "View interviews from your contractor"}
             </p>
@@ -551,7 +552,7 @@ const InterviewTracking = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
           <Card>
             <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
               <div className="p-2 bg-primary/10 rounded-lg">
@@ -564,35 +565,57 @@ const InterviewTracking = () => {
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 flex items-center gap-3">
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
               <div className="p-2 bg-success/10 rounded-lg">
-                <CheckCircle className="h-5 w-5 text-success" />
+                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-success" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Passed</p>
-                <p className="text-2xl font-bold">{interviews.filter(i => i.status === "Audit Passed").length}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Passed</p>
+                <p className="text-lg sm:text-2xl font-bold">{interviews.filter(i => i.status === "Audit Passed").length}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 flex items-center gap-3">
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
               <div className="p-2 bg-destructive/10 rounded-lg">
-                <XCircle className="h-5 w-5 text-destructive" />
+                <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-destructive" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Failed</p>
-                <p className="text-2xl font-bold">{interviews.filter(i => i.status === "Audit Failed").length}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Failed</p>
+                <p className="text-lg sm:text-2xl font-bold">{interviews.filter(i => i.status === "Audit Failed").length}</p>
               </div>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Calendar className="h-5 w-5 text-purple-600" />
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <Flag className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Filtered Results</p>
-                <p className="text-2xl font-bold">{filteredInterviews.length}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Unresolved Issues</p>
+                <p className="text-lg sm:text-2xl font-bold text-red-600">{interviews.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at).length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <FolderOpen className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-muted-foreground">No Metadata</p>
+                <p className="text-lg sm:text-2xl font-bold text-orange-600">{interviews.filter(i => !i.has_metadata).length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-muted-foreground">Filtered</p>
+                <p className="text-lg sm:text-2xl font-bold">{filteredInterviews.length}</p>
               </div>
             </CardContent>
           </Card>
