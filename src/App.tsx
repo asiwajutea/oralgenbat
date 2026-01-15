@@ -40,6 +40,7 @@ import InterviewTracking from "./pages/InterviewTracking";
 import ZipDiagnostics from "./pages/ZipDiagnostics";
 import Achievements from "./pages/Achievements";
 import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
+import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
