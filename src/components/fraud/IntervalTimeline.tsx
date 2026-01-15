@@ -8,6 +8,8 @@ interface IntervalTimelineProps {
   closeIntervals: {
     interview1: string;
     interview2: string;
+    fileName1: string;
+    fileName2: string;
     minutesApart: number;
     date1: Date;
     date2: Date;
@@ -49,7 +51,7 @@ export const IntervalTimeline = ({ closeIntervals, score }: IntervalTimelineProp
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Interviews</TableHead>
                     <TableHead>Time Gap</TableHead>
                     <TableHead>Severity</TableHead>
                   </TableRow>
@@ -58,16 +60,25 @@ export const IntervalTimeline = ({ closeIntervals, score }: IntervalTimelineProp
                   {closeIntervals.map((interval, idx) => (
                     <TableRow key={idx}>
                       <TableCell>
-                        <div className="text-sm">
-                          {format(interval.date1, 'MMM d, yyyy')}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {format(interval.date1, 'HH:mm')} → {format(interval.date2, 'HH:mm')}
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium truncate max-w-[200px]" title={interval.fileName1}>
+                            {interval.fileName1?.replace('.pdf', '') || 'Unknown'}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {format(interval.date1, 'MMM d')} @ {format(interval.date1, 'HH:mm')}
+                          </div>
+                          <div className="text-xs text-muted-foreground">↓</div>
+                          <div className="text-sm font-medium truncate max-w-[200px]" title={interval.fileName2}>
+                            {interval.fileName2?.replace('.pdf', '') || 'Unknown'}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {format(interval.date2, 'MMM d')} @ {format(interval.date2, 'HH:mm')}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <span className="font-medium">
-                          {interval.minutesApart.toFixed(0)} minutes
+                          {interval.minutesApart.toFixed(0)} min
                         </span>
                       </TableCell>
                       <TableCell>
