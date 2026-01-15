@@ -37,12 +37,12 @@ export const AuditPagination = ({
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalCount);
 
-  // Generate page numbers to display
+  // Generate page numbers to display (compact: 1, 2, ..., last)
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
     
-    if (totalPages <= 7) {
-      // Show all pages if 7 or fewer
+    if (totalPages <= 4) {
+      // Show all pages if 4 or fewer
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
@@ -50,15 +50,15 @@ export const AuditPagination = ({
       // Always show first page
       pages.push(1);
       
-      if (currentPage <= 3) {
-        // Near start: 1, 2, 3, 4, ..., last
-        pages.push(2, 3, 4, "ellipsis", totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        // Near end: 1, ..., last-3, last-2, last-1, last
-        pages.push("ellipsis", totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      if (currentPage <= 2) {
+        // Near start: 1, 2, ..., last
+        pages.push(2, "ellipsis", totalPages);
+      } else if (currentPage >= totalPages - 1) {
+        // Near end: 1, ..., last-1, last
+        pages.push("ellipsis", totalPages - 1, totalPages);
       } else {
-        // Middle: 1, ..., current-1, current, current+1, ..., last
-        pages.push("ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages);
+        // Middle: 1, ..., current, ..., last
+        pages.push("ellipsis", currentPage, "ellipsis", totalPages);
       }
     }
     
