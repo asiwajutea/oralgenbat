@@ -47,6 +47,9 @@ const queryClient = new QueryClient({
       refetchOnReconnect: false,
       refetchOnMount: false, // Don't refetch when component mounts
       staleTime: Infinity, // Data never goes stale - only manual refresh
+      refetchInterval: false, // Disable periodic refetching
+      gcTime: 1000 * 60 * 30, // Keep data in cache for 30 minutes
+      retry: 1, // Reduce retries to avoid perceived reloads
     },
   },
 });

@@ -545,11 +545,12 @@ const InterviewTracking = () => {
       }
 
       toast({
-        title: "Metadata uploaded",
-        description: "The metadata ZIP has been uploaded and is being processed.",
+        title: "Metadata uploaded successfully",
+        description: "The metadata ZIP has been uploaded and processed. Refresh the page to see updates.",
       });
 
-      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      // Don't invalidate queries immediately - let user stay on current view
+      // They can manually refresh or navigate away and back
     } catch (error: any) {
       console.error("Upload error:", error);
       toast({
