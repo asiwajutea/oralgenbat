@@ -17,7 +17,8 @@ import {
   AlertTriangle,
   Clock,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  BarChart3
 } from "lucide-react";
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -175,10 +176,16 @@ const DataEntryClerkDashboard = () => {
                 </p>
               </div>
             </div>
-            <Button onClick={() => navigate("/data-entry")} size="lg" className="gap-2">
-              Open Portal
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => navigate("/my-analytics")} className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                My Analytics
+              </Button>
+              <Button onClick={() => navigate("/data-entry")} size="lg" className="gap-2">
+                Open Portal
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

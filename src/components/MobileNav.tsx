@@ -122,6 +122,10 @@ const MobileNav = () => {
             {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin || isSubContractor) && (
               <NavItem to="/data-entry" icon={Database}>Data Entry</NavItem>
             )}
+
+            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager') && (
+              <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
+            )}
             
             {userRole === 'auditor' && (
               <NavItem to="/review-history" icon={History}>My Reviews</NavItem>

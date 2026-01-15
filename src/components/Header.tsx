@@ -69,6 +69,11 @@ const Header = () => {
               Data Entry
             </NavLink>
           )}
+          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager') && (
+            <NavLink to="/my-analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+              My Analytics
+            </NavLink>
+          )}
           {userRole === 'sub_contractor' && (
             <>
               <NavLink to="/subcontractor-team-management" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
