@@ -122,7 +122,7 @@ const MobileNav = () => {
               <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>
             )}
             
-            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin || isSubContractor) && (
+            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && (
               <NavItem to="/data-entry" icon={Database}>Data Entry</NavItem>
             )}
 
@@ -139,7 +139,6 @@ const MobileNav = () => {
                 <Separator className="my-3" />
                 <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sub-contractor</p>
                 <NavItem to="/subcontractor-team-management" icon={Users}>Team Management</NavItem>
-                <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
                 <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
               </>
             )}
