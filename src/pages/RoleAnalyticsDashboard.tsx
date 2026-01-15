@@ -104,11 +104,6 @@ const RoleAnalyticsDashboard = () => {
     return <Navigate to="/analytics" replace />;
   }
 
-  // Redirect data_entry to home
-  if (scope?.scopeType === 'data_entry') {
-    return <Navigate to="/" replace />;
-  }
-
   const isLoading = scopeLoading || statsLoading;
   const showFraudSection = scope?.scopeType && !['auditor', 'qa_manager', 'data_entry'].includes(scope.scopeType);
   const showAgentTable = scope?.scopeType && !['auditor', 'qa_manager', 'data_entry'].includes(scope.scopeType);
@@ -127,6 +122,8 @@ const RoleAnalyticsDashboard = () => {
         return 'Viewing your personal review statistics';
       case 'qa_manager':
         return 'Viewing quality metrics and trends';
+      case 'data_entry':
+        return 'Viewing your data entry performance';
       default:
         return '';
     }
@@ -313,6 +310,38 @@ const RoleAnalyticsDashboard = () => {
                 <div className="text-center p-4 bg-muted rounded-lg">
                   <p className="text-2xl font-bold">{(stats?.reAuditRate || 0).toFixed(1)}%</p>
                   <p className="text-sm text-muted-foreground">Re-Audit Rate</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Data Entry Section */}
+        {scope?.scopeType === 'data_entry' && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Your Data Entry Performance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-2xl font-bold text-green-600">{stats?.passedCount || 0}</p>
+                  <p className="text-sm text-muted-foreground">Interviews Completed</p>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-2xl font-bold">{stats?.totalInterviews || 0}</p>
+                  <p className="text-sm text-muted-foreground">Total Processed</p>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-2xl font-bold text-blue-600">{stats?.pendingCount || 0}</p>
+                  <p className="text-sm text-muted-foreground">In Progress</p>
+                </div>
+                <div className="text-center p-4 bg-muted rounded-lg">
+                  <p className="text-2xl font-bold">{(stats?.passRate || 0).toFixed(0)}%</p>
+                  <p className="text-sm text-muted-foreground">Completion Rate</p>
                 </div>
               </div>
             </CardContent>

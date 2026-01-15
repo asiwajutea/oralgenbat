@@ -245,10 +245,41 @@ export const useRoleSummaryStats = (scope: RoleAnalyticsScope | undefined) => {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["role-summary-stats", scope],
+    queryKey: ["role-summary-stats", scope, user?.id],
     queryFn: async (): Promise<RoleSummaryStats> => {
       if (!scope) {
         return { totalInterviews: 0, passedCount: 0, failedCount: 0, pendingCount: 0, reAuditCount: 0, passRate: 0, reAuditRate: 0 };
+      }
+
+      // Special handling for data_entry scope - query interview_assignments
+      if (scope.scopeType === 'data_entry' && user?.id) {
+        // Get all assignments completed by this user
+        const { data: completedAssignments } = await supabase
+          .from("interview_assignments")
+          .select("id, audit_id, entry_status, entry_completed_at")
+          .eq("entry_completed_by", user.id);
+
+        // Get in-progress assignments (any that aren't completed)
+        const { data: inProgressAssignments } = await supabase
+          .from("interview_assignments")
+          .select("id")
+          .neq("entry_status", "data_entry_complete")
+          .limit(100);
+
+        const completedCount = completedAssignments?.filter(a => a.entry_status === "data_entry_complete").length || 0;
+        const totalProcessed = completedAssignments?.length || 0;
+        const pendingCount = inProgressAssignments?.length || 0;
+        const completionRate = totalProcessed > 0 ? (completedCount / totalProcessed) * 100 : 0;
+
+        return {
+          totalInterviews: totalProcessed,
+          passedCount: completedCount,
+          failedCount: 0,
+          pendingCount: pendingCount,
+          reAuditCount: 0,
+          passRate: completionRate,
+          reAuditRate: 0
+        };
       }
 
       let query = supabase
