@@ -210,7 +210,7 @@ export const RolePerformanceTable = ({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => navigate(`/analytics/agent-fraud/${agent.interviewer_code}`)}
+                      onClick={() => navigate(`/my-analytics/agent/${agent.interviewer_code}`)}
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Button>

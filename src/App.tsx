@@ -281,6 +281,16 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <RoleAnalyticsDashboard />
+              </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-analytics/agent/:interviewerCode"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AgentFraudAnalysis />
                   </Layout>
                 </ProtectedRoute>
               }
