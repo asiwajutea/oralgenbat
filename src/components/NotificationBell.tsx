@@ -28,6 +28,10 @@ const getNotificationIcon = (type: string) => {
       return <Trophy className="h-4 w-4 text-yellow-500" />;
     case "inactivity":
       return <Clock className="h-4 w-4 text-muted-foreground" />;
+    case "issue_resolved":
+      return <Check className="h-4 w-4 text-green-500" />;
+    case "flagged_issue":
+      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     default:
       return <Bell className="h-4 w-4 text-muted-foreground" />;
   }
@@ -51,7 +55,11 @@ const NotificationBell = () => {
     }
     
     // Navigate based on notification type
-    if (notification.metadata?.audit_id) {
+    if (notification.type === "issue_resolved" || notification.type === "flagged_issue") {
+      // Navigate to data entry page for issue-related notifications
+      navigate("/data-entry");
+      setOpen(false);
+    } else if (notification.metadata?.audit_id) {
       navigate(`/review/${notification.metadata.audit_id}`);
       setOpen(false);
     } else if (notification.type === "milestone") {

@@ -28,6 +28,8 @@ export const DataEntryRoute = ({ children }: DataEntryRouteProps) => {
 
   // Allow data entry clerks, QA managers, admins, super admins, and sub_contractors
   const allowedRoles = ['data_entry_clerk', 'quality_assurance_manager', 'admin', 'super_admin', 'sub_contractor'];
+  
+  // Check if user's role is allowed
   if (!allowedRoles.includes(userRole || '')) {
     return <Navigate to="/" replace />;
   }
