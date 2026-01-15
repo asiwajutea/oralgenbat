@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditPagination } from "@/components/AuditPagination";
+import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Lock, Unlock, RefreshCw, Loader2, Clock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -56,6 +58,7 @@ interface LockedInterview {
 
 const LockedInterviews = () => {
   const queryClient = useQueryClient();
+  const isOnline = useOnlineStatus();
   const [filter, setFilter] = useState<"all" | "active" | "expired">("active");
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const [confirmUnlock, setConfirmUnlock] = useState<LockedInterview | null>(null);
@@ -212,7 +215,9 @@ const LockedInterviews = () => {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {!isOnline ? (
+              <OfflineTablePlaceholder />
+            ) : isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>

@@ -9,6 +9,7 @@ import { CombinedUploadDialog } from "@/components/CombinedUploadDialog";
 import { AuditPagination } from "@/components/AuditPagination";
 import { AuditorStatsCard } from "@/components/AuditorStatsCard";
 import { AdminStatsCard } from "@/components/AdminStatsCard";
+import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,6 +20,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 interface Audit {
   id: string;
@@ -39,6 +41,7 @@ interface Audit {
 
 const Index = () => {
   const { userRole, profile } = useAuth();
+  const isOnline = useOnlineStatus();
   const [searchParams] = useSearchParams();
   const searchFromUrl = searchParams.get("search") || "";
   
@@ -323,7 +326,9 @@ const Index = () => {
           {/* Auditor Stats Cards */}
           <AuditorStatsCard />
           
-          {isLoading ? (
+          {!isOnline ? (
+            <OfflineTablePlaceholder />
+          ) : isLoading ? (
             <div className="flex items-center justify-center h-64">
               <p className="text-muted-foreground">Loading audits...</p>
             </div>

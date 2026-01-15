@@ -11,6 +11,8 @@ import { AuditPagination } from "@/components/AuditPagination";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
 import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { jsPDF } from "jspdf";
@@ -49,6 +51,7 @@ const STORAGE_KEYS = {
 };
 
 const AdminReviewHistory = () => {
+  const isOnline = useOnlineStatus();
   const [currentPage, setCurrentPage] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.currentPage);
     return saved ? parseInt(saved, 10) : 1;
