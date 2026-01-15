@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditPagination } from "@/components/AuditPagination";
+import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
 import { History, Search, Clock, MessageSquare, ExternalLink } from "lucide-react";
 
@@ -28,6 +30,7 @@ interface ReviewedAudit {
 const ReviewHistory = () => {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -150,88 +153,92 @@ const ReviewHistory = () => {
       </div>
 
       {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          {data?.audits.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No reviews found
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">SN</TableHead>
-                    <TableHead>Interview ID</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Review Date</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Re-audit</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data?.audits.map((audit, index) => (
-                    <TableRow
-                      key={audit.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/review/${audit.id}`)}
-                    >
-                      <TableCell className="font-medium">
-                        {(currentPage - 1) * itemsPerPage + index + 1}
-                      </TableCell>
-                      <TableCell className="font-medium font-mono text-sm">
-                        {audit.file_name}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={audit.status === "Audit Passed" ? "default" : "destructive"}
-                        >
-                          {audit.status === "Audit Passed" ? "Passed" : "Failed"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {audit.reviewed_at && format(new Date(audit.reviewed_at), "PPp")}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {formatDuration(audit.review_duration_seconds)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {audit.is_re_audit ? (
-                          <Badge variant="outline" className="text-xs">
-                            #{audit.re_audit_count}
-                          </Badge>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell className="max-w-[200px]">
-                        {audit.review_comment || audit.action_plan ? (
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <MessageSquare className="h-3 w-3 flex-shrink-0" />
-                            <span className="truncate text-xs">
-                              {audit.review_comment || audit.action_plan}
-                            </span>
-                          </div>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                      </TableCell>
+      {!isOnline ? (
+        <OfflineTablePlaceholder />
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            {data?.audits.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                No reviews found
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">SN</TableHead>
+                      <TableHead>Interview ID</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Review Date</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Re-audit</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {data?.audits.map((audit, index) => (
+                      <TableRow
+                        key={audit.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => navigate(`/review/${audit.id}`)}
+                      >
+                        <TableCell className="font-medium">
+                          {(currentPage - 1) * itemsPerPage + index + 1}
+                        </TableCell>
+                        <TableCell className="font-medium font-mono text-sm">
+                          {audit.file_name}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={audit.status === "Audit Passed" ? "default" : "destructive"}
+                          >
+                            {audit.status === "Audit Passed" ? "Passed" : "Failed"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {audit.reviewed_at && format(new Date(audit.reviewed_at), "PPp")}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            {formatDuration(audit.review_duration_seconds)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {audit.is_re_audit ? (
+                            <Badge variant="outline" className="text-xs">
+                              #{audit.re_audit_count}
+                            </Badge>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell className="max-w-[200px]">
+                          {audit.review_comment || audit.action_plan ? (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <MessageSquare className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate text-xs">
+                                {audit.review_comment || audit.action_plan}
+                              </span>
+                            </div>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pagination */}
       <AuditPagination

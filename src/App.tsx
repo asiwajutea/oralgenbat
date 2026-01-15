@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PresenceProvider } from "@/components/PresenceProvider";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import FullAdminRoute from "@/components/FullAdminRoute";
@@ -61,6 +63,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TooltipProvider>
+        <OfflineIndicator />
         <Toaster />
         <Sonner />
         <BrowserRouter>
@@ -299,6 +302,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
             </PresenceProvider>
+            <PWAInstallPrompt />
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

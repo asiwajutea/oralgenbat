@@ -48,6 +48,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AuditPagination } from "@/components/AuditPagination";
+import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 interface ZipDiagnosticResult {
   id: string;
@@ -65,6 +67,7 @@ type SortOrder = "asc" | "desc";
 
 const ZipDiagnostics = () => {
   const queryClient = useQueryClient();
+  const isOnline = useOnlineStatus();
   const [selectedAudit, setSelectedAudit] = useState<ZipDiagnosticResult | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   
@@ -601,7 +604,9 @@ const ZipDiagnostics = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {!isOnline ? (
+              <OfflineTablePlaceholder />
+            ) : isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
