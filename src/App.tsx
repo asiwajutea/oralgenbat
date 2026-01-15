@@ -15,6 +15,7 @@ import { ContractorRoute } from "@/components/ContractorRoute";
 import { ApproverRoute } from "@/components/ApproverRoute";
 import { DataEntryRoute } from "@/components/DataEntryRoute";
 import { TrackingRoute } from "@/components/TrackingRoute";
+import { SubContractorRoute } from "@/components/SubContractorRoute";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import Home from "./pages/Home";
@@ -38,6 +39,7 @@ import FlaggedIssuesHistory from "./pages/FlaggedIssuesHistory";
 import InterviewTracking from "./pages/InterviewTracking";
 import ZipDiagnostics from "./pages/ZipDiagnostics";
 import Achievements from "./pages/Achievements";
+import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -249,6 +251,16 @@ const App = () => (
                       <InterviewTracking />
                     </Layout>
                   </TrackingRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/subcontractor-team-management"
+              element={
+                <ProtectedRoute>
+                  <SubContractorRoute>
+                    <SubContractorTeamManagement />
+                  </SubContractorRoute>
                 </ProtectedRoute>
               }
             />

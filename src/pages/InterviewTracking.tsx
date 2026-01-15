@@ -147,11 +147,11 @@ const InterviewTracking = () => {
   // Use active_contractor_id if set, otherwise fall back to contractor_id
   const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
 
-  // Get field managers assigned to this admin or sub_contractor
-  const { data: assignedFieldManagers = [] } = useQuery({
+  // Get field managers assigned to this admin (uses field_manager_admin_assignments)
+  const { data: adminAssignedFMs = [] } = useQuery({
     queryKey: ["admin-field-managers", user?.id],
     queryFn: async () => {
-      if (!user?.id || (!isAdmin && !isSubContractor)) return [];
+      if (!user?.id || !isAdmin) return [];
       
       const { data, error } = await supabase
         .from("field_manager_admin_assignments")
@@ -162,8 +162,29 @@ const InterviewTracking = () => {
       if (error) throw error;
       return data || [];
     },
-    enabled: (isAdmin || isSubContractor) && !!user?.id,
+    enabled: isAdmin && !!user?.id,
   });
+
+  // Get field managers assigned to this sub-contractor (uses field_manager_subcontractor_assignments)
+  const { data: subContractorAssignedFMs = [] } = useQuery({
+    queryKey: ["subcontractor-field-managers", user?.id],
+    queryFn: async () => {
+      if (!user?.id || !isSubContractor) return [];
+      
+      const { data, error } = await supabase
+        .from("field_manager_subcontractor_assignments")
+        .select("field_manager_id")
+        .eq("sub_contractor_id", user.id)
+        .eq("is_active", true);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: isSubContractor && !!user?.id,
+  });
+
+  // Combine assigned field managers based on role
+  const assignedFieldManagers = isAdmin ? adminAssignedFMs : isSubContractor ? subContractorAssignedFMs : [];
 
   // Get team codes for field managers
   const { data: teamAssignments = [] } = useQuery({
@@ -280,13 +301,24 @@ const InterviewTracking = () => {
       
       // Apply role-based filtering
       if (isContractor && effectiveContractorId) {
+        // Contractors see all interviews for their active contractor ID
         results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
-      } else if (isFieldManager && teamAssignments.length > 0) {
-        const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
-      } else if ((isAdmin || isSubContractor) && teamAssignments.length > 0) {
+      } else if (isSubContractor && effectiveContractorId) {
+        // Sub-contractors see interviews from their assigned FMs AND matching their active contractor ID
+        const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
+        results = results.filter(r => 
+          (r as any).contractor_id === effectiveContractorId &&
+          (r as any).interviewer_code && 
+          assignedCodes.includes((r as any).interviewer_code)
+        );
+      } else if (isAdmin && teamAssignments.length > 0) {
+        // Admins see interviews from their assigned FMs
         const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
         results = results.filter(r => (r as any).interviewer_code && assignedCodes.includes((r as any).interviewer_code));
+      } else if (isFieldManager && teamAssignments.length > 0) {
+        // Field managers see only their team's interviews
+        const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
+        results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
       }
       // Super admin sees all
       

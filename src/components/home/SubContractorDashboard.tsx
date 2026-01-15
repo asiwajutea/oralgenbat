@@ -234,6 +234,17 @@ const SubContractorDashboard = () => {
             <Button 
               variant="outline" 
               className="w-full justify-between"
+              onClick={() => navigate("/subcontractor-team-management")}
+            >
+              <span className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Team Management
+              </span>
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-between"
               onClick={() => navigate("/tracking")}
             >
               <span className="flex items-center gap-2">
