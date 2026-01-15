@@ -5,6 +5,7 @@ import { subWeeks, parseISO } from "date-fns";
 export interface InterviewData {
   id: string;
   audit_id: string;
+  file_name: string;
   interview_date: string;
   interview_time: string;
   total_names: number | null;
@@ -17,7 +18,7 @@ export interface InterviewData {
 
 export interface FraudIndicators {
   // Interview Interval Analysis
-  closeIntervals: { interview1: string; interview2: string; minutesApart: number; date1: Date; date2: Date }[];
+  closeIntervals: { interview1: string; interview2: string; fileName1: string; fileName2: string; minutesApart: number; date1: Date; date2: Date }[];
   intervalFraudScore: number;
   
   // Audio Duration Analysis
@@ -79,6 +80,8 @@ const calculateIntervalFraudScore = (interviews: InterviewData[]): {
       closeIntervals.push({
         interview1: sorted[i].id,
         interview2: sorted[i + 1].id,
+        fileName1: sorted[i].file_name,
+        fileName2: sorted[i + 1].file_name,
         minutesApart: diff,
         date1: sorted[i].timestamp,
         date2: sorted[i + 1].timestamp,
@@ -316,6 +319,7 @@ export const useCriticalAgentsFraud = () => {
             return {
               id: m.id,
               audit_id: m.audit_id!,
+              file_name: (m.audits as any).file_name,
               interview_date: m.interview_date,
               interview_time: m.interview_time,
               total_names: m.total_names,
@@ -449,6 +453,7 @@ export const useFraudAnalytics = (interviewerCode: string) => {
         return {
           id: m.id,
           audit_id: m.audit_id!,
+          file_name: (m.audits as any).file_name,
           interview_date: m.interview_date,
           interview_time: m.interview_time,
           total_names: m.total_names,

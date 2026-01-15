@@ -2,7 +2,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useFraudAnalytics } from "@/hooks/useFraudAnalytics";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download } from "lucide-react";
 import { FraudGradeBadge } from "@/components/fraud/FraudGradeBadge";
@@ -46,39 +45,34 @@ const AgentFraudAnalysis = () => {
 
   if (profileLoading) {
     return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </Layout>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     );
   }
 
   if (!fraudProfile) {
     return (
-      <Layout>
-        <div className="container mx-auto p-6">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-4">Agent Not Found</h2>
-            <Button onClick={() => navigate('/analytics')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Analytics
-            </Button>
-          </div>
+      <div className="container mx-auto p-6">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Agent Not Found</h2>
+          <Button onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
         </div>
-      </Layout>
+      </div>
     );
   }
 
   return (
-    <Layout>
-      <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <Button variant="ghost" onClick={() => navigate('/analytics')} className="mb-2">
+            <Button variant="ghost" onClick={() => navigate(-1)} className="mb-2">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Analytics
+              Back
             </Button>
             <h1 className="text-3xl font-bold">Fraud Analysis Report</h1>
             <div className="text-muted-foreground mt-1">
@@ -210,7 +204,6 @@ const AgentFraudAnalysis = () => {
           </CardContent>
         </Card>
       </div>
-    </Layout>
   );
 };
 
