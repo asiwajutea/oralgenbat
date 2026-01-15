@@ -31,6 +31,9 @@ export interface Assignment {
   notes: string | null;
   typing_status: 'typing_in_progress' | 'typing_completed';
   typing_completed_at: string | null;
+  entry_status: string | null;
+  entry_completed_at: string | null;
+  entry_completed_by: string | null;
   audit?: {
     id: string;
     file_name: string;

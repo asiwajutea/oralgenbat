@@ -180,6 +180,9 @@ const DataEntryPortal = () => {
       queryClient.invalidateQueries({ queryKey: ["data-entry-search"] });
       queryClient.invalidateQueries({ queryKey: ["completions"] });
       queryClient.invalidateQueries({ queryKey: ["data-entry-stats"] });
+      // Also invalidate team assignments and tracking to reflect the status change
+      queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to update status");

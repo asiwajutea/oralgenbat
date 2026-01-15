@@ -21,7 +21,8 @@ import {
   XCircle,
   FileCheck,
   FolderOpen,
-  Upload
+  Upload,
+  ChevronDown
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -43,6 +44,13 @@ import { Label } from "@/components/ui/label";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { AuditPagination } from "@/components/AuditPagination";
 import { toast } from "@/hooks/use-toast";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface TrackingInterview {
   id: string;
@@ -61,11 +69,13 @@ interface TrackingInterview {
   has_pdf: boolean;
   team_assigned: boolean;
   team_name: string | null;
+  entry_status: string | null;
 }
 
 const InterviewTracking = () => {
   const { user, userRole, profile } = useAuth();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<string>("reviewed_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -169,10 +179,10 @@ const InterviewTracking = () => {
         .select("audit_id, contractor_id, interviewer_code, field_manager, total_names, interviewee_name, interview_date")
         .in("audit_id", auditIds);
       
-      // Get interview assignments
+      // Get interview assignments with entry status
       const { data: assignments } = await supabase
         .from("interview_assignments")
-        .select("audit_id, team_id, data_entry_teams(name)")
+        .select("audit_id, team_id, entry_status, data_entry_teams(name)")
         .in("audit_id", auditIds);
       
       // Create maps
@@ -200,6 +210,7 @@ const InterviewTracking = () => {
           has_pdf: !!audit.file_url,
           team_assigned: !!assignment,
           team_name: (assignment?.data_entry_teams as any)?.name || null,
+          entry_status: assignment?.entry_status || null,
           // For filtering
           contractor_id: meta?.contractor_id || null,
           interviewer_code: meta?.interviewer_code || null,
@@ -580,7 +591,7 @@ const InterviewTracking = () => {
           </Card>
         )}
 
-        {/* Table */}
+        {/* Table/Mobile View */}
         <Card>
           <CardContent className="p-0">
             {isLoading ? (
@@ -595,7 +606,158 @@ const InterviewTracking = () => {
                   {hasActiveFilters ? "Try adjusting your filters" : "No interviews match your access level"}
                 </p>
               </div>
+            ) : isMobile ? (
+              /* Mobile Accordion View */
+              <div className="divide-y">
+                <Accordion type="single" collapsible className="w-full">
+                  {paginatedInterviews.map((interview, index) => (
+                    <AccordionItem key={interview.id} value={interview.id} className="border-0 border-b">
+                      <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                        <div className="flex flex-col items-start gap-1 text-left flex-1 mr-2">
+                          <div className="flex items-center gap-2 w-full">
+                            <span className="font-mono text-sm font-medium truncate max-w-[200px]">
+                              {interview.file_name}
+                            </span>
+                            {interview.status === "Audit Failed" && (
+                              <Badge variant="destructive" className="h-5 text-[10px]">Failed</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {interview.team_assigned ? (
+                              interview.entry_status === 'data_entry_complete' ? (
+                                <Badge className="h-5 text-[10px] bg-green-500 text-white">
+                                  {interview.team_name || "Assigned"}
+                                </Badge>
+                              ) : (
+                                <Badge className="h-5 text-[10px] bg-yellow-400 text-yellow-900">
+                                  {interview.team_name || "Assigned"}
+                                </Badge>
+                              )
+                            ) : (
+                              <Badge variant="outline" className="h-5 text-[10px] text-muted-foreground">
+                                Not Assigned
+                              </Badge>
+                            )}
+                            {getStatusBadge(interview.status)}
+                          </div>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="px-4 pb-4">
+                        <div className="space-y-3">
+                          {/* Interview Details */}
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <p className="text-muted-foreground text-xs">Field Manager</p>
+                              <p className="font-medium">{interview.field_manager || "-"}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground text-xs">Total Names</p>
+                              <p className="font-medium">{interview.total_names || "-"}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground text-xs">Interviewee</p>
+                              <p className="font-medium truncate">{interview.interviewee_name || "-"}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground text-xs">Date</p>
+                              <p className="font-medium">{interview.interview_date || "-"}</p>
+                            </div>
+                          </div>
+                          
+                          {/* Artifacts Status */}
+                          <div>
+                            <p className="text-muted-foreground text-xs mb-1">Artifacts</p>
+                            {interview.has_pdf && interview.has_metadata ? (
+                              <Badge variant="outline" className="gap-1 text-success border-success">
+                                <CheckCircle className="h-3 w-3" />
+                                Complete
+                              </Badge>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                {!interview.has_pdf && (
+                                  <Badge variant="destructive" className="gap-1">
+                                    <FileCheck className="h-3 w-3" />
+                                    PDF
+                                  </Badge>
+                                )}
+                                {!interview.has_metadata && (
+                                  <Badge variant="destructive" className="gap-1">
+                                    <FolderOpen className="h-3 w-3" />
+                                    Meta
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 pt-2">
+                            {interview.status === "Audit Failed" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewFailed(interview)}
+                                className="gap-1"
+                              >
+                                <Eye className="h-3 w-3" />
+                                View Failed
+                              </Button>
+                            )}
+                            {!interview.has_metadata && (
+                              <>
+                                <input
+                                  type="file"
+                                  accept=".zip"
+                                  className="hidden"
+                                  ref={(el) => { fileInputRefs.current[interview.id] = el; }}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      handleMetadataUpload(interview.id, interview.file_name, file);
+                                    }
+                                    e.target.value = '';
+                                  }}
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => triggerFileInput(interview.id)}
+                                  disabled={uploadingId === interview.id}
+                                  className="gap-1"
+                                >
+                                  {uploadingId === interview.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Upload className="h-3 w-3" />
+                                  )}
+                                  Upload Metadata
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+                
+                {/* Pagination */}
+                <div className="px-4 py-3">
+                  <AuditPagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalCount={sortedInterviews.length}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(newValue) => {
+                      setItemsPerPage(newValue);
+                      setCurrentPage(1);
+                    }}
+                  />
+                </div>
+              </div>
             ) : (
+              /* Desktop Table View */
               <>
                 <Table>
                   <TableHeader>
@@ -652,10 +814,17 @@ const InterviewTracking = () => {
                         <TableCell>{getStatusBadge(interview.status)}</TableCell>
                         <TableCell>
                           {interview.team_assigned ? (
-                            <Badge variant="outline" className="gap-1 text-success border-success">
-                              <Users className="h-3 w-3" />
-                              {interview.team_name || "Assigned"}
-                            </Badge>
+                            interview.entry_status === 'data_entry_complete' ? (
+                              <Badge className="gap-1 bg-green-500 text-white border-green-600">
+                                <Users className="h-3 w-3" />
+                                {interview.team_name || "Assigned"}
+                              </Badge>
+                            ) : (
+                              <Badge className="gap-1 bg-yellow-400 text-yellow-900 border-yellow-500">
+                                <Users className="h-3 w-3" />
+                                {interview.team_name || "Assigned"}
+                              </Badge>
+                            )
                           ) : (
                             <Badge variant="outline" className="text-muted-foreground">
                               Not Assigned

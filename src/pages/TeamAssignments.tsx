@@ -420,9 +420,9 @@ const TeamAssignments = () => {
         assignedNames={assignedNames}
       />
 
-      {/* Export History Accordion - At Top */}
+      {/* Export History Accordion - At Top (collapsed by default) */}
       {exportBatches.length > 0 && (
-        <Accordion type="single" collapsible defaultValue="export-history">
+        <Accordion type="single" collapsible>
           <AccordionItem value="export-history" className="border rounded-lg">
             <AccordionTrigger className="px-4 py-3 hover:no-underline">
               <div className="flex items-center gap-2">
@@ -708,28 +708,17 @@ const TeamAssignments = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Select
-                            value={assignment.typing_status}
-                            onValueChange={(v) => handleTypingStatusChange(assignment, v as 'typing_in_progress' | 'typing_completed')}
-                          >
-                            <SelectTrigger className="w-[140px] h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="typing_in_progress">
-                                <div className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  In Progress
-                                </div>
-                              </SelectItem>
-                              <SelectItem value="typing_completed">
-                                <div className="flex items-center gap-1">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                  Completed
-                                </div>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
+                          {assignment.entry_status === 'data_entry_complete' ? (
+                            <Badge className="bg-success text-success-foreground gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Completed
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="gap-1 text-orange-600 border-orange-300">
+                              <Clock className="h-3 w-3" />
+                              In Progress
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm">
                           {assignment.assigned_at &&
