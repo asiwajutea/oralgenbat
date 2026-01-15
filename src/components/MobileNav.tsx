@@ -131,6 +131,7 @@ const MobileNav = () => {
               <>
                 <Separator className="my-3" />
                 <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sub-contractor</p>
+                <NavItem to="/subcontractor-team-management" icon={Users}>Team Management</NavItem>
                 <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
                 <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
               </>
