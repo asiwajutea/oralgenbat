@@ -89,8 +89,8 @@ export const AuditPagination = ({
         </Select>
       </div>
       
-      <Pagination>
-        <PaginationContent>
+      <Pagination className="mx-0 flex-1 justify-end">
+        <PaginationContent className="flex-wrap">
           <PaginationItem>
             <PaginationPrevious
               onClick={() => currentPage > 1 && onPageChange(currentPage - 1)}
