@@ -404,12 +404,14 @@ export const useResolveIssue = () => {
   const { session } = useAuth();
 
   return useMutation({
-    mutationFn: async (assignmentId: string) => {
+    mutationFn: async ({ assignmentId, comment }: { assignmentId: string; comment?: string }) => {
       const { error } = await supabase
         .from("interview_assignments")
         .update({
           issue_resolved_at: new Date().toISOString(),
           issue_resolved_by: session?.user?.id,
+          resolve_comment: comment || null,
+          is_flagged_for_issue: false, // Reset flag status
         })
         .eq("id", assignmentId);
 
@@ -418,6 +420,7 @@ export const useResolveIssue = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["interview-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["resolved-issues"] });
       toast.success("Issue marked as resolved");
     },
     onError: (error) => {

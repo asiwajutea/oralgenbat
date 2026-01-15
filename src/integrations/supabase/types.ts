@@ -325,6 +325,7 @@ export type Database = {
           issue_resolved_at: string | null
           issue_resolved_by: string | null
           notes: string | null
+          resolve_comment: string | null
           team_id: string
           total_names: number | null
           typing_completed_at: string | null
@@ -347,6 +348,7 @@ export type Database = {
           issue_resolved_at?: string | null
           issue_resolved_by?: string | null
           notes?: string | null
+          resolve_comment?: string | null
           team_id: string
           total_names?: number | null
           typing_completed_at?: string | null
@@ -369,6 +371,7 @@ export type Database = {
           issue_resolved_at?: string | null
           issue_resolved_by?: string | null
           notes?: string | null
+          resolve_comment?: string | null
           team_id?: string
           total_names?: number | null
           typing_completed_at?: string | null

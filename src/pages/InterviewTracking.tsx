@@ -22,7 +22,9 @@ import {
   FileCheck,
   FolderOpen,
   Upload,
-  ChevronDown
+  ChevronDown,
+  AlertTriangle,
+  Flag
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -42,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
+import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
 import { AuditPagination } from "@/components/AuditPagination";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -51,6 +54,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useResolveIssue } from "@/hooks/useTeamAssignments";
 
 interface TrackingInterview {
   id: string;
@@ -70,6 +74,15 @@ interface TrackingInterview {
   team_assigned: boolean;
   team_name: string | null;
   entry_status: string | null;
+  // Flagged issue fields
+  is_flagged_for_issue: boolean;
+  issue_comment: string | null;
+  flagged_by: string | null;
+  flagged_at: string | null;
+  issue_resolved_at: string | null;
+  issue_resolved_by: string | null;
+  resolve_comment: string | null;
+  assignment_id: string | null;
 }
 
 const InterviewTracking = () => {
@@ -95,6 +108,11 @@ const InterviewTracking = () => {
   // Failed interview modal
   const [selectedInterview, setSelectedInterview] = useState<TrackingInterview | null>(null);
   const [showFailedModal, setShowFailedModal] = useState(false);
+
+  // View Issue dialog
+  const [showIssueDialog, setShowIssueDialog] = useState(false);
+  const [selectedIssueInterview, setSelectedIssueInterview] = useState<TrackingInterview | null>(null);
+  const resolveIssueMutation = useResolveIssue();
 
   // File upload refs
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -179,10 +197,23 @@ const InterviewTracking = () => {
         .select("audit_id, contractor_id, interviewer_code, field_manager, total_names, interviewee_name, interview_date")
         .in("audit_id", auditIds);
       
-      // Get interview assignments with entry status
+      // Get interview assignments with entry status and flagging info
       const { data: assignments } = await supabase
         .from("interview_assignments")
-        .select("audit_id, team_id, entry_status, data_entry_teams(name)")
+        .select(`
+          id,
+          audit_id, 
+          team_id, 
+          entry_status,
+          is_flagged_for_issue,
+          issue_comment,
+          flagged_by,
+          flagged_at,
+          issue_resolved_at,
+          issue_resolved_by,
+          resolve_comment,
+          data_entry_teams(name)
+        `)
         .in("audit_id", auditIds);
       
       // Create maps
@@ -211,6 +242,15 @@ const InterviewTracking = () => {
           team_assigned: !!assignment,
           team_name: (assignment?.data_entry_teams as any)?.name || null,
           entry_status: assignment?.entry_status || null,
+          // Flagged issue fields
+          is_flagged_for_issue: assignment?.is_flagged_for_issue || false,
+          issue_comment: assignment?.issue_comment || null,
+          flagged_by: assignment?.flagged_by || null,
+          flagged_at: assignment?.flagged_at || null,
+          issue_resolved_at: assignment?.issue_resolved_at || null,
+          issue_resolved_by: assignment?.issue_resolved_by || null,
+          resolve_comment: assignment?.resolve_comment || null,
+          assignment_id: assignment?.id || null,
           // For filtering
           contractor_id: meta?.contractor_id || null,
           interviewer_code: meta?.interviewer_code || null,
@@ -339,6 +379,57 @@ const InterviewTracking = () => {
   };
 
   const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery;
+
+  // Check if user can resolve issues (field managers, admins, super admins)
+  const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin;
+
+  const handleViewIssue = (interview: TrackingInterview) => {
+    setSelectedIssueInterview(interview);
+    setShowIssueDialog(true);
+  };
+
+  const handleResolveIssue = async (assignmentId: string, comment?: string) => {
+    await resolveIssueMutation.mutateAsync({ assignmentId, comment });
+  };
+
+  // Get team assignment badge based on flagged status
+  const getTeamBadge = (interview: TrackingInterview) => {
+    if (!interview.team_assigned) {
+      return (
+        <Badge variant="outline" className="text-muted-foreground">
+          Not Assigned
+        </Badge>
+      );
+    }
+
+    // Flagged and not resolved - RED
+    if (interview.is_flagged_for_issue && !interview.issue_resolved_at) {
+      return (
+        <Badge className="gap-1 bg-red-500 text-white border-red-600">
+          <AlertTriangle className="h-3 w-3" />
+          {interview.team_name || "Flagged"}
+        </Badge>
+      );
+    }
+
+    // Completed - GREEN
+    if (interview.entry_status === 'data_entry_complete') {
+      return (
+        <Badge className="gap-1 bg-green-500 text-white border-green-600">
+          <Users className="h-3 w-3" />
+          {interview.team_name || "Assigned"}
+        </Badge>
+      );
+    }
+
+    // In progress - YELLOW
+    return (
+      <Badge className="gap-1 bg-yellow-400 text-yellow-900 border-yellow-500">
+        <Users className="h-3 w-3" />
+        {interview.team_name || "Assigned"}
+      </Badge>
+    );
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -620,19 +711,23 @@ const InterviewTracking = () => {
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            {interview.team_assigned ? (
-                              interview.entry_status === 'data_entry_complete' ? (
-                                <Badge className="h-5 text-[10px] bg-green-500 text-white">
-                                  {interview.team_name || "Assigned"}
-                                </Badge>
-                              ) : (
-                                <Badge className="h-5 text-[10px] bg-yellow-400 text-yellow-900">
-                                  {interview.team_name || "Assigned"}
-                                </Badge>
-                              )
-                            ) : (
+                            {/* Mobile team badge */}
+                            {!interview.team_assigned ? (
                               <Badge variant="outline" className="h-5 text-[10px] text-muted-foreground">
                                 Not Assigned
+                              </Badge>
+                            ) : interview.is_flagged_for_issue && !interview.issue_resolved_at ? (
+                              <Badge className="h-5 text-[10px] bg-red-500 text-white gap-0.5">
+                                <AlertTriangle className="h-2.5 w-2.5" />
+                                {interview.team_name || "Flagged"}
+                              </Badge>
+                            ) : interview.entry_status === 'data_entry_complete' ? (
+                              <Badge className="h-5 text-[10px] bg-green-500 text-white">
+                                {interview.team_name || "Assigned"}
+                              </Badge>
+                            ) : (
+                              <Badge className="h-5 text-[10px] bg-yellow-400 text-yellow-900">
+                                {interview.team_name || "Assigned"}
                               </Badge>
                             )}
                             {getStatusBadge(interview.status)}
@@ -710,6 +805,18 @@ const InterviewTracking = () => {
                               >
                                 <Eye className="h-3 w-3" />
                                 View Failed
+                              </Button>
+                            )}
+                            {/* View Issue Button - Mobile */}
+                            {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleViewIssue(interview)}
+                                className="gap-1"
+                              >
+                                <Flag className="h-3 w-3" />
+                                View Issue
                               </Button>
                             )}
                             {!interview.has_metadata && (
@@ -822,23 +929,7 @@ const InterviewTracking = () => {
                         <TableCell>{interview.interview_date || "-"}</TableCell>
                         <TableCell>{getStatusBadge(interview.status)}</TableCell>
                         <TableCell>
-                          {interview.team_assigned ? (
-                            interview.entry_status === 'data_entry_complete' ? (
-                              <Badge className="gap-1 bg-green-500 text-white border-green-600">
-                                <Users className="h-3 w-3" />
-                                {interview.team_name || "Assigned"}
-                              </Badge>
-                            ) : (
-                              <Badge className="gap-1 bg-yellow-400 text-yellow-900 border-yellow-500">
-                                <Users className="h-3 w-3" />
-                                {interview.team_name || "Assigned"}
-                              </Badge>
-                            )
-                          ) : (
-                            <Badge variant="outline" className="text-muted-foreground">
-                              Not Assigned
-                            </Badge>
-                          )}
+                          {getTeamBadge(interview)}
                         </TableCell>
                         <TableCell>
                           {interview.has_pdf && interview.has_metadata ? (
@@ -886,6 +977,18 @@ const InterviewTracking = () => {
                               >
                                 <Eye className="h-3 w-3" />
                                 View
+                              </Button>
+                            )}
+                            {/* View Issue Button - Desktop */}
+                            {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleViewIssue(interview)}
+                                className="gap-1"
+                              >
+                                <Flag className="h-3 w-3" />
+                                View Issue
                               </Button>
                             )}
                             {!interview.has_metadata && (
@@ -951,6 +1054,15 @@ const InterviewTracking = () => {
         open={showFailedModal}
         onOpenChange={setShowFailedModal}
         interview={selectedInterview}
+      />
+
+      {/* View Issue Dialog */}
+      <ViewIssueDialog
+        open={showIssueDialog}
+        onOpenChange={setShowIssueDialog}
+        interview={selectedIssueInterview}
+        onResolve={handleResolveIssue}
+        isResolving={resolveIssueMutation.isPending}
       />
     </div>
   );
