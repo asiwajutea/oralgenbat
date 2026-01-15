@@ -69,7 +69,7 @@ const Header = () => {
               Tracking
             </NavLink>
           )}
-          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'sub_contractor') && (
+          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin') && (
             <NavLink to="/data-entry" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Data Entry
             </NavLink>
@@ -83,9 +83,6 @@ const Header = () => {
             <>
               <NavLink to="/subcontractor-team-management" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 Team Management
-              </NavLink>
-              <NavLink to="/admin" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-                Manage Users
               </NavLink>
               <NavLink to="/my-analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
                 My Analytics

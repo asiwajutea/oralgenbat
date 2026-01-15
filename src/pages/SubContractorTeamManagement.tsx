@@ -108,8 +108,7 @@ const SubContractorTeamManagement = () => {
           field_manager_id,
           contractor_id,
           notes,
-          created_at,
-          profiles!team_assignments_field_manager_id_fkey(full_name)
+          created_at
         `)
         .eq("status", "pending")
         .eq("contractor_id", effectiveContractorId)
@@ -117,7 +116,21 @@ const SubContractorTeamManagement = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      if (!data || data.length === 0) return [];
+
+      // Get FM names using RPC
+      const uniqueFmIds = [...new Set(data.map(d => d.field_manager_id))];
+      const fmNamePromises = uniqueFmIds.map(async (fmId) => {
+        const { data: name } = await supabase.rpc("get_user_display_name", { _user_id: fmId });
+        return { id: fmId, name: name || "Unknown" };
+      });
+      const fmNames = await Promise.all(fmNamePromises);
+      const fmNameMap = Object.fromEntries(fmNames.map(f => [f.id, f.name]));
+
+      return data.map(item => ({
+        ...item,
+        fm_name: fmNameMap[item.field_manager_id] || "Unknown"
+      }));
     },
     enabled: assignedManagerIds.length > 0 && !!effectiveContractorId,
   });
@@ -135,8 +148,7 @@ const SubContractorTeamManagement = () => {
           interviewer_code,
           field_manager_id,
           contractor_id,
-          approved_at,
-          profiles!team_assignments_field_manager_id_fkey(full_name)
+          approved_at
         `)
         .eq("status", "approved")
         .eq("contractor_id", effectiveContractorId)
@@ -351,8 +363,7 @@ const SubContractorTeamManagement = () => {
                           <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="font-medium">{assignment.profiles?.full_name || "Unknown"}</p>
-                                <p className="text-sm text-muted-foreground">{assignment.profiles?.email}</p>
+                                <p className="font-medium">{assignment.full_name || "Unknown"}</p>
                               </div>
                               <Badge variant="outline" className="gap-1">
                                 <Users className="h-3 w-3" />
@@ -406,7 +417,7 @@ const SubContractorTeamManagement = () => {
                               </span>
                             )}
                           </TableCell>
-                          <TableCell>{(request.profiles as any)?.full_name || "Unknown"}</TableCell>
+                          <TableCell>{request.fm_name || "Unknown"}</TableCell>
                           <TableCell>
                             {new Date(request.created_at).toLocaleDateString()}
                           </TableCell>
@@ -467,7 +478,7 @@ const SubContractorTeamManagement = () => {
                         <Card key={assignment.field_manager_id}>
                           <CardHeader className="pb-3">
                             <CardTitle className="text-base flex items-center justify-between">
-                              <span>{assignment.profiles?.full_name || "Unknown"}</span>
+                              <span>{assignment.full_name || "Unknown"}</span>
                               <Badge variant="outline">{members.length} members</Badge>
                             </CardTitle>
                           </CardHeader>
@@ -506,7 +517,7 @@ const SubContractorTeamManagement = () => {
                                               .filter((m: any) => m.field_manager_id !== member.field_manager_id)
                                               .map((m: any) => (
                                                 <SelectItem key={m.field_manager_id} value={m.field_manager_id}>
-                                                  {m.profiles?.full_name || "Unknown"}
+                                                  {m.full_name || "Unknown"}
                                                 </SelectItem>
                                               ))}
                                           </SelectContent>
@@ -603,7 +614,7 @@ const SubContractorTeamManagement = () => {
                                     <SelectContent>
                                       {assignedManagers.map((m: any) => (
                                         <SelectItem key={m.field_manager_id} value={m.field_manager_id}>
-                                          {m.profiles?.full_name || "Unknown"}
+                                          {m.full_name || "Unknown"}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -634,7 +645,7 @@ const SubContractorTeamManagement = () => {
                       {/* Mobile Accordion View */}
                       <div className="md:hidden">
                         <Accordion type="single" collapsible className="space-y-2">
-                          {filteredUnassigned.slice(0, 20).map((agent, index) => (
+                          {filteredUnassigned.slice(0, 20).map((agent) => (
                             <AccordionItem
                               key={agent.code}
                               value={agent.code}
@@ -681,7 +692,7 @@ const SubContractorTeamManagement = () => {
                                       <SelectContent>
                                         {assignedManagers.map((m: any) => (
                                           <SelectItem key={m.field_manager_id} value={m.field_manager_id}>
-                                            {m.profiles?.full_name || "Unknown"}
+                                            {m.full_name || "Unknown"}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>

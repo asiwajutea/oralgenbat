@@ -14,8 +14,7 @@ import {
   FileText,
   ArrowRight,
   CheckCircle2,
-  XCircle,
-  Clock
+  XCircle
 } from "lucide-react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 
@@ -58,15 +57,16 @@ const SubContractorDashboard = () => {
     enabled: !!user?.id,
   });
 
-  // Get stats for assigned teams
+  // Get stats for assigned teams - use interview_metadata for proper filtering
   const { data: stats } = useQuery({
-    queryKey: ["subcontractor-stats", assignedManagers],
+    queryKey: ["subcontractor-stats", assignedManagers, profile?.contractor_id],
     queryFn: async () => {
       if (assignedManagers.length === 0) {
         return { total: 0, passed: 0, failed: 0, pending: 0 };
       }
       
       const managerIds = assignedManagers.map((m: any) => m.field_manager_id);
+      const contractorId = profile?.active_contractor_id || profile?.contractor_id;
       
       // Get team codes for these managers
       const { data: teamAssignments } = await supabase
@@ -81,13 +81,24 @@ const SubContractorDashboard = () => {
         return { total: 0, passed: 0, failed: 0, pending: 0 };
       }
       
-      const { data: audits } = await supabase
+      // Fetch audits with metadata using proper join
+      const { data: auditsWithMeta } = await supabase
         .from("audits")
-        .select("id, file_name, status");
+        .select(`
+          id,
+          status,
+          interview_metadata(interviewer_code, contractor_id)
+        `);
       
-      const teamAudits = (audits || []).filter(audit => {
-        const parts = audit.file_name.split('_');
-        return parts.length >= 2 && teamCodes.includes(parts[1]);
+      // Filter by contractor and team codes
+      const teamAudits = (auditsWithMeta || []).filter(audit => {
+        const meta = (audit.interview_metadata as any[])?.[0];
+        if (!meta) return false;
+        return (
+          meta.contractor_id === contractorId &&
+          meta.interviewer_code && 
+          teamCodes.includes(meta.interviewer_code)
+        );
       });
       
       return {
@@ -97,16 +108,17 @@ const SubContractorDashboard = () => {
         pending: teamAudits.filter(a => a.status === "Pending" || a.status === "Awaiting Review").length,
       };
     },
-    enabled: assignedManagers.length > 0,
+    enabled: assignedManagers.length > 0 && !!profile?.contractor_id,
   });
 
-  // Get flagged issues for assigned teams
+  // Get flagged issues for assigned teams - use proper join with interview_metadata
   const { data: flaggedCount = 0 } = useQuery({
-    queryKey: ["subcontractor-flagged", assignedManagers],
+    queryKey: ["subcontractor-flagged", assignedManagers, profile?.contractor_id],
     queryFn: async () => {
       if (assignedManagers.length === 0) return 0;
       
       const managerIds = assignedManagers.map((m: any) => m.field_manager_id);
+      const contractorId = profile?.active_contractor_id || profile?.contractor_id;
       
       const { data: teamAssignments } = await supabase
         .from("team_assignments")
@@ -118,18 +130,35 @@ const SubContractorDashboard = () => {
       
       if (teamCodes.length === 0) return 0;
       
-      const { data } = await supabase
+      // Get flagged assignments with metadata
+      const { data: flaggedAssignments } = await supabase
         .from("interview_assignments")
-        .select("id, audits!inner(file_name)")
+        .select(`
+          id,
+          audit_id,
+          is_flagged_for_issue,
+          issue_resolved_at
+        `)
         .eq("is_flagged_for_issue", true)
         .is("issue_resolved_at", null);
       
-      return (data || []).filter((item: any) => {
-        const parts = item.audits?.file_name?.split('_') || [];
-        return parts.length >= 2 && teamCodes.includes(parts[1]);
-      }).length;
+      if (!flaggedAssignments || flaggedAssignments.length === 0) return 0;
+      
+      // Get metadata for these audits
+      const auditIds = flaggedAssignments.map(a => a.audit_id);
+      const { data: metadata } = await supabase
+        .from("interview_metadata")
+        .select("audit_id, interviewer_code, contractor_id")
+        .in("audit_id", auditIds);
+      
+      // Filter by contractor and team codes
+      return (metadata || []).filter(m => 
+        m.contractor_id === contractorId && 
+        m.interviewer_code && 
+        teamCodes.includes(m.interviewer_code)
+      ).length;
     },
-    enabled: assignedManagers.length > 0,
+    enabled: assignedManagers.length > 0 && !!profile?.contractor_id,
   });
 
   const passRate = stats && (stats.passed + stats.failed) > 0
@@ -259,7 +288,7 @@ const SubContractorDashboard = () => {
             <Button 
               variant="outline" 
               className="w-full justify-between"
-              onClick={() => navigate("/tracking")}
+              onClick={() => navigate("/interview-tracking")}
             >
               <span className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -270,11 +299,11 @@ const SubContractorDashboard = () => {
             <Button 
               variant="outline" 
               className="w-full justify-between"
-              onClick={() => navigate("/admin")}
+              onClick={() => navigate("/my-analytics")}
             >
               <span className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Manage Users
+                <BarChart3 className="h-4 w-4" />
+                My Analytics
               </span>
               <ArrowRight className="h-4 w-4" />
             </Button>
