@@ -50,9 +50,14 @@ const Header = () => {
             </>
           )}
           {userRole === 'contractor' && (
-            <NavLink to="/contractor-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-              My Dashboard
-            </NavLink>
+            <>
+              <NavLink to="/contractor-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                My Dashboard
+              </NavLink>
+              <NavLink to="/my-analytics" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+                My Analytics
+              </NavLink>
+            </>
           )}
           {(userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin') && (
             <NavLink to="/admin/team-approvals" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
