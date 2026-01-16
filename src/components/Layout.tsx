@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import Header from "@/components/Header";
 import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
+import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +15,7 @@ const Layout = ({ children }: LayoutProps) => {
         {children}
       </main>
       <PushNotificationPrompt />
+      <PWAUpdatePrompt />
     </div>
   );
 };
