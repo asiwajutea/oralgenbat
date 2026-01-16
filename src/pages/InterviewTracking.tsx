@@ -289,6 +289,11 @@ const InterviewTracking = () => {
         const meta = metaArray && metaArray.length > 0 ? metaArray[0] : null;
         const assignment = assignmentMap.get(audit.id);
         
+        // Extract contractor_id from file_name if not in metadata (format: NG71_711_20251208_0937)
+        const fileNameParts = audit.file_name.split('_');
+        const contractorIdFromFileName = fileNameParts.length > 0 ? fileNameParts[0] : null;
+        const interviewerCodeFromFileName = fileNameParts.length > 1 ? fileNameParts[1] : null;
+        
         return {
           id: audit.id,
           file_name: audit.file_name,
@@ -316,9 +321,9 @@ const InterviewTracking = () => {
           issue_resolved_by: assignment?.issue_resolved_by || null,
           resolve_comment: assignment?.resolve_comment || null,
           assignment_id: assignment?.id || null,
-          // For filtering
-          contractor_id: meta?.contractor_id || null,
-          interviewer_code: meta?.interviewer_code || null,
+          // For filtering - use metadata if available, otherwise extract from file_name
+          contractor_id: meta?.contractor_id || contractorIdFromFileName,
+          interviewer_code: meta?.interviewer_code || interviewerCodeFromFileName,
         };
       });
       

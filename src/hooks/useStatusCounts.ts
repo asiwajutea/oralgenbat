@@ -26,13 +26,14 @@ export const useStatusCounts = () => {
   const isAuditor = userRole === 'auditor';
   const isContractor = userRole === 'contractor';
   const isFieldManager = userRole === 'field_manager';
+  const isSubContractor = userRole === 'sub_contractor';
   
   // Auditors MUST use active_contractor_id to filter
-  // Contractors use their contractor_id
+  // Contractors and Sub-contractors use their contractor_id
   // Field managers need separate handling (by team members)
   const effectiveContractorId = isAuditor 
     ? profile?.active_contractor_id  // Auditors only filter when they have active_contractor_id
-    : profile?.contractor_id;        // Contractors use their own contractor_id
+    : (profile?.active_contractor_id || profile?.contractor_id);  // Others use active or fallback to contractor_id
 
   return useQuery({
     queryKey: ["status-counts", userRole, profile?.full_name, effectiveContractorId],
@@ -47,6 +48,7 @@ export const useStatusCounts = () => {
           is_re_audit,
           reviewed_by,
           file_url,
+          file_name,
           mobile_zip_url,
           interview_metadata(total_names, contractor_id)
         `);
@@ -79,8 +81,13 @@ export const useStatusCounts = () => {
         const names = metadata?.[0]?.total_names || 0;
         const auditContractorId = metadata?.[0]?.contractor_id || null;
         
-        // For contractors and auditors with active_contractor_id, skip audits that don't belong to them
-        if ((isContractor || (isAuditor && profile?.active_contractor_id)) && effectiveContractorId && auditContractorId !== effectiveContractorId) {
+        // Extract contractor_id from file_name for audits without metadata (format: NG71_711_20251208_0937)
+        const fileNameParts = audit.file_name?.split('_') || [];
+        const contractorIdFromFileName = fileNameParts[0] || null;
+        const effectiveAuditContractorId = auditContractorId || contractorIdFromFileName;
+        
+        // For contractors, sub-contractors, and auditors with active_contractor_id, skip audits that don't belong to them
+        if ((isContractor || isSubContractor || (isAuditor && profile?.active_contractor_id)) && effectiveContractorId && effectiveAuditContractorId !== effectiveContractorId) {
           return;
         }
         

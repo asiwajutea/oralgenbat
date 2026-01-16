@@ -58,12 +58,13 @@ const SubContractorDashboard = () => {
   });
 
   // Get stats for ALL interviews under the contractor ID (like super admin but scoped)
+  // Include interviews without metadata by extracting contractor_id from file_name
   const { data: stats } = useQuery({
     queryKey: ["subcontractor-stats", profile?.contractor_id],
     queryFn: async () => {
       const contractorId = profile?.active_contractor_id || profile?.contractor_id;
       if (!contractorId) {
-        return { total: 0, passed: 0, failed: 0, pending: 0 };
+        return { total: 0, passed: 0, failed: 0, pending: 0, noMetadata: 0 };
       }
       
       // Fetch ALL audits with metadata for this contractor
@@ -71,14 +72,20 @@ const SubContractorDashboard = () => {
         .from("audits")
         .select(`
           id,
+          file_name,
           status,
           interview_metadata(contractor_id)
         `);
       
-      // Filter by contractor ID only
+      // Filter by contractor ID - use metadata if available, otherwise extract from file_name
       const contractorAudits = (auditsWithMeta || []).filter(audit => {
         const meta = (audit.interview_metadata as any[])?.[0];
-        return meta?.contractor_id === contractorId;
+        if (meta?.contractor_id) {
+          return meta.contractor_id === contractorId;
+        }
+        // Extract contractor_id from file_name (format: NG71_711_20251208_0937)
+        const fileNameParts = audit.file_name?.split('_') || [];
+        return fileNameParts[0] === contractorId;
       });
       
       return {
@@ -86,6 +93,7 @@ const SubContractorDashboard = () => {
         passed: contractorAudits.filter(a => a.status === "Audit Passed").length,
         failed: contractorAudits.filter(a => a.status === "Audit Failed").length,
         pending: contractorAudits.filter(a => a.status === "Pending" || a.status === "Awaiting Review").length,
+        noMetadata: contractorAudits.filter(a => !(a.interview_metadata as any[])?.[0]).length,
       };
     },
     enabled: !!profile?.contractor_id,
