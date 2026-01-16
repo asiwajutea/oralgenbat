@@ -71,23 +71,25 @@ const SubContractorTeamManagement = () => {
       // Use RPC to get field manager names (bypasses RLS)
       const fmIds = assignments.map(a => a.field_manager_id);
       const profilePromises = fmIds.map(async (fmId) => {
-        const { data: name } = await supabase.rpc("get_user_display_name", { 
+        const { data: name, error: rpcError } = await supabase.rpc("get_user_display_name", { 
           _user_id: fmId 
         });
+        if (rpcError) console.error("RPC error for FM:", fmId, rpcError);
         return { 
           id: fmId, 
-          full_name: name || "Unknown",
-          email: null,
-          contractor_id: null
+          full_name: name || "Unknown Manager"
         };
       });
       const profiles = await Promise.all(profilePromises);
 
-      // Combine the data
-      return assignments.map(a => ({
-        field_manager_id: a.field_manager_id,
-        profiles: profiles.find(p => p.id === a.field_manager_id) || null
-      }));
+      // Return with full_name at the top level for easier access
+      return assignments.map(a => {
+        const profile = profiles.find(p => p.id === a.field_manager_id);
+        return {
+          field_manager_id: a.field_manager_id,
+          full_name: profile?.full_name || "Unknown Manager"
+        };
+      });
     },
     enabled: !!user?.id,
   });

@@ -327,13 +327,8 @@ const InterviewTracking = () => {
         // Contractors see all interviews for their active contractor ID
         results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
       } else if (isSubContractor && effectiveContractorId) {
-        // Sub-contractors see interviews from their assigned FMs AND matching their active contractor ID
-        const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter(r => 
-          (r as any).contractor_id === effectiveContractorId &&
-          (r as any).interviewer_code && 
-          assignedCodes.includes((r as any).interviewer_code)
-        );
+        // Sub-contractors see ALL interviews for their active contractor ID (like super admin but scoped to contractor)
+        results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
       } else if (isAdmin && teamAssignments.length > 0) {
         // Admins see interviews from their assigned FMs
         const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);

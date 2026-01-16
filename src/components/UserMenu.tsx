@@ -37,18 +37,53 @@ const UserMenu = () => {
     const fetchContractors = async () => {
       if (!profile?.id) return;
       
-      const { data, error } = await supabase
+      // First check user_contractor_assignments
+      const { data: assignments, error } = await supabase
         .from("user_contractor_assignments")
         .select("id, contractor_id, is_primary")
         .eq("user_id", profile.id);
       
-      if (!error && data) {
-        setUserContractors(data);
+      if (!error && assignments && assignments.length > 0) {
+        setUserContractors(assignments);
+        return;
+      }
+      
+      // For sub_contractors, get contractors from their assigned field managers
+      if (userRole === 'sub_contractor') {
+        const { data: fmAssignments } = await supabase
+          .from("field_manager_subcontractor_assignments")
+          .select("field_manager_id")
+          .eq("sub_contractor_id", profile.id)
+          .eq("is_active", true);
+        
+        if (fmAssignments && fmAssignments.length > 0) {
+          const fmIds = fmAssignments.map(a => a.field_manager_id);
+          
+          // Get the contractors for these field managers
+          const { data: fmProfiles } = await supabase
+            .from("profiles")
+            .select("contractor_id")
+            .in("id", fmIds);
+          
+          // Get unique contractor IDs
+          const uniqueContractors = [...new Set(fmProfiles?.map(p => p.contractor_id).filter(Boolean) || [])];
+          
+          // Add the user's own contractor_id
+          if (profile.contractor_id && !uniqueContractors.includes(profile.contractor_id)) {
+            uniqueContractors.unshift(profile.contractor_id);
+          }
+          
+          setUserContractors(uniqueContractors.map((cid, idx) => ({
+            id: `${profile.id}-${cid}`,
+            contractor_id: cid,
+            is_primary: idx === 0,
+          })));
+        }
       }
     };
     
     fetchContractors();
-  }, [profile?.id]);
+  }, [profile?.id, userRole]);
 
   const getInitials = (name: string) => {
     return name

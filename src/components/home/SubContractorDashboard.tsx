@@ -57,80 +57,48 @@ const SubContractorDashboard = () => {
     enabled: !!user?.id,
   });
 
-  // Get stats for assigned teams - use interview_metadata for proper filtering
+  // Get stats for ALL interviews under the contractor ID (like super admin but scoped)
   const { data: stats } = useQuery({
-    queryKey: ["subcontractor-stats", assignedManagers, profile?.contractor_id],
+    queryKey: ["subcontractor-stats", profile?.contractor_id],
     queryFn: async () => {
-      if (assignedManagers.length === 0) {
-        return { total: 0, passed: 0, failed: 0, pending: 0 };
-      }
-      
-      const managerIds = assignedManagers.map((m: any) => m.field_manager_id);
       const contractorId = profile?.active_contractor_id || profile?.contractor_id;
-      
-      // Get team codes for these managers
-      const { data: teamAssignments } = await supabase
-        .from("team_assignments")
-        .select("interviewer_code")
-        .in("field_manager_id", managerIds)
-        .eq("status", "approved");
-      
-      const teamCodes = teamAssignments?.map(t => t.interviewer_code) || [];
-      
-      if (teamCodes.length === 0) {
+      if (!contractorId) {
         return { total: 0, passed: 0, failed: 0, pending: 0 };
       }
       
-      // Fetch audits with metadata using proper join
+      // Fetch ALL audits with metadata for this contractor
       const { data: auditsWithMeta } = await supabase
         .from("audits")
         .select(`
           id,
           status,
-          interview_metadata(interviewer_code, contractor_id)
+          interview_metadata(contractor_id)
         `);
       
-      // Filter by contractor and team codes
-      const teamAudits = (auditsWithMeta || []).filter(audit => {
+      // Filter by contractor ID only
+      const contractorAudits = (auditsWithMeta || []).filter(audit => {
         const meta = (audit.interview_metadata as any[])?.[0];
-        if (!meta) return false;
-        return (
-          meta.contractor_id === contractorId &&
-          meta.interviewer_code && 
-          teamCodes.includes(meta.interviewer_code)
-        );
+        return meta?.contractor_id === contractorId;
       });
       
       return {
-        total: teamAudits.length,
-        passed: teamAudits.filter(a => a.status === "Audit Passed").length,
-        failed: teamAudits.filter(a => a.status === "Audit Failed").length,
-        pending: teamAudits.filter(a => a.status === "Pending" || a.status === "Awaiting Review").length,
+        total: contractorAudits.length,
+        passed: contractorAudits.filter(a => a.status === "Audit Passed").length,
+        failed: contractorAudits.filter(a => a.status === "Audit Failed").length,
+        pending: contractorAudits.filter(a => a.status === "Pending" || a.status === "Awaiting Review").length,
       };
     },
-    enabled: assignedManagers.length > 0 && !!profile?.contractor_id,
+    enabled: !!profile?.contractor_id,
   });
 
-  // Get flagged issues for assigned teams - use proper join with interview_metadata
+  // Get flagged issues for ALL interviews under contractor
   const { data: flaggedCount = 0 } = useQuery({
-    queryKey: ["subcontractor-flagged", assignedManagers, profile?.contractor_id],
+    queryKey: ["subcontractor-flagged", profile?.contractor_id],
     queryFn: async () => {
-      if (assignedManagers.length === 0) return 0;
-      
-      const managerIds = assignedManagers.map((m: any) => m.field_manager_id);
       const contractorId = profile?.active_contractor_id || profile?.contractor_id;
+      if (!contractorId) return 0;
       
-      const { data: teamAssignments } = await supabase
-        .from("team_assignments")
-        .select("interviewer_code")
-        .in("field_manager_id", managerIds)
-        .eq("status", "approved");
-      
-      const teamCodes = teamAssignments?.map(t => t.interviewer_code) || [];
-      
-      if (teamCodes.length === 0) return 0;
-      
-      // Get flagged assignments with metadata
+      // Get flagged assignments
       const { data: flaggedAssignments } = await supabase
         .from("interview_assignments")
         .select(`
@@ -148,17 +116,13 @@ const SubContractorDashboard = () => {
       const auditIds = flaggedAssignments.map(a => a.audit_id);
       const { data: metadata } = await supabase
         .from("interview_metadata")
-        .select("audit_id, interviewer_code, contractor_id")
+        .select("audit_id, contractor_id")
         .in("audit_id", auditIds);
       
-      // Filter by contractor and team codes
-      return (metadata || []).filter(m => 
-        m.contractor_id === contractorId && 
-        m.interviewer_code && 
-        teamCodes.includes(m.interviewer_code)
-      ).length;
+      // Filter by contractor only
+      return (metadata || []).filter(m => m.contractor_id === contractorId).length;
     },
-    enabled: assignedManagers.length > 0 && !!profile?.contractor_id,
+    enabled: !!profile?.contractor_id,
   });
 
   const passRate = stats && (stats.passed + stats.failed) > 0
@@ -293,17 +257,6 @@ const SubContractorDashboard = () => {
               <span className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
                 Interview Tracking
-              </span>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              className="w-full justify-between"
-              onClick={() => navigate("/my-analytics")}
-            >
-              <span className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                My Analytics
               </span>
               <ArrowRight className="h-4 w-4" />
             </Button>
