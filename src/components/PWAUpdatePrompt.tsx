@@ -11,14 +11,11 @@ export function PWAUpdatePrompt() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(swUrl, r) {
-      // Check for updates periodically (every 1 hour)
+      // Check for updates periodically (every 30 seconds)
       if (r) {
-        setInterval(
-          () => {
-            r.update();
-          },
-          60 * 60 * 1000,
-        );
+        setInterval(() => {
+          r.update();
+        }, 30 * 1000);
       }
     },
     onRegisterError(error) {
