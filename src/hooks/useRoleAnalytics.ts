@@ -282,6 +282,32 @@ export const useRoleSummaryStats = (scope: RoleAnalyticsScope | undefined) => {
         };
       }
 
+      // For sub_contractor scope, fetch ALL audits and filter by contractor from file_name
+      // This ensures we include interviews without metadata
+      if (scope.scopeType === 'sub_contractor' && scope.contractorIds.length > 0) {
+        const { data: allAudits } = await supabase
+          .from("audits")
+          .select("id, status, is_re_audit, reviewed_by, file_name");
+
+        const contractorId = scope.contractorIds[0];
+        const filteredAudits = (allAudits || []).filter(a => {
+          // Extract contractor_id from file_name (format: NG71_711_20251208_0937)
+          const fileNameParts = a.file_name?.split('_') || [];
+          return fileNameParts[0] === contractorId;
+        });
+
+        const totalInterviews = filteredAudits.length;
+        const passedCount = filteredAudits.filter(a => a.status === 'Audit Passed').length;
+        const failedCount = filteredAudits.filter(a => a.status === 'Audit Failed').length;
+        const pendingCount = filteredAudits.filter(a => a.status === 'Pending' || a.status === 'Awaiting Review').length;
+        const reAuditCount = filteredAudits.filter(a => a.is_re_audit).length;
+        const reviewedCount = passedCount + failedCount;
+        const passRate = reviewedCount > 0 ? (passedCount / reviewedCount) * 100 : 0;
+        const reAuditRate = totalInterviews > 0 ? (reAuditCount / totalInterviews) * 100 : 0;
+
+        return { totalInterviews, passedCount, failedCount, pendingCount, reAuditCount, passRate, reAuditRate };
+      }
+
       let query = supabase
         .from("audits")
         .select("id, status, is_re_audit, reviewed_by");
@@ -356,6 +382,41 @@ export const useRoleWeeklyTrends = (scope: RoleAnalyticsScope | undefined) => {
 
       const weeks: WeeklyTrend[] = [];
       const now = new Date();
+
+      // For sub_contractor, use file_name based filtering
+      if (scope.scopeType === 'sub_contractor' && scope.contractorIds.length > 0) {
+        const contractorId = scope.contractorIds[0];
+        
+        for (let i = 7; i >= 0; i--) {
+          const weekStart = startOfWeek(subWeeks(now, i));
+          const weekEnd = startOfWeek(subWeeks(now, i - 1));
+
+          const { data: allAudits } = await supabase
+            .from("audits")
+            .select("id, status, reviewed_at, file_name")
+            .gte("reviewed_at", weekStart.toISOString())
+            .lt("reviewed_at", weekEnd.toISOString())
+            .in("status", ['Audit Passed', 'Audit Failed']);
+
+          const filteredAudits = (allAudits || []).filter(a => {
+            const fileNameParts = a.file_name?.split('_') || [];
+            return fileNameParts[0] === contractorId;
+          });
+
+          const passed = filteredAudits.filter(a => a.status === 'Audit Passed').length;
+          const failed = filteredAudits.filter(a => a.status === 'Audit Failed').length;
+          const total = passed + failed;
+
+          weeks.push({
+            week: format(weekStart, 'MMM d'),
+            passed,
+            failed,
+            total,
+            passRate: total > 0 ? (passed / total) * 100 : 0
+          });
+        }
+        return weeks;
+      }
 
       for (let i = 7; i >= 0; i--) {
         const weekStart = startOfWeek(subWeeks(now, i));
