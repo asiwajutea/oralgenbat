@@ -10,18 +10,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { z } from "zod";
 
-const signupSchema = z.object({
-  fullName: z.string().min(2, "Full name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().min(10, "Phone number must be at least 10 characters"),
-  contractorId: z.enum(["NG68", "NG71", "NG75"], { errorMap: () => ({ message: "Please select a contractor ID" }) }),
-  role: z.enum(["field_manager", "auditor", "contractor", "sub_contractor", "data_entry_clerk", "quality_assurance_manager"], { errorMap: () => ({ message: "Please select a role" }) }),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
+const signupSchema = z
+  .object({
+    fullName: z.string().min(2, "Full name must be at least 2 characters"),
+    email: z.string().email("Invalid email address"),
+    phone: z.string().min(10, "Phone number must be at least 10 characters"),
+    contractorId: z.enum(["NG68", "NG71", "NG75"], {
+      errorMap: () => ({ message: "Please select a contractor ID" }),
+    }),
+    role: z.enum(
+      ["field_manager", "auditor", "contractor", "sub_contractor", "data_entry_clerk", "quality_assurance_manager"],
+      { errorMap: () => ({ message: "Please select a role" }) },
+    ),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -31,6 +38,11 @@ const loginSchema = z.object({
 const Auth = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+
+  // Password visibility state
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
 
   // Signup form state
   const [signupData, setSignupData] = useState({
@@ -54,9 +66,7 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // Validate form data
       const validatedData = signupSchema.parse(signupData);
-
       const redirectUrl = `${window.location.origin}/`;
 
       const { error } = await supabase.auth.signUp({
@@ -76,11 +86,9 @@ const Auth = () => {
       if (error) throw error;
 
       toast.success("Account created! Please wait for admin approval before logging in.");
-      
-      // Sign out immediately since user can't access app yet
+
       await supabase.auth.signOut();
-      
-      // Reset form
+
       setSignupData({
         fullName: "",
         email: "",
@@ -108,7 +116,6 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // Validate form data
       const validatedData = loginSchema.parse(loginData);
 
       const { error } = await supabase.auth.signInWithPassword({
@@ -118,8 +125,6 @@ const Auth = () => {
 
       if (error) throw error;
 
-      // Don't check profile here - AuthContext handles it via onAuthStateChange
-      // The ProtectedRoute will redirect to /pending-approval if not approved
       toast.success("Logged in successfully!");
       navigate("/");
     } catch (error: any) {
@@ -140,10 +145,9 @@ const Auth = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Backend Audit Tool (BAT)</CardTitle>
-          <CardDescription className="text-center">
-            Sign in to your account or create a new one
-          </CardDescription>
+          <CardDescription className="text-center">Sign in to your account or create a new one</CardDescription>
         </CardHeader>
+
         <CardContent>
           <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
@@ -151,130 +155,158 @@ const Auth = () => {
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
 
+            {/* LOGIN */}
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="login-email">Email</Label>
+                  <Label>Email</Label>
                   <Input
-                    id="login-email"
                     type="email"
-                    placeholder="your.email@example.com"
                     value={loginData.email}
                     onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
                     required
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="login-password">Password</Label>
-                  <Input
-                    id="login-password"
-                    type="password"
-                    value={loginData.password}
-                    onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
-                    required
-                  />
+                  <Label>Password</Label>
+                  <div className="relative">
+                    <Input
+                      type={showLoginPassword ? "text" : "password"}
+                      value={loginData.password}
+                      onChange={(e) =>
+                        setLoginData({
+                          ...loginData,
+                          password: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                      onClick={() => setShowLoginPassword((prev) => !prev)}
+                    >
+                      {showLoginPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
                 </div>
+
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Logging in..." : "Login"}
                 </Button>
               </form>
             </TabsContent>
 
+            {/* SIGNUP */}
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-fullname">Full Name</Label>
+                <Input
+                  placeholder="Full Name"
+                  value={signupData.fullName}
+                  onChange={(e) =>
+                    setSignupData({
+                      ...signupData,
+                      fullName: e.target.value,
+                    })
+                  }
+                  required
+                />
+
+                <Input
+                  type="email"
+                  placeholder="Email"
+                  value={signupData.email}
+                  onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
+                  required
+                />
+
+                <Input
+                  placeholder="Phone"
+                  value={signupData.phone}
+                  onChange={(e) => setSignupData({ ...signupData, phone: e.target.value })}
+                  required
+                />
+
+                <Select
+                  value={signupData.contractorId}
+                  onValueChange={(value) => setSignupData({ ...signupData, contractorId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select contractor ID" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NG68">NG68</SelectItem>
+                    <SelectItem value="NG71">NG71</SelectItem>
+                    <SelectItem value="NG75">NG75</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={signupData.role}
+                  onValueChange={(value) => setSignupData({ ...signupData, role: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auditor">Auditor</SelectItem>
+                    <SelectItem value="contractor">Contractor</SelectItem>
+                    <SelectItem value="data_entry_clerk">Data Entry Clerk</SelectItem>
+                    <SelectItem value="field_manager">Field Manager</SelectItem>
+                    <SelectItem value="quality_assurance_manager">Quality Assurance Manager</SelectItem>
+                    <SelectItem value="sub_contractor">Sub-contractor</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="relative">
                   <Input
-                    id="signup-fullname"
-                    type="text"
-                    placeholder="John Doe"
-                    value={signupData.fullName}
-                    onChange={(e) => setSignupData({ ...signupData, fullName: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder="your.email@example.com"
-                    value={signupData.email}
-                    onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-phone">Phone</Label>
-                  <Input
-                    id="signup-phone"
-                    type="tel"
-                    placeholder="+234 800 000 0000"
-                    value={signupData.phone}
-                    onChange={(e) => setSignupData({ ...signupData, phone: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-contractor">Contractor ID</Label>
-                  <Select
-                    value={signupData.contractorId}
-                    onValueChange={(value) => setSignupData({ ...signupData, contractorId: value })}
-                    required
-                  >
-                    <SelectTrigger id="signup-contractor">
-                      <SelectValue placeholder="Select contractor ID" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background">
-                      <SelectItem value="NG68">NG68</SelectItem>
-                      <SelectItem value="NG71">NG71</SelectItem>
-                      <SelectItem value="NG75">NG75</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-role">Role</Label>
-                  <Select
-                    value={signupData.role}
-                    onValueChange={(value) => setSignupData({ ...signupData, role: value })}
-                    required
-                  >
-                    <SelectTrigger id="signup-role">
-                      <SelectValue placeholder="Select your role" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background">
-                      <SelectItem value="auditor">Auditor</SelectItem>
-                      <SelectItem value="contractor">Contractor</SelectItem>
-                      <SelectItem value="data_entry_clerk">Data Entry Clerk</SelectItem>
-                      <SelectItem value="field_manager">Field Manager</SelectItem>
-                      <SelectItem value="quality_assurance_manager">Quality Assurance Manager</SelectItem>
-                      <SelectItem value="sub_contractor">Sub-contractor</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Password</Label>
-                  <Input
-                    id="signup-password"
-                    type="password"
+                    type={showSignupPassword ? "text" : "password"}
+                    placeholder="Password"
                     value={signupData.password}
-                    onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
+                    onChange={(e) =>
+                      setSignupData({
+                        ...signupData,
+                        password: e.target.value,
+                      })
+                    }
                     required
                   />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                    onClick={() => setShowSignupPassword((prev) => !prev)}
+                  >
+                    {showSignupPassword ? "Hide" : "Show"}
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-confirm-password">Confirm Password</Label>
+
+                <div className="relative">
                   <Input
-                    id="signup-confirm-password"
-                    type="password"
+                    type={showSignupConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm Password"
                     value={signupData.confirmPassword}
-                    onChange={(e) => setSignupData({ ...signupData, confirmPassword: e.target.value })}
+                    onChange={(e) =>
+                      setSignupData({
+                        ...signupData,
+                        confirmPassword: e.target.value,
+                      })
+                    }
                     required
                   />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                    onClick={() => setShowSignupConfirmPassword((prev) => !prev)}
+                  >
+                    {showSignupConfirmPassword ? "Hide" : "Show"}
+                  </button>
                 </div>
+
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Creating account..." : "Sign Up"}
                 </Button>
+
                 <p className="text-xs text-muted-foreground text-center">
                   Your account will require admin approval before you can access the system.
                 </p>
