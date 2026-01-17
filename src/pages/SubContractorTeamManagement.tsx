@@ -187,9 +187,9 @@ const SubContractorTeamManagement = () => {
     enabled: !!effectiveContractorId,
   });
 
-  // Get unassigned agents (interviewers not in any approved team)
+  // Get unassigned agents (interviewers not in ANY approved team for this contractor)
   const { data: unassignedAgents = [], isLoading: loadingUnassigned } = useQuery({
-    queryKey: ["subcontractor-unassigned-agents", effectiveContractorId, teamMembers],
+    queryKey: ["subcontractor-unassigned-agents", effectiveContractorId],
     queryFn: async () => {
       if (!effectiveContractorId) return [];
 
@@ -208,8 +208,14 @@ const SubContractorTeamManagement = () => {
         }
       });
 
-      // Get assigned codes
-      const assignedCodes = new Set(teamMembers.map((t: any) => t.interviewer_code));
+      // Get ALL approved assignments for this contractor (not just from assigned managers)
+      const { data: allAssignments } = await supabase
+        .from("team_assignments")
+        .select("interviewer_code")
+        .eq("contractor_id", effectiveContractorId)
+        .eq("status", "approved");
+
+      const assignedCodes = new Set(allAssignments?.map((a) => a.interviewer_code) || []);
 
       // Filter unassigned
       const unassigned: { code: string; name: string }[] = [];
