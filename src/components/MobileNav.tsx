@@ -22,18 +22,24 @@ const MobileNav = () => {
     const fetchContractors = async () => {
       if (!profile?.id) return;
       
-      // First check user_contractor_assignments
+      const allContractors: Set<string> = new Set();
+      
+      // Always include user's contractor_id
+      if (profile.contractor_id) {
+        allContractors.add(profile.contractor_id);
+      }
+      
+      // Check user_contractor_assignments
       const { data: assignments } = await supabase
         .from('user_contractor_assignments')
         .select('id, contractor_id, is_primary')
         .eq('user_id', profile.id);
       
       if (assignments && assignments.length > 0) {
-        setUserContractors(assignments);
-        return;
+        assignments.forEach(a => allContractors.add(a.contractor_id));
       }
       
-      // For sub_contractors, get contractors from their assigned field managers
+      // For sub_contractors, also get contractors from their assigned field managers
       if (userRole === 'sub_contractor') {
         const { data: fmAssignments } = await supabase
           .from("field_manager_subcontractor_assignments")
@@ -44,27 +50,24 @@ const MobileNav = () => {
         if (fmAssignments && fmAssignments.length > 0) {
           const fmIds = fmAssignments.map(a => a.field_manager_id);
           
-          // Get the contractors for these field managers
           const { data: fmProfiles } = await supabase
             .from("profiles")
             .select("contractor_id")
             .in("id", fmIds);
           
-          // Get unique contractor IDs
-          const uniqueContractors = [...new Set(fmProfiles?.map(p => p.contractor_id).filter(Boolean) || [])];
-          
-          // Add the user's own contractor_id
-          if (profile.contractor_id && !uniqueContractors.includes(profile.contractor_id)) {
-            uniqueContractors.unshift(profile.contractor_id);
-          }
-          
-          setUserContractors(uniqueContractors.map((cid, idx) => ({
-            id: `${profile.id}-${cid}`,
-            contractor_id: cid,
-            is_primary: idx === 0,
-          })));
+          fmProfiles?.forEach(p => {
+            if (p.contractor_id) allContractors.add(p.contractor_id);
+          });
         }
       }
+      
+      // Convert to array and create contractor objects
+      const uniqueContractors = Array.from(allContractors);
+      setUserContractors(uniqueContractors.map((cid, idx) => ({
+        id: `${profile.id}-${cid}`,
+        contractor_id: cid,
+        is_primary: idx === 0,
+      })));
     };
     fetchContractors();
   }, [profile?.id, userRole]);
