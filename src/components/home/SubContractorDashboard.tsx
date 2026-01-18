@@ -57,14 +57,15 @@ const SubContractorDashboard = () => {
     enabled: !!user?.id,
   });
 
+  const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
+
   // Get stats for ALL interviews under the contractor ID (like super admin but scoped)
   // Include interviews without metadata by extracting contractor_id from file_name
   // Also include total_names for each stat category
   const { data: stats } = useQuery({
-    queryKey: ["subcontractor-stats", profile?.contractor_id],
+    queryKey: ["subcontractor-stats", effectiveContractorId],
     queryFn: async () => {
-      const contractorId = profile?.active_contractor_id || profile?.contractor_id;
-      if (!contractorId) {
+      if (!effectiveContractorId) {
         return { 
           total: 0, passed: 0, failed: 0, pending: 0, noMetadata: 0,
           totalNamesTotal: 0, totalNamesPassed: 0, totalNamesFailed: 0, totalNamesPending: 0
@@ -85,11 +86,11 @@ const SubContractorDashboard = () => {
       const contractorAudits = (auditsWithMeta || []).filter(audit => {
         const meta = (audit.interview_metadata as any[])?.[0];
         if (meta?.contractor_id) {
-          return meta.contractor_id === contractorId;
+          return meta.contractor_id === effectiveContractorId;
         }
         // Extract contractor_id from file_name (format: NG71_711_20251208_0937)
         const fileNameParts = audit.file_name?.split('_') || [];
-        return fileNameParts[0] === contractorId;
+        return fileNameParts[0] === effectiveContractorId;
       });
       
       // Calculate totals and total_names for each status
@@ -112,15 +113,14 @@ const SubContractorDashboard = () => {
         totalNamesPending: getTotalNames(pendingAudits),
       };
     },
-    enabled: !!profile?.contractor_id,
+    enabled: !!effectiveContractorId,
   });
 
   // Get flagged issues for ALL interviews under contractor
   const { data: flaggedCount = 0 } = useQuery({
-    queryKey: ["subcontractor-flagged", profile?.contractor_id],
+    queryKey: ["subcontractor-flagged", effectiveContractorId],
     queryFn: async () => {
-      const contractorId = profile?.active_contractor_id || profile?.contractor_id;
-      if (!contractorId) return 0;
+      if (!effectiveContractorId) return 0;
       
       // Get flagged assignments
       const { data: flaggedAssignments } = await supabase
@@ -144,9 +144,9 @@ const SubContractorDashboard = () => {
         .in("audit_id", auditIds);
       
       // Filter by contractor only
-      return (metadata || []).filter(m => m.contractor_id === contractorId).length;
+      return (metadata || []).filter(m => m.contractor_id === effectiveContractorId).length;
     },
-    enabled: !!profile?.contractor_id,
+    enabled: !!effectiveContractorId,
   });
 
   const passRate = stats && (stats.passed + stats.failed) > 0
