@@ -59,22 +59,26 @@ const SubContractorDashboard = () => {
 
   // Get stats for ALL interviews under the contractor ID (like super admin but scoped)
   // Include interviews without metadata by extracting contractor_id from file_name
+  // Also include total_names for each stat category
   const { data: stats } = useQuery({
     queryKey: ["subcontractor-stats", profile?.contractor_id],
     queryFn: async () => {
       const contractorId = profile?.active_contractor_id || profile?.contractor_id;
       if (!contractorId) {
-        return { total: 0, passed: 0, failed: 0, pending: 0, noMetadata: 0 };
+        return { 
+          total: 0, passed: 0, failed: 0, pending: 0, noMetadata: 0,
+          totalNamesTotal: 0, totalNamesPassed: 0, totalNamesFailed: 0, totalNamesPending: 0
+        };
       }
       
-      // Fetch ALL audits with metadata for this contractor
+      // Fetch ALL audits with metadata for this contractor, including total_names
       const { data: auditsWithMeta } = await supabase
         .from("audits")
         .select(`
           id,
           file_name,
           status,
-          interview_metadata(contractor_id)
+          interview_metadata(contractor_id, total_names)
         `);
       
       // Filter by contractor ID - use metadata if available, otherwise extract from file_name
@@ -88,12 +92,24 @@ const SubContractorDashboard = () => {
         return fileNameParts[0] === contractorId;
       });
       
+      // Calculate totals and total_names for each status
+      const passedAudits = contractorAudits.filter(a => a.status === "Audit Passed");
+      const failedAudits = contractorAudits.filter(a => a.status === "Audit Failed");
+      const pendingAudits = contractorAudits.filter(a => a.status === "Pending" || a.status === "Awaiting Review");
+      
+      const getTotalNames = (audits: typeof contractorAudits) => 
+        audits.reduce((sum, a) => sum + ((a.interview_metadata as any[])?.[0]?.total_names || 0), 0);
+      
       return {
         total: contractorAudits.length,
-        passed: contractorAudits.filter(a => a.status === "Audit Passed").length,
-        failed: contractorAudits.filter(a => a.status === "Audit Failed").length,
-        pending: contractorAudits.filter(a => a.status === "Pending" || a.status === "Awaiting Review").length,
+        passed: passedAudits.length,
+        failed: failedAudits.length,
+        pending: pendingAudits.length,
         noMetadata: contractorAudits.filter(a => !(a.interview_metadata as any[])?.[0]).length,
+        totalNamesTotal: getTotalNames(contractorAudits),
+        totalNamesPassed: getTotalNames(passedAudits),
+        totalNamesFailed: getTotalNames(failedAudits),
+        totalNamesPending: getTotalNames(pendingAudits),
       };
     },
     enabled: !!profile?.contractor_id,
@@ -171,7 +187,10 @@ const SubContractorDashboard = () => {
           <CardContent className="p-4 text-center">
             <FileText className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
             <p className="text-2xl font-bold">{stats?.total || 0}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="text-xs text-muted-foreground">Total Interviews</p>
+            <p className="text-sm font-medium text-primary mt-1">
+              {(stats?.totalNamesTotal || 0).toLocaleString()} names
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -179,6 +198,9 @@ const SubContractorDashboard = () => {
             <CheckCircle2 className="h-6 w-6 text-green-600 mx-auto mb-2" />
             <p className="text-2xl font-bold">{stats?.passed || 0}</p>
             <p className="text-xs text-muted-foreground">Passed</p>
+            <p className="text-sm font-medium text-green-600 mt-1">
+              {(stats?.totalNamesPassed || 0).toLocaleString()} names
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -186,6 +208,9 @@ const SubContractorDashboard = () => {
             <XCircle className="h-6 w-6 text-red-600 mx-auto mb-2" />
             <p className="text-2xl font-bold">{stats?.failed || 0}</p>
             <p className="text-xs text-muted-foreground">Failed</p>
+            <p className="text-sm font-medium text-red-600 mt-1">
+              {(stats?.totalNamesFailed || 0).toLocaleString()} names
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -193,6 +218,9 @@ const SubContractorDashboard = () => {
             <TrendingUp className="h-6 w-6 text-primary mx-auto mb-2" />
             <p className="text-2xl font-bold">{passRate}%</p>
             <p className="text-xs text-muted-foreground">Pass Rate</p>
+            <p className="text-sm font-medium text-muted-foreground mt-1">
+              {(stats?.totalNamesPending || 0).toLocaleString()} pending
+            </p>
           </CardContent>
         </Card>
       </div>
