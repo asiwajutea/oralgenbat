@@ -96,11 +96,11 @@ const SubContractorTeamManagement = () => {
 
   const assignedManagerIds = assignedManagers.map((m: any) => m.field_manager_id);
 
-  // Get pending requests from assigned field managers
+  // Get pending requests from assigned field managers (all contractors, not just active)
   const { data: pendingRequests = [], isLoading: loadingRequests } = useQuery({
-    queryKey: ["subcontractor-pending-requests", assignedManagerIds, effectiveContractorId],
+    queryKey: ["subcontractor-pending-requests", assignedManagerIds],
     queryFn: async () => {
-      if (assignedManagerIds.length === 0 || !effectiveContractorId) return [];
+      if (assignedManagerIds.length === 0) return [];
 
       const { data, error } = await supabase
         .from("team_assignments")
@@ -113,7 +113,6 @@ const SubContractorTeamManagement = () => {
           created_at
         `)
         .eq("status", "pending")
-        .eq("contractor_id", effectiveContractorId)
         .in("field_manager_id", assignedManagerIds)
         .order("created_at", { ascending: false });
 
@@ -134,14 +133,14 @@ const SubContractorTeamManagement = () => {
         fm_name: fmNameMap[item.field_manager_id] || "Unknown"
       }));
     },
-    enabled: assignedManagerIds.length > 0 && !!effectiveContractorId,
+    enabled: assignedManagerIds.length > 0,
   });
 
-  // Get approved team members grouped by field manager
+  // Get approved team members grouped by field manager (all contractors, not just active)
   const { data: teamMembers = [], isLoading: loadingTeam } = useQuery({
-    queryKey: ["subcontractor-team-members", assignedManagerIds, effectiveContractorId],
+    queryKey: ["subcontractor-team-members", assignedManagerIds],
     queryFn: async () => {
-      if (assignedManagerIds.length === 0 || !effectiveContractorId) return [];
+      if (assignedManagerIds.length === 0) return [];
 
       const { data, error } = await supabase
         .from("team_assignments")
@@ -153,26 +152,29 @@ const SubContractorTeamManagement = () => {
           approved_at
         `)
         .eq("status", "approved")
-        .eq("contractor_id", effectiveContractorId)
         .in("field_manager_id", assignedManagerIds)
         .order("interviewer_code", { ascending: true });
 
       if (error) throw error;
       return data || [];
     },
-    enabled: assignedManagerIds.length > 0 && !!effectiveContractorId,
+    enabled: assignedManagerIds.length > 0,
   });
 
-  // Get interviewer names from metadata
+  // Get all contractor IDs from assigned field managers' team assignments
+  const allContractorIds = [...new Set(teamMembers.map((m: any) => m.contractor_id).filter(Boolean))];
+
+  // Get interviewer names from metadata (for all contractors in scope)
   const { data: interviewerNames = {} } = useQuery({
-    queryKey: ["interviewer-names", effectiveContractorId],
+    queryKey: ["interviewer-names", allContractorIds, effectiveContractorId],
     queryFn: async () => {
-      if (!effectiveContractorId) return {};
+      const contractorIds = allContractorIds.length > 0 ? allContractorIds : (effectiveContractorId ? [effectiveContractorId] : []);
+      if (contractorIds.length === 0) return {};
 
       const { data, error } = await supabase
         .from("interview_metadata")
         .select("interviewer_code, interviewer_name")
-        .eq("contractor_id", effectiveContractorId);
+        .in("contractor_id", contractorIds);
 
       if (error) throw error;
 
@@ -184,50 +186,54 @@ const SubContractorTeamManagement = () => {
       });
       return names;
     },
-    enabled: !!effectiveContractorId,
+    enabled: allContractorIds.length > 0 || !!effectiveContractorId,
   });
 
-  // Get unassigned agents (interviewers not in ANY approved team for this contractor)
+  // Get unassigned agents (interviewers from assigned FMs' contractors not in any approved team)
   const { data: unassignedAgents = [], isLoading: loadingUnassigned } = useQuery({
-    queryKey: ["subcontractor-unassigned-agents", effectiveContractorId],
+    queryKey: ["subcontractor-unassigned-agents", allContractorIds, effectiveContractorId],
     queryFn: async () => {
-      if (!effectiveContractorId) return [];
+      const contractorIds = allContractorIds.length > 0 ? allContractorIds : (effectiveContractorId ? [effectiveContractorId] : []);
+      if (contractorIds.length === 0) return [];
 
-      // Get all unique interviewer codes for this contractor
+      // Get all unique interviewer codes for these contractors
       const { data: allInterviewers, error } = await supabase
         .from("interview_metadata")
-        .select("interviewer_code, interviewer_name")
-        .eq("contractor_id", effectiveContractorId);
+        .select("interviewer_code, interviewer_name, contractor_id")
+        .in("contractor_id", contractorIds);
 
       if (error) throw error;
 
-      const uniqueInterviewers = new Map();
+      const uniqueInterviewers = new Map<string, { name: string; contractor_id: string }>();
       allInterviewers?.forEach((i) => {
         if (i.interviewer_code && !uniqueInterviewers.has(i.interviewer_code)) {
-          uniqueInterviewers.set(i.interviewer_code, i.interviewer_name || i.interviewer_code);
+          uniqueInterviewers.set(i.interviewer_code, { 
+            name: i.interviewer_name || i.interviewer_code,
+            contractor_id: i.contractor_id
+          });
         }
       });
 
-      // Get ALL approved assignments for this contractor (not just from assigned managers)
+      // Get ALL approved assignments across all relevant contractors
       const { data: allAssignments } = await supabase
         .from("team_assignments")
         .select("interviewer_code")
-        .eq("contractor_id", effectiveContractorId)
+        .in("contractor_id", contractorIds)
         .eq("status", "approved");
 
       const assignedCodes = new Set(allAssignments?.map((a) => a.interviewer_code) || []);
 
       // Filter unassigned
-      const unassigned: { code: string; name: string }[] = [];
-      uniqueInterviewers.forEach((name, code) => {
+      const unassigned: { code: string; name: string; contractor_id: string }[] = [];
+      uniqueInterviewers.forEach((data, code) => {
         if (!assignedCodes.has(code)) {
-          unassigned.push({ code, name });
+          unassigned.push({ code, name: data.name, contractor_id: data.contractor_id });
         }
       });
 
       return unassigned.sort((a, b) => a.code.localeCompare(b.code));
     },
-    enabled: !!effectiveContractorId,
+    enabled: allContractorIds.length > 0 || !!effectiveContractorId,
   });
 
   // Approve/Reject mutation
@@ -281,11 +287,11 @@ const SubContractorTeamManagement = () => {
 
   // Direct assign agent mutation
   const assignAgentMutation = useMutation({
-    mutationFn: async ({ code, managerId }: { code: string; managerId: string }) => {
+    mutationFn: async ({ code, managerId, contractorId }: { code: string; managerId: string; contractorId: string }) => {
       const { error } = await supabase.from("team_assignments").insert({
         interviewer_code: code,
         field_manager_id: managerId,
-        contractor_id: effectiveContractorId,
+        contractor_id: contractorId,
         status: "approved",
         approved_at: new Date().toISOString(),
         approved_by: user?.id,
@@ -637,6 +643,7 @@ const SubContractorTeamManagement = () => {
                                       assignAgentMutation.mutate({
                                         code: agent.code,
                                         managerId: assignSelections[agent.code],
+                                        contractorId: agent.contractor_id,
                                       })
                                     }
                                   >
@@ -715,6 +722,7 @@ const SubContractorTeamManagement = () => {
                                       assignAgentMutation.mutate({
                                         code: agent.code,
                                         managerId: assignSelections[agent.code],
+                                        contractorId: agent.contractor_id,
                                       })
                                     }
                                   >
