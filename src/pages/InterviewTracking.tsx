@@ -25,7 +25,8 @@ import {
   Upload,
   ChevronDown,
   AlertTriangle,
-  Flag
+  Flag,
+  FileArchive
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -46,6 +47,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
+import { BulkMetadataUploadDialog } from "@/components/tracking/BulkMetadataUploadDialog";
 import { AuditPagination } from "@/components/AuditPagination";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -637,6 +639,15 @@ const InterviewTracking = () => {
             </p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            <BulkMetadataUploadDialog
+              onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
+              trigger={
+                <Button variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <FileArchive className="h-4 w-4" />
+                  <span className="hidden sm:inline">Bulk Upload</span>
+                </Button>
+              }
+            />
             <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2 text-xs sm:text-sm">
               <Filter className="h-4 w-4" />
               <span className="hidden sm:inline">Filters</span>
