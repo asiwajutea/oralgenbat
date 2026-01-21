@@ -707,6 +707,59 @@ export type Database = {
           },
         ]
       }
+      sms_notification_logs: {
+        Row: {
+          audit_id: string | null
+          contractor_id: string | null
+          created_at: string
+          error_message: string | null
+          file_name: string | null
+          id: string
+          interviewer_code: string | null
+          message: string
+          provider_response: Json | null
+          recipients: string[]
+          recipients_count: number
+          status: string
+        }
+        Insert: {
+          audit_id?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_name?: string | null
+          id?: string
+          interviewer_code?: string | null
+          message: string
+          provider_response?: Json | null
+          recipients?: string[]
+          recipients_count?: number
+          status?: string
+        }
+        Update: {
+          audit_id?: string | null
+          contractor_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          file_name?: string | null
+          id?: string
+          interviewer_code?: string | null
+          message?: string
+          provider_response?: Json | null
+          recipients?: string[]
+          recipients_count?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_notification_logs_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_assignments: {
         Row: {
           approved_at: string | null

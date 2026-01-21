@@ -43,6 +43,7 @@ import ZipDiagnostics from "./pages/ZipDiagnostics";
 import Achievements from "./pages/Achievements";
 import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
 import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
+import SmsLogs from "./pages/SmsLogs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -222,6 +223,16 @@ const App = () => (
                 <FullAdminRoute>
                   <Layout>
                     <ZipDiagnostics />
+                  </Layout>
+                </FullAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/sms-logs"
+              element={
+                <FullAdminRoute>
+                  <Layout>
+                    <SmsLogs />
                   </Layout>
                 </FullAdminRoute>
               }
