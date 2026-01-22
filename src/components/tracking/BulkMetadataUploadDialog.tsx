@@ -326,14 +326,7 @@ export const BulkMetadataUploadDialog = ({
     }
   };
 
-  const handleClose = () => {
-    if (!isUploading) {
-      setZipFiles([]);
-      setVisibleCount(MAX_VISIBLE_DEFAULT);
-      setShowConfirmDialog(false);
-      setIsOpen(false);
-    }
-  };
+  // handleOpenChange is defined just before the return statement
 
   const reAuditFiles = zipFiles.filter(f => f.isReAudit && f.status === "pending");
 
@@ -384,8 +377,18 @@ export const BulkMetadataUploadDialog = ({
   const visibleFiles = zipFiles.slice(0, visibleCount);
   const hiddenCount = zipFiles.length - visibleCount;
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open && isUploading) return; // Don't close while uploading
+    if (!open) {
+      setZipFiles([]);
+      setVisibleCount(MAX_VISIBLE_DEFAULT);
+      setShowConfirmDialog(false);
+    }
+    setIsOpen(open);
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-w-lg">
         <DialogHeader>
