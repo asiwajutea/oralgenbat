@@ -8,6 +8,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
@@ -50,6 +60,8 @@ export const BulkMetadataUploadDialog = ({
   const [isUploading, setIsUploading] = useState(false);
   const [zipFiles, setZipFiles] = useState<ZipFile[]>([]);
   const [visibleCount, setVisibleCount] = useState(5);
+
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setIsOpen = controlledOnOpenChange || setInternalOpen;
@@ -245,7 +257,24 @@ export const BulkMetadataUploadDialog = ({
     }
   };
 
+  const handleUploadClick = () => {
+    const filesToUpload = zipFiles.filter(f => f.status === "pending");
+    
+    if (filesToUpload.length === 0) {
+      toast.error("No matching files to upload");
+      return;
+    }
+
+    // Show confirmation dialog if there are re-audits
+    if (reAuditCount > 0) {
+      setShowConfirmDialog(true);
+    } else {
+      handleUpload();
+    }
+  };
+
   const handleUpload = async () => {
+    setShowConfirmDialog(false);
     const filesToUpload = zipFiles.filter(f => f.status === "pending");
     
     if (filesToUpload.length === 0) {
@@ -257,7 +286,7 @@ export const BulkMetadataUploadDialog = ({
 
     let successCount = 0;
     let errorCount = 0;
-    let reAuditCount = 0;
+    let reAuditProcessedCount = 0;
 
     // Process in batches of CONCURRENT_UPLOADS
     for (let i = 0; i < filesToUpload.length; i += CONCURRENT_UPLOADS) {
@@ -271,7 +300,7 @@ export const BulkMetadataUploadDialog = ({
         if (result.status === "fulfilled" && result.value) {
           successCount++;
           if (batch[idx].isReAudit) {
-            reAuditCount++;
+            reAuditProcessedCount++;
           }
         } else {
           errorCount++;
@@ -283,8 +312,8 @@ export const BulkMetadataUploadDialog = ({
 
     if (successCount > 0) {
       let message = `Successfully processed ${successCount} file(s)`;
-      if (reAuditCount > 0) {
-        message += ` (${reAuditCount} sent for re-audit)`;
+      if (reAuditProcessedCount > 0) {
+        message += ` (${reAuditProcessedCount} sent for re-audit)`;
       }
       toast.success(message);
     }
@@ -301,9 +330,12 @@ export const BulkMetadataUploadDialog = ({
     if (!isUploading) {
       setZipFiles([]);
       setVisibleCount(MAX_VISIBLE_DEFAULT);
+      setShowConfirmDialog(false);
       setIsOpen(false);
     }
   };
+
+  const reAuditFiles = zipFiles.filter(f => f.isReAudit && f.status === "pending");
 
   const getStatusIcon = (zipFile: ZipFile) => {
     switch (zipFile.status) {
@@ -450,13 +482,71 @@ export const BulkMetadataUploadDialog = ({
           )}
 
           <Button
-            onClick={handleUpload}
+            onClick={handleUploadClick}
             disabled={isUploading || matchedCount === 0}
             className="w-full"
           >
             {isUploading ? "Processing..." : `Upload ${matchedCount} File(s)`}
           </Button>
         </div>
+
+        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Bulk Upload</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3">
+                  <p>You are about to upload {matchedCount} file(s). This action will:</p>
+                  
+                  <ul className="space-y-2 text-sm">
+                    {newUploadCount > 0 && (
+                      <li className="flex items-center gap-2">
+                        <Badge variant="secondary" className="shrink-0">{newUploadCount}</Badge>
+                        <span>Add new metadata to interviews</span>
+                      </li>
+                    )}
+                    {replacementCount > 0 && (
+                      <li className="flex items-center gap-2">
+                        <Badge className="bg-orange-100 text-orange-700 shrink-0">{replacementCount}</Badge>
+                        <span>Replace existing metadata</span>
+                      </li>
+                    )}
+                    {reAuditCount > 0 && (
+                      <li className="flex items-center gap-2">
+                        <Badge className="bg-blue-100 text-blue-700 shrink-0">{reAuditCount}</Badge>
+                        <span className="font-medium">Send failed interviews for re-audit</span>
+                      </li>
+                    )}
+                  </ul>
+
+                  {reAuditCount > 0 && (
+                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                        Re-audit interviews ({reAuditCount}):
+                      </p>
+                      <ScrollArea className="max-h-[120px]">
+                        <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                          {reAuditFiles.map((file, idx) => (
+                            <li key={idx} className="flex items-center gap-2">
+                              <RefreshCw className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{file.fileName}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </ScrollArea>
+                    </div>
+                  )}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUpload}>
+                Confirm Upload
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );
