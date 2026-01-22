@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.send-failed-audit-sms]
 verify_jwt = false
+
+[functions.notify-pending-audits]
+verify_jwt = false
