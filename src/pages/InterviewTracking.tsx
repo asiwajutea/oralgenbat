@@ -423,6 +423,24 @@ const InterviewTracking = () => {
 
   const totalPages = Math.ceil(sortedInterviews.length / itemsPerPage);
 
+  // Calculate total names for stat cards
+  const nameStats = useMemo(() => {
+    const passed = interviews.filter(i => i.status === "Audit Passed");
+    const failed = interviews.filter(i => i.status === "Audit Failed");
+    const pending = interviews.filter(i => i.status === "Pending" || i.status === "Awaiting Review");
+    
+    const sum = (list: typeof interviews) => 
+      list.reduce((acc, i) => acc + (i.total_names || 0), 0);
+    
+    return {
+      total: sum(interviews),
+      passed: sum(passed),
+      failed: sum(failed),
+      pending: sum(pending),
+      filtered: sum(filteredInterviews),
+    };
+  }, [interviews, filteredInterviews]);
+
   const handleSort = (field: string) => {
     if (sortField === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -670,6 +688,9 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Total</p>
                 <p className="text-lg sm:text-2xl font-bold">{interviews.length}</p>
+                <p className="text-xs font-medium text-primary">
+                  {nameStats.total.toLocaleString()} names
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -681,6 +702,9 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Passed</p>
                 <p className="text-lg sm:text-2xl font-bold">{interviews.filter(i => i.status === "Audit Passed").length}</p>
+                <p className="text-xs font-medium text-success">
+                  {nameStats.passed.toLocaleString()} names
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -692,6 +716,9 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Failed</p>
                 <p className="text-lg sm:text-2xl font-bold">{interviews.filter(i => i.status === "Audit Failed").length}</p>
+                <p className="text-xs font-medium text-destructive">
+                  {nameStats.failed.toLocaleString()} names
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -725,6 +752,9 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Filtered</p>
                 <p className="text-lg sm:text-2xl font-bold">{filteredInterviews.length}</p>
+                <p className="text-xs font-medium text-purple-600">
+                  {nameStats.filtered.toLocaleString()} names
+                </p>
               </div>
             </CardContent>
           </Card>
