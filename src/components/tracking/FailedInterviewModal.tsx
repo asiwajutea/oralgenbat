@@ -123,6 +123,17 @@ export function FailedInterviewModal({
           .from("mobile-zips")
           .getPublicUrl(zipPath);
         newZipUrl = zipUrlData.publicUrl;
+        
+        // Trigger metadata re-parsing for the new ZIP
+        console.log("Triggering metadata re-parse for re-audit ZIP...");
+        const { error: processError } = await supabase.functions.invoke('process-mobile-zip', {
+          body: { auditId: interview.id, mobileZipUrl: newZipUrl }
+        });
+        
+        if (processError) {
+          console.error("ZIP processing error:", processError);
+          // Don't throw - upload succeeded, processing might work later
+        }
       }
 
       // Create re-audit submission record

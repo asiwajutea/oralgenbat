@@ -289,6 +289,44 @@ serve(async (req) => {
       console.error("Error reading metadata.json:", error);
     }
 
+    // Delete existing metadata and photos for re-audit scenarios
+    // This ensures clean slate when re-processing a ZIP
+    console.log("Checking for existing metadata to replace...");
+    const { data: existingMetadata } = await supabase
+      .from("interview_metadata")
+      .select("id")
+      .eq("audit_id", auditId);
+    
+    if (existingMetadata && existingMetadata.length > 0) {
+      console.log(`Found ${existingMetadata.length} existing metadata records, deleting...`);
+      await supabase
+        .from("interview_metadata")
+        .delete()
+        .eq("audit_id", auditId);
+    }
+
+    // Delete existing photos from storage and database
+    const { data: existingPhotos } = await supabase
+      .from("interview_photos")
+      .select("id, storage_path")
+      .eq("audit_id", auditId);
+    
+    if (existingPhotos && existingPhotos.length > 0) {
+      console.log(`Found ${existingPhotos.length} existing photo records, deleting...`);
+      // Delete from storage
+      const storagePaths = existingPhotos.map(p => p.storage_path).filter(Boolean);
+      if (storagePaths.length > 0) {
+        await supabase.storage
+          .from("interview-photos")
+          .remove(storagePaths);
+      }
+      // Delete from database
+      await supabase
+        .from("interview_photos")
+        .delete()
+        .eq("audit_id", auditId);
+    }
+
     // Process photos
     const photoOrder = [
       "individual.jpg",
