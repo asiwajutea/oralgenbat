@@ -9,6 +9,7 @@ interface StatusCounts {
   "Awaiting Review": number;
   "In Progress": number;
   "Re-Audit": number;
+  "Ready for Review": number;
 }
 
 interface TotalNames {
@@ -18,6 +19,7 @@ interface TotalNames {
   "Awaiting Review": number;
   "In Progress": number;
   "Re-Audit": number;
+  "Ready for Review": number;
 }
 
 export const useStatusCounts = () => {
@@ -64,6 +66,7 @@ export const useStatusCounts = () => {
         "Awaiting Review": 0,
         "In Progress": 0,
         "Re-Audit": 0,
+        "Ready for Review": 0,
       };
 
       const totalNames: TotalNames = {
@@ -73,6 +76,7 @@ export const useStatusCounts = () => {
         "Awaiting Review": 0,
         "In Progress": 0,
         "Re-Audit": 0,
+        "Ready for Review": 0,
       };
 
       audits?.forEach((audit) => {
@@ -129,6 +133,12 @@ export const useStatusCounts = () => {
           } else {
             counts["Pending"]++;
             totalNames["Pending"] += names;
+          }
+          
+          // Count "Ready for Review" - items with both PDF and metadata
+          if (hasCompleteArtifacts) {
+            counts["Ready for Review"]++;
+            totalNames["Ready for Review"] += names;
           }
         } else if (counts[audit.status as keyof StatusCounts] !== undefined) {
           counts[audit.status as keyof StatusCounts]++;

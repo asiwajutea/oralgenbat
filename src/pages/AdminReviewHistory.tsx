@@ -69,12 +69,24 @@ const AdminReviewHistory = () => {
   const [searchTerm, setSearchTerm] = useState(() => {
     return localStorage.getItem(STORAGE_KEYS.searchTerm) || "";
   });
+  const [searchInput, setSearchInput] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.searchTerm) || "";
+  });
   const [sortField, setSortField] = useState<SortField>(() => {
     return (localStorage.getItem(STORAGE_KEYS.sortField) as SortField) || "reviewed_at";
   });
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
     return (localStorage.getItem(STORAGE_KEYS.sortDirection) as SortDirection) || "desc";
   });
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchTerm(searchInput);
+      setCurrentPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
   const [isExporting, setIsExporting] = useState(false);
 
   // Persist filters to localStorage
@@ -221,7 +233,15 @@ const AdminReviewHistory = () => {
         .order(sortField, { ascending: sortDirection === "asc" });
 
       if (statusFilter !== "all") {
-        query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+        if (statusFilter === "failed_pdf") {
+          query = query.eq("status", "Audit Failed").contains("artifact_correction", ["scanned_pdf"]);
+        } else if (statusFilter === "failed_metadata") {
+          query = query.eq("status", "Audit Failed").contains("artifact_correction", ["mobile_metadata"]);
+        } else if (statusFilter === "failed_both") {
+          query = query.eq("status", "Audit Failed").contains("artifact_correction", ["scanned_pdf", "mobile_metadata"]);
+        } else {
+          query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+        }
       }
 
       if (reviewerFilter !== "all") {
@@ -702,16 +722,18 @@ const AdminReviewHistory = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        {data?.totalCount !== undefined && (
+          <Badge variant="secondary" className="px-3 py-1.5 text-sm font-medium">
+            {data.totalCount.toLocaleString()} {data.totalCount === 1 ? "result" : "results"}
+          </Badge>
+        )}
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by interview ID..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-10"
           />
         </div>
@@ -729,6 +751,9 @@ const AdminReviewHistory = () => {
             <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="Audit Passed">Passed</SelectItem>
             <SelectItem value="Audit Failed">Failed</SelectItem>
+            <SelectItem value="failed_pdf">Failed - PDF Issue</SelectItem>
+            <SelectItem value="failed_metadata">Failed - Metadata Issue</SelectItem>
+            <SelectItem value="failed_both">Failed - Both Issues</SelectItem>
           </SelectContent>
         </Select>
         <Select

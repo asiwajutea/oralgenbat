@@ -134,13 +134,20 @@ const ZipDiagnostics = () => {
         const hasPhotos = photoCount > 0;
         
         // Determine status
+        // A ZIP is valid if metadata was extracted (photos are optional)
+        // Corrupted means nothing was extracted at all
+        // Missing data means has photos but no metadata (rare edge case)
         let status: "valid" | "corrupted" | "missing_data";
-        if (hasMetadata && hasPhotos) {
+        if (hasMetadata) {
+          // If we have metadata, the ZIP was parsed successfully
+          // Photos are optional - their absence doesn't mean corruption
           status = "valid";
         } else if (!hasMetadata && !hasPhotos) {
-          status = "corrupted"; // ZIP was uploaded but nothing was extracted
+          // Nothing was extracted - ZIP processing failed
+          status = "corrupted";
         } else {
-          status = "missing_data"; // Partial data
+          // Edge case: has photos but no metadata
+          status = "missing_data";
         }
         
         return {

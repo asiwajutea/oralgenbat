@@ -114,16 +114,30 @@ serve(async (req) => {
     const exportTimestamp = new Date();
     const exportBatchId = `batch_${exportTimestamp.toISOString().replace(/[:.]/g, '-')}`;
 
-    // Get audit details with PDF URLs
+    // Get audit details with PDF URLs and re-audit info
     const auditIds = assignments.map(a => a.audit_id);
     const { data: audits, error: auditError } = await supabase
       .from('audits')
-      .select('id, file_name, file_url')
+      .select('id, file_name, file_url, mobile_zip_url, is_re_audit')
       .in('id', auditIds);
 
     if (auditError) {
       console.error('Error fetching audits:', auditError);
       throw auditError;
+    }
+    
+    // For re-audited interviews, check if metadata was replaced via re_audit_submissions
+    const reAuditedIds = audits?.filter(a => a.is_re_audit).map(a => a.id) || [];
+    let metadataReplacedSet = new Set<string>();
+    
+    if (reAuditedIds.length > 0) {
+      const { data: reAuditSubs } = await supabase
+        .from('re_audit_submissions')
+        .select('audit_id, replaced_zip')
+        .in('audit_id', reAuditedIds)
+        .eq('replaced_zip', true);
+      
+      metadataReplacedSet = new Set(reAuditSubs?.map(s => s.audit_id) || []);
     }
 
     if (!audits || audits.length === 0) {
@@ -177,11 +191,19 @@ serve(async (req) => {
     }
 
     // Create a list of PDF URLs with filenames for the client to download
-    const pdfList = audits.map(audit => ({
-      fileName: `${audit.file_name}.pdf`,
-      url: audit.file_url,
-      auditId: audit.id,
-    }));
+    // Include metadata ZIP only for re-audited interviews with replaced metadata
+    const pdfList = audits.map(audit => {
+      const includeMetadata = audit.is_re_audit && metadataReplacedSet.has(audit.id) && audit.mobile_zip_url;
+      return {
+        fileName: `${audit.file_name}.pdf`,
+        url: audit.file_url,
+        auditId: audit.id,
+        ...(includeMetadata ? {
+          metadataUrl: audit.mobile_zip_url,
+          metadataFileName: `${audit.file_name}_metadata.zip`,
+        } : {}),
+      };
+    });
 
     // Return the list of PDFs - client will handle the zipping
     // This avoids memory issues on the edge function
