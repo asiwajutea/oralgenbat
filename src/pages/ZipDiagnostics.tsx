@@ -100,10 +100,23 @@ const ZipDiagnostics = () => {
       const auditIds = audits.map((a) => a.id);
 
       // Get metadata for these audits
-      const { data: metadata } = await supabase.from("interview_metadata").select("audit_id").in("audit_id", auditIds);
+      const { data: metadata, error: metadataError } = await supabase
+        .from("interview_metadata")
+        .select("audit_id")
+        .in("audit_id", auditIds);
 
+      if (metadataError) {
+        console.error("Metadata query failed:", metadataError);
+      }
       // Get photo counts
-      const { data: photos } = await supabase.from("interview_photos").select("audit_id").in("audit_id", auditIds);
+      const { data: photos, error: photosError } = await supabase
+        .from("interview_photos")
+        .select("audit_id")
+        .in("audit_id", auditIds);
+
+      if (photosError) {
+        console.error("Photos query failed:", photosError);
+      }
 
       const metadataSet = new Set(metadata?.map((m) => m.audit_id) || []);
       const photoCountMap = new Map<string, number>();
