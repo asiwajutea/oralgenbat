@@ -126,9 +126,32 @@ const Index = () => {
         // Handle special filters
         const hasReAudit = filters.statuses.includes("Re-Audit");
         const hasInProgress = filters.statuses.includes("In Progress");
-        const otherStatuses = filters.statuses.filter(s => s !== "In Progress" && s !== "Re-Audit");
+        const hasReadyForReview = filters.statuses.includes("Ready for Review");
+        const otherStatuses = filters.statuses.filter(s => s !== "In Progress" && s !== "Re-Audit" && s !== "Ready for Review");
 
-        if (hasReAudit && !hasInProgress && otherStatuses.length === 0) {
+        if (hasReadyForReview && !hasReAudit && !hasInProgress && otherStatuses.length === 0) {
+          // Only Ready for Review filter - get audits that have both artifacts
+          // First get audit IDs with metadata
+          const { data: metadataAudits } = await supabase
+            .from("interview_metadata")
+            .select("audit_id");
+          
+          const auditIdsWithMetadata = metadataAudits?.map(m => m.audit_id).filter(Boolean) as string[] || [];
+          
+          if (auditIdsWithMetadata.length > 0) {
+            query = query
+              .in("status", ["Pending", "Awaiting Review"])
+              .not("file_url", "is", null)
+              .not("mobile_zip_url", "is", null)
+              .in("id", auditIdsWithMetadata);
+          } else {
+            // No metadata found, return empty result
+            setAudits([]);
+            setTotalCount(0);
+            setIsLoading(false);
+            return;
+          }
+        } else if (hasReAudit && !hasInProgress && !hasReadyForReview && otherStatuses.length === 0) {
           // Only Re-Audit filter
           query = query.eq("is_re_audit", true).eq("status", "Awaiting Review");
           
@@ -136,12 +159,12 @@ const Index = () => {
           if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
             query = query.eq("reviewed_by", profile.full_name);
           }
-        } else if (hasInProgress && !hasReAudit && otherStatuses.length === 0) {
+        } else if (hasInProgress && !hasReAudit && !hasReadyForReview && otherStatuses.length === 0) {
           // Only In Progress filter
           query = query
             .not("locked_by", "is", null)
             .gte("locked_at", oneHourAgo);
-        } else if (hasInProgress || hasReAudit) {
+        } else if (hasInProgress || hasReAudit || hasReadyForReview) {
           // Complex OR filter with multiple conditions
           const conditions = [];
           
@@ -155,6 +178,12 @@ const Index = () => {
             } else {
               conditions.push(`and(is_re_audit.eq.true,status.eq.Awaiting Review)`);
             }
+          }
+          
+          if (hasReadyForReview) {
+            // Ready for Review is complex - need to filter for audits with both artifacts
+            // For now, just filter by status and let client-side handle metadata check
+            conditions.push(`and(status.in.(Pending,Awaiting Review),file_url.not.is.null,mobile_zip_url.not.is.null)`);
           }
           
           if (otherStatuses.length > 0) {

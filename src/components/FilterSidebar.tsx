@@ -87,9 +87,13 @@ export const FilterSidebar = ({ onFilterChange, onClose, initialFilters }: Filte
   const [initialized, setInitialized] = useState(false);
   const { data: statusCounts } = useStatusCounts();
 
+  // Check if user is in a role that should see Ready for Review filter
+  const showReadyForReview = userRole === 'super_admin' || userRole === 'sub_contractor' || userRole === 'field_manager';
+  
   // Build status options dynamically based on role
   const statusOptions = [
     { value: "Pending", label: `Awaiting Review (${statusCounts?.counts?.Pending || 0})` },
+    ...(showReadyForReview ? [{ value: "Ready for Review", label: `Ready for Review (${statusCounts?.counts?.["Ready for Review"] || 0})` }] : []),
     { value: "Re-Audit", label: `Re-Audit (${statusCounts?.counts?.["Re-Audit"] || 0})` },
     { value: "In Progress", label: `In Progress (${statusCounts?.counts?.["In Progress"] || 0})` },
     { value: "Audit Passed", label: `Audit Passed (${statusCounts?.counts?.["Audit Passed"] || 0})` },

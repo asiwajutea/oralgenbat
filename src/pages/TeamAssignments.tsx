@@ -336,10 +336,20 @@ const TeamAssignments = () => {
       // Download and add each PDF to the zip
       for (const file of data.files) {
         try {
+          // Download PDF
           const response = await fetch(file.url);
           if (response.ok) {
             const blob = await response.blob();
             zip.file(file.fileName, blob);
+          }
+          
+          // Download metadata ZIP if present (for re-audited interviews)
+          if (file.metadataUrl && file.metadataFileName) {
+            const metaResponse = await fetch(file.metadataUrl);
+            if (metaResponse.ok) {
+              const metaBlob = await metaResponse.blob();
+              zip.file(file.metadataFileName, metaBlob);
+            }
           }
         } catch (err) {
           console.error(`Failed to download ${file.fileName}:`, err);
