@@ -702,7 +702,7 @@ const AdminReviewHistory = () => {
                 y += 3.5;
               });
               
-              // Add additional comment if present
+              // Add additional comment if present (in red)
               if (item.additionalComment) {
                 const commentLines = doc.splitTextToSize(`Additional Comment: ${item.additionalComment}`, maxLineWidth);
                 commentLines.forEach((line: string) => {
@@ -713,7 +713,9 @@ const AdminReviewHistory = () => {
                     y = 22;
                   }
                   doc.setFont("helvetica", "italic");
+                  doc.setTextColor(220, 38, 38); // Red color
                   doc.text(line, margin, y);
+                  doc.setTextColor(0, 0, 0); // Reset to black
                   doc.setFont("helvetica", "normal");
                   y += 3.5;
                 });
