@@ -99,24 +99,32 @@ const ZipDiagnostics = () => {
 
       const auditIds = audits.map((a) => a.id);
 
-      // Get metadata for these audits
-      const { data: metadata, error: metadataError } = await supabase
-        .from("interview_metadata")
-        .select("audit_id")
-        .in("audit_id", auditIds);
+      // Batch queries to avoid "Bad Request" errors with large arrays
+      const BATCH_SIZE = 200;
+      const batchQuery = async (tableName: "interview_metadata" | "interview_photos") => {
+        const allResults: { audit_id: string }[] = [];
+        
+        for (let i = 0; i < auditIds.length; i += BATCH_SIZE) {
+          const batch = auditIds.slice(i, i + BATCH_SIZE);
+          const { data, error } = await supabase
+            .from(tableName)
+            .select("audit_id")
+            .in("audit_id", batch);
+          
+          if (error) {
+            console.error(`${tableName} batch query failed:`, error);
+          }
+          if (data) allResults.push(...data);
+        }
+        
+        return allResults;
+      };
 
-      if (metadataError) {
-        console.error("Metadata query failed:", metadataError);
-      }
-      // Get photo counts
-      const { data: photos, error: photosError } = await supabase
-        .from("interview_photos")
-        .select("audit_id")
-        .in("audit_id", auditIds);
-
-      if (photosError) {
-        console.error("Photos query failed:", photosError);
-      }
+      // Execute batch queries for metadata and photos
+      const [metadata, photos] = await Promise.all([
+        batchQuery("interview_metadata"),
+        batchQuery("interview_photos"),
+      ]);
 
       const metadataSet = new Set(metadata?.map((m) => m.audit_id) || []);
       const photoCountMap = new Map<string, number>();

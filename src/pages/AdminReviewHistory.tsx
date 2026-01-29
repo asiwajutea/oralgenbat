@@ -375,6 +375,19 @@ const AdminReviewHistory = () => {
     return null;
   };
 
+  // Helper function to apply status filter to export queries
+  const applyStatusFilter = (query: any, filter: string) => {
+    if (filter === "failed_pdf") {
+      return query.eq("status", "Audit Failed").contains("artifact_correction", ["scanned_pdf"]);
+    } else if (filter === "failed_metadata") {
+      return query.eq("status", "Audit Failed").contains("artifact_correction", ["mobile_metadata"]);
+    } else if (filter === "failed_both") {
+      return query.eq("status", "Audit Failed").contains("artifact_correction", ["scanned_pdf", "mobile_metadata"]);
+    } else {
+      return query.eq("status", filter as "Audit Passed" | "Audit Failed");
+    }
+  };
+
   // Export functions
   const exportToCSV = async () => {
     setIsExporting(true);
@@ -386,7 +399,7 @@ const AdminReviewHistory = () => {
         .not("reviewed_at", "is", null)
         .order("reviewed_at", { ascending: false });
 
-      if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+      if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
 
@@ -429,7 +442,7 @@ const AdminReviewHistory = () => {
         .not("reviewed_at", "is", null)
         .order("reviewed_at", { ascending: false });
 
-      if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+      if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
 
@@ -463,21 +476,72 @@ const AdminReviewHistory = () => {
     }
   };
 
+  // Checklist feedback statements mapping
+  const CHECKLIST_FEEDBACK_STATEMENTS: Record<number, string> = {
+    1: "The interview failed because it was not recorded on the FSI Standard Interview Collection Form or an incorrect form was submitted. Please ensure the interview is properly documented using the approved FSI Standard Interview Collection Form and resubmit for review.",
+    2: "The interview failed because the Authorization Form is incomplete, missing a signature and/or date, or a required witness signature is absent where \"X\" was used. Please obtain all required signatures and dates and resubmit the completed Authorization Form.",
+    3: "The interview failed because the Field Manager Checklist was not fully completed and/or signed. Please ensure all required checklist items are checked and the form is properly signed before resubmission.",
+    4: "The interview failed because the interviewee's name and/or age on the collection form header and Authorization Form do not match the information recorded in the mobile app. Please correct the discrepancies so all records are consistent and resubmit for review.",
+    5: "The interview failed because the total number of names recorded on the form header does not match the total number of names written on the collection form or the Mobile App data. Please reconcile the counts and update the documentation accordingly.",
+    6: "The interview failed because the earliest ancestor's name on the collection form does not match the information entered in the mobile app. Please review and correct the ancestor details so both records align.",
+    7: "The interview failed because one or more individuals listed on the collection form are missing a unique RIN, relationship code, and/or gender, or the information is duplicated or incorrect. Please ensure all required identifiers are accurately completed for every individual.",
+    8: "The interview failed because the dates and/or places of birth for the interviewee, spouse, or children are missing or incomplete. Please provide complete birth information for all required individuals and resubmit the interview.",
+    9: "The interview failed because the folder name recorded on the collection form header does not match the interview date and/or interview ID. Please correct the folder naming to reflect the accurate interview details.",
+    10: "The interview failed because the pages are not numbered correctly or are out of sequence. Please renumber the pages in the correct order and ensure the full document is complete before resubmission.",
+    11: "The interview failed because one or more photos uploaded in the mobile app are unclear, incomplete, irrelevant, or improperly captured. Please retake and upload clear, complete, and relevant photos as required.",
+    12: "The interview failed because the Authorization Form image is incomplete, unclear, or partially obscured, making it unreadable. Please upload a clear image showing the full Authorization Form.",
+    13: "The interview failed because the audio recordings are unclear, incomplete, or inaudible, making it difficult to hear the Field Agent and/or interviewee. Please ensure all required audio recordings are clear and fully audible before resubmission.",
+  };
+
+  // Parse review_comment to extract failed question IDs and their additional comments
+  const parseChecklistFeedback = (reviewComment: string): Array<{questionId: number; additionalComment?: string}> => {
+    const failures: Array<{questionId: number; additionalComment?: string}> = [];
+    
+    // Match patterns like "- Q1:", "- Q2:", etc. and capture the comment if present
+    const lines = reviewComment.split('\n');
+    let currentQuestionId: number | null = null;
+    
+    for (const line of lines) {
+      const questionMatch = line.match(/^-\s*Q(\d+):/);
+      if (questionMatch) {
+        // Save any previously found question
+        if (currentQuestionId !== null) {
+          failures.push({ questionId: currentQuestionId });
+        }
+        currentQuestionId = parseInt(questionMatch[1]);
+      } else if (currentQuestionId !== null) {
+        // Check for Comment line
+        const commentMatch = line.match(/^\s*Comment:\s*(.+)/i);
+        if (commentMatch && commentMatch[1].trim()) {
+          failures.push({ questionId: currentQuestionId, additionalComment: commentMatch[1].trim() });
+          currentQuestionId = null;
+        }
+      }
+    }
+    
+    // Don't forget the last question if no comment followed
+    if (currentQuestionId !== null) {
+      failures.push({ questionId: currentQuestionId });
+    }
+    
+    return failures;
+  };
+
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
-      // Fetch audits with contractor_id from interview_metadata
+      // Fetch audits with metadata including interviewee details
       let query = supabase
         .from("audits")
         .select(`
           id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, 
           is_re_audit, re_audit_count, review_duration_seconds, artifact_correction,
-          interview_metadata(contractor_id)
+          interview_metadata(contractor_id, interviewee_name, total_names, interviewee_age, first_ancestor)
         `)
         .not("reviewed_at", "is", null)
         .order("file_name", { ascending: true });
 
-      if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+      if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
 
@@ -486,7 +550,6 @@ const AdminReviewHistory = () => {
 
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 14;
       const maxLineWidth = pageWidth - margin * 2;
       let pageNum = 1;
@@ -551,25 +614,43 @@ const AdminReviewHistory = () => {
       doc.setFontSize(9);
       
       allAudits.forEach((a, i) => {
-        // Calculate feedback text height (only for failed audits)
-        let feedbackLines: string[] = [];
-        let actionPlanLines: string[] = [];
+        // Get metadata info
+        const metadata = Array.isArray(a.interview_metadata) && a.interview_metadata.length > 0 
+          ? a.interview_metadata[0] 
+          : null;
+        const intervieweeName = metadata?.interviewee_name || 'Unknown';
+        const totalNames = metadata?.total_names || 0;
+        const intervieweeAge = metadata?.interviewee_age || '-';
+        const firstAncestor = metadata?.first_ancestor || 'Unknown';
         
+        // Parse feedback for failed audits
+        let feedbackItems: Array<{questionId: number; additionalComment?: string}> = [];
         if (a.status === "Audit Failed" && a.review_comment) {
-          feedbackLines = doc.splitTextToSize(`Review Feedback: ${a.review_comment}`, maxLineWidth);
-        }
-        
-        if (a.status === "Audit Failed" && a.action_plan) {
-          actionPlanLines = doc.splitTextToSize(`Action Plan: ${a.action_plan}`, maxLineWidth);
+          feedbackItems = parseChecklistFeedback(a.review_comment);
         }
         
         // Calculate space needed for this entry
-        let entryHeight = 18; // Base height for title + status + date (reduced from 20)
+        let entryHeight = 22; // Base height for title + status + date + metadata line
         if (a.artifact_correction?.length) entryHeight += 4;
-        entryHeight += feedbackLines.length * 3.5;
-        entryHeight += actionPlanLines.length * 3.5;
         
-        // Check if we need a new page before starting entry (increased threshold to 285)
+        // Calculate feedback space
+        feedbackItems.forEach(item => {
+          const statement = CHECKLIST_FEEDBACK_STATEMENTS[item.questionId] || '';
+          const statementLines = doc.splitTextToSize(statement, maxLineWidth);
+          entryHeight += statementLines.length * 3.5 + 2;
+          if (item.additionalComment) {
+            const commentLines = doc.splitTextToSize(`Additional Comment: ${item.additionalComment}`, maxLineWidth);
+            entryHeight += commentLines.length * 3.5;
+          }
+        });
+        
+        // Action plan space
+        if (a.status === "Audit Failed" && a.action_plan && a.action_plan.trim()) {
+          const actionPlanLines = doc.splitTextToSize(`Action Plan: ${a.action_plan}`, maxLineWidth);
+          entryHeight += actionPlanLines.length * 3.5 + 2;
+        }
+        
+        // Check if we need a new page before starting entry
         if (y + entryHeight > 285) {
           doc.addPage();
           pageNum++;
@@ -589,27 +670,64 @@ const AdminReviewHistory = () => {
         doc.text(`Date: ${a.reviewed_at ? format(new Date(a.reviewed_at), "PPp") : "-"}`, margin, y);
         y += 4.5;
         
+        // Add interviewee metadata
+        doc.text(`Interviewee: ${intervieweeName} | Age: ${intervieweeAge} | Total Names: ${totalNames} | First Ancestor: ${firstAncestor}`, margin, y);
+        y += 4.5;
+        
         if (a.artifact_correction?.length) {
           doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}`, margin, y);
           y += 4;
         }
         
-        // Full Review Feedback for failed audits (no truncation)
-        if (feedbackLines.length > 0) {
-          feedbackLines.forEach((line: string) => {
-            if (y > 285) {
-              doc.addPage();
-              pageNum++;
-              addPageHeader(false);
-              y = 22;
+        // Render feedback statements for failed audits
+        if (feedbackItems.length > 0) {
+          y += 2;
+          doc.setFont("helvetica", "bold");
+          doc.text("Feedback:", margin, y);
+          doc.setFont("helvetica", "normal");
+          y += 4;
+          
+          feedbackItems.forEach((item) => {
+            const statement = CHECKLIST_FEEDBACK_STATEMENTS[item.questionId];
+            if (statement) {
+              const statementLines = doc.splitTextToSize(statement, maxLineWidth);
+              statementLines.forEach((line: string) => {
+                if (y > 285) {
+                  doc.addPage();
+                  pageNum++;
+                  addPageHeader(false);
+                  y = 22;
+                }
+                doc.text(line, margin, y);
+                y += 3.5;
+              });
+              
+              // Add additional comment if present
+              if (item.additionalComment) {
+                const commentLines = doc.splitTextToSize(`Additional Comment: ${item.additionalComment}`, maxLineWidth);
+                commentLines.forEach((line: string) => {
+                  if (y > 285) {
+                    doc.addPage();
+                    pageNum++;
+                    addPageHeader(false);
+                    y = 22;
+                  }
+                  doc.setFont("helvetica", "italic");
+                  doc.text(line, margin, y);
+                  doc.setFont("helvetica", "normal");
+                  y += 3.5;
+                });
+              }
+              
+              y += 2; // Space between feedback items
             }
-            doc.text(line, margin, y);
-            y += 3.5;
           });
         }
         
-        // Full Action Plan for failed audits (no truncation)
-        if (actionPlanLines.length > 0) {
+        // Render action plan if present
+        if (a.status === "Audit Failed" && a.action_plan && a.action_plan.trim()) {
+          y += 2;
+          const actionPlanLines = doc.splitTextToSize(`Action Plan: ${a.action_plan}`, maxLineWidth);
           actionPlanLines.forEach((line: string) => {
             if (y > 285) {
               doc.addPage();
@@ -622,7 +740,7 @@ const AdminReviewHistory = () => {
           });
         }
         
-        y += 4; // Reduced space between entries (from 6 to 4)
+        y += 4; // Space between entries
       });
 
       doc.save(`review-history-${format(new Date(), "yyyy-MM-dd")}.pdf`);

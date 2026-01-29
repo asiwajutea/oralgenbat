@@ -167,14 +167,7 @@ export const ReviewActions = ({
       return;
     }
 
-    if (actionPlan.trim().length < 10) {
-      toast({
-        title: "Validation Error",
-        description: "Please provide a detailed action plan (at least 10 characters).",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Action plan is optional - no validation required
 
     setIsSubmitting(true);
     try {
@@ -403,7 +396,7 @@ export const ReviewActions = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="action-plan">Action Plan for Correction *</Label>
+              <Label htmlFor="action-plan">Action Plan for Correction (Optional)</Label>
               <Textarea
                 id="action-plan"
                 placeholder="Describe the steps needed to correct this issue..."
