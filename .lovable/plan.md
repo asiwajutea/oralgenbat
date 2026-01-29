@@ -1,192 +1,213 @@
 
-# Implementation Plan: Multi-Page Fixes and Enhancements
+# Implementation Plan: Multi-Issue Fix
 
 ## Overview
-This plan addresses changes across 4 pages: Admin Review History, ZIP Diagnostics, Interviews (Index), and Team Assignments.
+This plan addresses four distinct issues across multiple pages: ZIP Diagnostics query failures, action plan validation, PDF export filtering, and PDF export content formatting.
 
 ---
 
-## 1. Admin Review History Page Fixes
+## 1. ZIP File Diagnostics - Query Fix
 
-### 1.1 Add Artifact-Based Status Filters
-**Location**: `src/pages/AdminReviewHistory.tsx`
+### Problem
+The "Photos query failed: Bad Request" error occurs because there are 667 audit IDs being passed to the `.in()` operator, which exceeds PostgreSQL's query parameter limits for large arrays.
 
-**Current State**: Status filter only has "All Statuses", "Passed", and "Failed" options.
+### Solution
+**Location**: `src/pages/ZipDiagnostics.tsx` (lines 112-118)
 
-**Changes**:
-- Add three new filter options under the Status dropdown:
-  - "Failed - PDF Issue" (filters by `artifact_correction` containing "scanned_pdf")
-  - "Failed - Metadata Issue" (filters by `artifact_correction` containing "mobile_metadata")
-  - "Failed - Both Issues" (filters by `artifact_correction` containing both)
-
-**Implementation**:
-- Modify the query logic (lines 217-246) to handle these new filter values
-- Add filter options to the Select component (lines 718-733)
-- When one of these filters is selected, query should:
-  1. Filter by `status = 'Audit Failed'`
-  2. Check `artifact_correction` array for the appropriate values
-
-### 1.2 Fix Search Box Debouncing
-**Location**: `src/pages/AdminReviewHistory.tsx` (lines 708-716)
-
-**Current State**: Search triggers a query on every keystroke because `searchTerm` directly affects the query.
+Batch the queries for metadata and photos into chunks of 100-200 IDs to avoid hitting the query parameter limit. Also, add better error handling so the page still functions even if one query fails.
 
 **Changes**:
-- Add local state for input value separate from the actual filter value
-- Implement debouncing using `useEffect` with a timeout (300-500ms delay)
-- Only update the filter after the user stops typing
+1. Create a helper function to batch audit IDs into chunks
+2. Execute multiple queries in parallel for each chunk
+3. Combine the results
+4. Add fallback behavior so the page works even if the photos query fails (metadata query is the critical one)
 
-**Implementation Pattern** (from TeamAssignments.tsx reference):
 ```typescript
-const [searchInput, setSearchInput] = useState(searchTerm);
-
-useEffect(() => {
-  const timer = setTimeout(() => {
-    setSearchTerm(searchInput);
-    setCurrentPage(1);
-  }, 400);
-  return () => clearTimeout(timer);
-}, [searchInput]);
+// Helper to batch queries
+const batchQuery = async (auditIds: string[], tableName: string) => {
+  const BATCH_SIZE = 200;
+  const results: any[] = [];
+  
+  for (let i = 0; i < auditIds.length; i += BATCH_SIZE) {
+    const batch = auditIds.slice(i, i + BATCH_SIZE);
+    const { data, error } = await supabase
+      .from(tableName)
+      .select("audit_id")
+      .in("audit_id", batch);
+    
+    if (data) results.push(...data);
+  }
+  
+  return results;
+};
 ```
 
-### 1.3 Add Filter Count Display
-**Location**: `src/pages/AdminReviewHistory.tsx`
-
-**Changes**:
-- Display the filtered result count prominently in the UI
-- Add a badge or text showing "{count} results" near the filters
-- The count already exists in `data?.totalCount` - just needs to be displayed more prominently
-
 ---
 
-## 2. ZIP Diagnostics Page Fix
+## 2. Interview Review - Make Action Plan Optional
 
-### 2.1 Fix Diagnostic Status Logic
-**Location**: `src/pages/ZipDiagnostics.tsx` (lines 131-156)
+### Problem
+When failing an interview, the action plan field is currently mandatory (requires at least 10 characters). The user wants this to be optional.
 
-**Current State**: The status determination logic is:
-- `valid`: has BOTH metadata AND photos
-- `corrupted`: has NEITHER metadata NOR photos  
-- `missing_data`: has one but not the other
+### Solution
+**Location**: `src/components/review/ReviewActions.tsx` (lines 170-178)
 
-**Problem**: A ZIP file can be valid even without photos if it only contains metadata. The current logic incorrectly marks ZIPs as "corrupted" if photos weren't extracted (which might not be expected for all ZIPs).
+Remove the validation check for `actionPlan` minimum length. The artifact selection and review comment remain required.
 
-**Changes**:
-- Revise the status determination logic:
-  - `valid`: has metadata (photos are optional for validity)
-  - `corrupted`: no metadata extracted AND ZIP was uploaded (processing failed)
-  - `missing_data`: has metadata but missing expected photos, OR has photos but no metadata
-
-**Updated Logic**:
+**Current Code**:
 ```typescript
-let status: "valid" | "corrupted" | "missing_data";
-if (hasMetadata) {
-  // If we have metadata, the ZIP was parsed successfully
-  // Photos are optional - their absence doesn't mean corruption
-  status = "valid";
-} else if (!hasMetadata && !hasPhotos) {
-  // Nothing was extracted - ZIP processing failed
-  status = "corrupted";
-} else {
-  // Edge case: has photos but no metadata (unlikely but possible)
-  status = "missing_data";
+if (actionPlan.trim().length < 10) {
+  toast({
+    title: "Validation Error",
+    description: "Please provide a detailed action plan (at least 10 characters).",
+    variant: "destructive",
+  });
+  return;
 }
 ```
 
----
+**Change**: Remove this validation block entirely. The action plan will be submitted as-is (can be empty).
 
-## 3. Interviews Page (Index) - Artifact-Ready Filter
-
-### 3.1 Add "Ready for Review" Filter for Admin Roles
-**Location**: `src/pages/Index.tsx` and `src/components/FilterSidebar.tsx`
-
-**Current State**: "Awaiting Review" shows all pending interviews including those without complete artifacts.
-
-**Target Roles**: Super Admin, Sub-Contractor, Field Manager
-
-**Changes**:
-
-**FilterSidebar.tsx**:
-- Add a new status option: "Ready for Review" that only shows interviews with:
-  1. Status = "Pending" or "Awaiting Review"
-  2. Has PDF (`file_url` is not null)
-  3. Has metadata (via `interview_metadata` join)
-  4. Is not corrupted (metadata record exists)
-
-**Index.tsx** (fetchAudits function):
-- When "Ready for Review" filter is selected:
-  1. Get audit IDs that have corresponding `interview_metadata` records
-  2. Filter to audits with `file_url IS NOT NULL` and `mobile_zip_url IS NOT NULL`
-  3. Only show these to authorized roles (super_admin, sub_contractor, field_manager)
-
-**Implementation Approach**:
-- Add new filter option "Ready for Review" to `statusOptions` in FilterSidebar (visible only for authorized roles)
-- In Index.tsx, handle this special filter by:
-  1. First querying `interview_metadata` to get audit IDs with valid metadata
-  2. Then filtering audits to include only those with both `file_url` and `mobile_zip_url` present
-  3. Joining the two result sets
+**Also update**:
+- Remove the `*` from the action plan label to indicate it's optional
+- Update placeholder text to indicate optionality
 
 ---
 
-## 4. Team Assignments - Metadata Handling for Re-audits
+## 3. Admin Review History - PDF Export Filter Fix
 
-### 4.1 Understanding Current Behavior
-**Current Flow**:
-1. Interview fails audit
-2. New metadata ZIP is uploaded for re-audit (via `process-mobile-zip`)
-3. The old metadata is DELETED and new metadata is inserted immediately
-4. Interview goes through re-audit
-5. If passed, it's assigned to a team and exported
+### Problem
+The PDF export function doesn't handle the new artifact-based status filters (`failed_pdf`, `failed_metadata`, `failed_both`). It just passes the raw filter value to `.eq("status", ...)` which returns no results.
 
-**Requested Behavior**:
-1. When metadata is uploaded for re-audit, store it TEMPORARILY
-3. The old metadata is DELETED and new metadata is inserted immediately
-4. Interview goes through re-audit
-5. If passed, it's assigned to a team and exported
-2. During export, include the updated metadata for re-audited interviews
+### Solution
+**Location**: `src/pages/AdminReviewHistory.tsx` (lines 479-482)
 
-### 4.2 Proposed Solution Approach
+Apply the same filter logic used in the main query (lines 235-244) to the PDF export query.
 
-**Option A - Deferred Metadata Replacement** (Recommended):
-This would require significant architectural changes:
-- Create a staging table `interview_metadata_pending` to hold re-audit metadata
-- Modify `process-mobile-zip` to insert into staging table if audit has `is_re_audit = true`
-- Create a trigger/function that moves staging metadata to main table when status changes to "Audit Passed"
-
-**Option B - Track Metadata Version** (Simpler):
-- Add a `version` or `replaced_at` column to `interview_metadata`
-- Track which metadata is associated with which re-audit cycle
-- When exporting, always use the latest metadata
-
-### 4.3 Export Metadata with PDFs
-**Location**: `supabase/functions/export-team-pdfs/index.ts`
-
-**Current State**: Only exports PDF files (file_url), not metadata ZIPs.
-
-**Changes**:
-- Modify the export function to also fetch `mobile_zip_url` for each audit that is re-audited and has their metadata replaced
-- Include both PDF and ZIP in the export response
-- Client-side (TeamAssignments.tsx) needs to download and include both in the final ZIP. Only the latest Metadata of the re-audited interviews are downloaded. If the interview is not re-audited, only export the PDF. If the interview is re-audited but the metadata is not replaced, only export the PDF.
-
-**Implementation**:
+**Current Code**:
 ```typescript
-// In export-team-pdfs function
-const { data: audits } = await supabase
-  .from('audits')
-  .select('id, file_name, file_url, mobile_zip_url')  // Add mobile_zip_url
-  .in('id', auditIds);
-
-const fileList = audits?.map(audit => ({
-  fileName: `${audit.file_name}.pdf`,
-  url: audit.file_url,
-  auditId: audit.id,
-  metadataUrl: audit.mobile_zip_url,  // Include metadata URL
-  metadataFileName: `${audit.file_name}_metadata.zip`,
-})) || [];
+if (statusFilter !== "all") query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
 ```
 
-**Client-side changes** (`TeamAssignments.tsx`):
-- When building the ZIP, also download and include metadata ZIPs if available
+**Updated Code**:
+```typescript
+if (statusFilter !== "all") {
+  if (statusFilter === "failed_pdf") {
+    query = query.eq("status", "Audit Failed").contains("artifact_correction", ["scanned_pdf"]);
+  } else if (statusFilter === "failed_metadata") {
+    query = query.eq("status", "Audit Failed").contains("artifact_correction", ["mobile_metadata"]);
+  } else if (statusFilter === "failed_both") {
+    query = query.eq("status", "Audit Failed").contains("artifact_correction", ["scanned_pdf", "mobile_metadata"]);
+  } else {
+    query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
+  }
+}
+```
+
+Apply the same fix to:
+- `exportToCSV` function (line 389)
+- `exportToExcel` function (line 430)
+
+---
+
+## 4. Admin Review History - PDF Export Content Overhaul
+
+### Problem
+The PDF export currently includes the checklist questions and headers. The user wants feedback statements instead, with specific predefined messages for each checklist question failure.
+
+### Required Data
+The PDF export needs to include:
+- Interviewee name
+- Total names
+- Age
+- First ancestor name
+
+These are in the `interview_metadata` table, so the query needs to be updated.
+
+### Solution
+**Location**: `src/pages/AdminReviewHistory.tsx` (lines 466-631)
+
+#### 4.1 Update Query to Include Metadata
+```typescript
+interview_metadata(contractor_id, interviewee_name, total_names, interviewee_age, first_ancestor)
+```
+
+#### 4.2 Create Feedback Statement Mapping
+Create a constant object mapping question IDs to their feedback statements:
+
+```typescript
+const CHECKLIST_FEEDBACK_STATEMENTS: Record<number, string> = {
+  1: "The interview failed because it was not recorded on the FSI Standard Interview Collection Form or an incorrect form was submitted. Please ensure the interview is properly documented using the approved FSI Standard Interview Collection Form and resubmit for review.",
+  2: "The interview failed because the Authorization Form is incomplete, missing a signature and/or date, or a required witness signature is absent where \"X\" was used. Please obtain all required signatures and dates and resubmit the completed Authorization Form.",
+  3: "The interview failed because the Field Manager Checklist was not fully completed and/or signed. Please ensure all required checklist items are checked and the form is properly signed before resubmission.",
+  4: "The interview failed because the interviewee's name and/or age on the collection form header and Authorization Form do not match the information recorded in the mobile app. Please correct the discrepancies so all records are consistent and resubmit for review.",
+  5: "The interview failed because the total number of names recorded on the form header does not match the total number of names written on the collection form or the Mobile App data. Please reconcile the counts and update the documentation accordingly.",
+  6: "The interview failed because the earliest ancestor's name on the collection form does not match the information entered in the mobile app. Please review and correct the ancestor details so both records align.",
+  7: "The interview failed because one or more individuals listed on the collection form are missing a unique RIN, relationship code, and/or gender, or the information is duplicated or incorrect. Please ensure all required identifiers are accurately completed for every individual.",
+  8: "The interview failed because the dates and/or places of birth for the interviewee, spouse, or children are missing or incomplete. Please provide complete birth information for all required individuals and resubmit the interview.",
+  9: "The interview failed because the folder name recorded on the collection form header does not match the interview date and/or interview ID. Please correct the folder naming to reflect the accurate interview details.",
+  10: "The interview failed because the pages are not numbered correctly or are out of sequence. Please renumber the pages in the correct order and ensure the full document is complete before resubmission.",
+  11: "The interview failed because one or more photos uploaded in the mobile app are unclear, incomplete, irrelevant, or improperly captured. Please retake and upload clear, complete, and relevant photos as required.",
+  12: "The interview failed because the Authorization Form image is incomplete, unclear, or partially obscured, making it unreadable. Please upload a clear image showing the full Authorization Form.",
+  13: "The interview failed because the audio recordings are unclear, incomplete, or inaudible, making it difficult to hear the Field Agent and/or interviewee. Please ensure all required audio recordings are clear and fully audible before resubmission.",
+};
+```
+
+#### 4.3 Create Feedback Parser Function
+Parse the `review_comment` field to extract which questions failed and their additional comments:
+
+```typescript
+const parseChecklistFeedback = (reviewComment: string): Array<{questionId: number; additionalComment?: string}> => {
+  // The review_comment contains markdown like:
+  // **Failed Checklist Items:**
+  // **Documentation & Authorization:**
+  // - Q1: Was the interview recorded...
+  //   Comment: Some additional comment
+  
+  const failures: Array<{questionId: number; additionalComment?: string}> = [];
+  
+  // Match patterns like "Q1:", "Q2:", etc.
+  const questionMatches = reviewComment.matchAll(/- Q(\d+):/g);
+  
+  for (const match of questionMatches) {
+    const questionId = parseInt(match[1]);
+    // Extract comment if present (follows the question)
+    const afterQuestion = reviewComment.substring(match.index! + match[0].length);
+    const commentMatch = afterQuestion.match(/Comment: ([^\n]+)/);
+    
+    failures.push({
+      questionId,
+      additionalComment: commentMatch?.[1]?.trim(),
+    });
+  }
+  
+  return failures;
+};
+```
+
+#### 4.4 Update PDF Rendering Logic
+For each failed audit, instead of dumping the raw `review_comment`:
+1. Add metadata info (interviewee name, total names, age, first ancestor)
+2. Parse the checklist failures
+3. For each failed question, output the predefined feedback statement
+4. If there's an additional comment, add it below
+5. If action plan exists, add it at the end
+
+**PDF Entry Format**:
+```text
+1. NG71_730_20260103_1036
+Status: Failed | Reviewer: John Doe | Duration: 5m 23s
+Date: January 28, 2026, 4:50 PM
+Interviewee: Jane Smith | Age: 45 | Total Names: 32 | First Ancestor: Ancestor Name
+
+Feedback:
+[Predefined feedback statement for Q1]
+Additional Comment: [User's comment if any]
+
+[Predefined feedback statement for Q5]
+
+Action Plan: [Action plan if provided]
+```
 
 ---
 
@@ -194,53 +215,38 @@ const fileList = audits?.map(audit => ({
 
 | File | Changes |
 |------|---------|
-| `src/pages/AdminReviewHistory.tsx` | Add artifact filters, debounce search, add filter count |
-| `src/pages/ZipDiagnostics.tsx` | Fix status determination logic |
-| `src/pages/Index.tsx` | Handle "Ready for Review" filter |
-| `src/components/FilterSidebar.tsx` | Add "Ready for Review" option for authorized roles |
-| `supabase/functions/export-team-pdfs/index.ts` | Include metadata ZIPs in export only for interview that are re-audited |
-| `src/pages/TeamAssignments.tsx` | Download and include metadata in ZIP exports |
+| `src/pages/ZipDiagnostics.tsx` | Batch queries to avoid "Bad Request" errors |
+| `src/components/review/ReviewActions.tsx` | Make action plan optional |
+| `src/pages/AdminReviewHistory.tsx` | Fix artifact filters in export, overhaul PDF content |
 
 ---
 
-## Technical Details
+## Technical Implementation Details
 
-### Database Considerations
-The `artifact_correction` column is an array storing values like:
-- `'scanned_pdf'` - PDF needs correction
-- `'mobile_metadata'` - Metadata/ZIP needs correction
-
-Filtering by array contents uses PostgreSQL's `@>` (contains) operator or Supabase's `.contains()` method.
-
-### Search Debouncing Pattern
+### ZIP Diagnostics Batching Pattern
 ```typescript
-const [inputValue, setInputValue] = useState(searchTerm);
-const [debouncedValue, setDebouncedValue] = useState(searchTerm);
+const BATCH_SIZE = 200;
+const chunks = [];
+for (let i = 0; i < auditIds.length; i += BATCH_SIZE) {
+  chunks.push(auditIds.slice(i, i + BATCH_SIZE));
+}
 
-useEffect(() => {
-  const timer = setTimeout(() => {
-    setDebouncedValue(inputValue);
-  }, 400);
-  return () => clearTimeout(timer);
-}, [inputValue]);
+// Query each chunk in parallel
+const allMetadata = await Promise.all(
+  chunks.map(chunk => 
+    supabase
+      .from("interview_metadata")
+      .select("audit_id")
+      .in("audit_id", chunk)
+  )
+);
 
-// Use debouncedValue for queries
+// Combine results
+const metadata = allMetadata.flatMap(r => r.data || []);
 ```
 
-### Artifact Filter Query Pattern
-```typescript
-// For "Failed - PDF Issue"
-query = query
-  .eq("status", "Audit Failed")
-  .contains("artifact_correction", ["scanned_pdf"]);
+### Action Plan Validation Removal
+Lines 170-178 in ReviewActions.tsx will be deleted entirely, and the label on line 406 updated from `"Action Plan for Correction *"` to `"Action Plan for Correction (Optional)"`.
 
-// For "Failed - Metadata Issue"  
-query = query
-  .eq("status", "Audit Failed")
-  .contains("artifact_correction", ["mobile_metadata"]);
-
-// For "Failed - Both"
-query = query
-  .eq("status", "Audit Failed")
-  .contains("artifact_correction", ["scanned_pdf", "mobile_metadata"]);
-```
+### PDF Export Filter Synchronization
+The same conditional logic used in the main data query (lines 236-244) must be replicated in all three export functions (CSV, Excel, PDF).
