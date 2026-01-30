@@ -59,6 +59,9 @@ const Header = () => {
           {(userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'sub_contractor') && <NavLink to="/interview-tracking" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Tracking
             </NavLink>}
+          {(userRole === 'field_manager' || userRole === 'contractor' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'sub_contractor') && <NavLink to="/payment-tracking" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+              Payments
+            </NavLink>}
           {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || userRole === 'admin' || userRole === 'super_admin') && <NavLink to="/data-entry" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Data Entry
             </NavLink>}

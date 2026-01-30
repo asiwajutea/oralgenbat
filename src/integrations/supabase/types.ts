@@ -618,6 +618,80 @@ export type Database = {
           },
         ]
       }
+      payment_records: {
+        Row: {
+          amount: number | null
+          audit_id: string | null
+          booklet_delivered_at: string | null
+          booklet_printed_at: string | null
+          booklet_received_at: string | null
+          contractor_name: string | null
+          created_at: string | null
+          created_by: string | null
+          folder_name: string
+          id: string
+          interview_id: string | null
+          invoice_date: string
+          invoice_file_url: string | null
+          invoice_number: string
+          journey_status: string | null
+          names_count: number
+          pay_rate: number | null
+          payment_type: string
+          vendor_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          audit_id?: string | null
+          booklet_delivered_at?: string | null
+          booklet_printed_at?: string | null
+          booklet_received_at?: string | null
+          contractor_name?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          folder_name: string
+          id?: string
+          interview_id?: string | null
+          invoice_date: string
+          invoice_file_url?: string | null
+          invoice_number: string
+          journey_status?: string | null
+          names_count: number
+          pay_rate?: number | null
+          payment_type: string
+          vendor_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          audit_id?: string | null
+          booklet_delivered_at?: string | null
+          booklet_printed_at?: string | null
+          booklet_received_at?: string | null
+          contractor_name?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          folder_name?: string
+          id?: string
+          interview_id?: string | null
+          invoice_date?: string
+          invoice_file_url?: string | null
+          invoice_number?: string
+          journey_status?: string | null
+          names_count?: number
+          pay_rate?: number | null
+          payment_type?: string
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_records_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active_contractor_id: string | null

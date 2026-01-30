@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check } from "lucide-react";
+import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -162,6 +162,10 @@ const MobileNav = () => {
             
             {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
               <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>
+            )}
+            
+            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
+              <NavItem to="/payment-tracking" icon={DollarSign}>Payments</NavItem>
             )}
             
             {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && (

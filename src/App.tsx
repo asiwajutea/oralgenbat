@@ -44,6 +44,7 @@ import Achievements from "./pages/Achievements";
 import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
 import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
 import SmsLogs from "./pages/SmsLogs";
+import PaymentTracking from "./pages/PaymentTracking";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -264,6 +265,18 @@ const App = () => (
                   <TrackingRoute>
                     <Layout>
                       <InterviewTracking />
+                    </Layout>
+                </TrackingRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/payment-tracking"
+              element={
+                <ProtectedRoute>
+                  <TrackingRoute>
+                    <Layout>
+                      <PaymentTracking />
                     </Layout>
                   </TrackingRoute>
                 </ProtectedRoute>
