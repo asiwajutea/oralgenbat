@@ -52,6 +52,34 @@ export interface Assignment {
   };
 }
 
+// Helper function to batch queries to avoid 400 Bad Request errors
+const BATCH_SIZE = 200;
+
+async function batchedInQuery<T>(
+  ids: string[],
+  queryFn: (batch: string[]) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  if (ids.length === 0) return [];
+  
+  const results: T[] = [];
+  
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE);
+    const response = await queryFn(batch);
+    
+    if (response.error) {
+      console.error("Batch query error:", response.error);
+      // Continue with other batches instead of throwing
+    }
+    
+    if (response.data) {
+      results.push(...response.data);
+    }
+  }
+  
+  return results;
+}
+
 export const useTeams = () => {
   return useQuery({
     queryKey: ["data-entry-teams"],
@@ -99,15 +127,20 @@ export const useUnassignedInterviews = () => {
         return [];
       }
 
-      // Get metadata for unassigned audits
-      const { data: metadata, error: metaError } = await supabase
-        .from("interview_metadata")
-        .select("audit_id, interviewer_code, contractor_id, total_names")
-        .in("audit_id", unassignedAuditIds);
+      // Get metadata for unassigned audits using batched queries
+      const metadata = await batchedInQuery<{
+        audit_id: string;
+        interviewer_code: string | null;
+        contractor_id: string | null;
+        total_names: number | null;
+      }>(unassignedAuditIds, (batch) =>
+        supabase
+          .from("interview_metadata")
+          .select("audit_id, interviewer_code, contractor_id, total_names")
+          .in("audit_id", batch)
+      );
 
-      if (metaError) throw metaError;
-
-      const metaMap = new Map(metadata?.map((m) => [m.audit_id, m]) || []);
+      const metaMap = new Map(metadata.map((m) => [m.audit_id, m]));
 
       // Combine data
       return passedAudits
@@ -141,18 +174,20 @@ export const useAssignments = () => {
 
       if (error) throw error;
 
-      // Get audit details for each assignment
+      // Get audit details for each assignment using batched queries
       const auditIds = data?.map((a) => a.audit_id) || [];
       if (auditIds.length === 0) return [];
 
-      const { data: audits, error: auditsError } = await supabase
-        .from("audits")
-        .select("id, file_name")
-        .in("id", auditIds);
+      const audits = await batchedInQuery<{ id: string; file_name: string }>(
+        auditIds,
+        (batch) =>
+          supabase
+            .from("audits")
+            .select("id, file_name")
+            .in("id", batch)
+      );
 
-      if (auditsError) throw auditsError;
-
-      const auditMap = new Map(audits?.map((a) => [a.id, a]) || []);
+      const auditMap = new Map(audits.map((a) => [a.id, a]));
 
       return data?.map((assignment) => ({
         ...assignment,
