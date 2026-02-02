@@ -7,20 +7,17 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, Search, FileText, Users, FolderOpen, RefreshCw } from "lucide-react";
-import { format } from "date-fns";
 import { BudgetStatsCard } from "@/components/payment/BudgetStatsCard";
 import { InterviewJourneyTracker, createJourneySteps } from "@/components/payment/InterviewJourneyTracker";
 import { InvoiceUploadDialog } from "@/components/payment/InvoiceUploadDialog";
-import { useEnrichedPaymentRecords, useBudgetStats, useInvoices, EnrichedPaymentRecord } from "@/hooks/usePaymentTracking";
+import { useAllInterviewsForPayment, useBudgetStats, PaymentInterviewRecord } from "@/hooks/usePaymentTracking";
 import { useQueryClient } from "@tanstack/react-query";
 
 const PaymentTracking = () => {
   const { userRole, profile } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedInvoice, setSelectedInvoice] = useState<string>("all");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
   // Determine contractor filter based on role
@@ -29,90 +26,88 @@ const PaymentTracking = () => {
     return profile?.active_contractor_id || profile?.contractor_id;
   }, [userRole, profile]);
 
-  const { data: records, isLoading: recordsLoading } = useEnrichedPaymentRecords(contractorId);
+  const { data: records, isLoading: recordsLoading } = useAllInterviewsForPayment(contractorId);
   const { data: budgetStats, isLoading: statsLoading } = useBudgetStats(contractorId);
-  const { data: invoices } = useInvoices();
 
   // Check if user can upload invoices
   const canUpload = userRole === "super_admin" || userRole === "admin" || userRole === "contractor";
 
-  // Filter records
+  // Filter records by search
   const filteredRecords = useMemo(() => {
     if (!records) return [];
     
-    let filtered = records;
+    if (!searchQuery) return records;
     
-    // Filter by invoice
-    if (selectedInvoice !== "all") {
-      filtered = filtered.filter(r => r.invoice_number === selectedInvoice);
-    }
-    
-    // Filter by search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(r => 
-        r.folder_name.toLowerCase().includes(query) ||
-        r.interview_id?.toLowerCase().includes(query) ||
-        r.invoice_number.toLowerCase().includes(query)
-      );
-    }
-    
-    return filtered;
-  }, [records, selectedInvoice, searchQuery]);
+    const query = searchQuery.toLowerCase();
+    return records.filter(r => 
+      r.file_name.toLowerCase().includes(query) ||
+      r.interviewee_name?.toLowerCase().includes(query) ||
+      r.interviewer_code?.toLowerCase().includes(query) ||
+      r.payment?.invoice_number?.toLowerCase().includes(query)
+    );
+  }, [records, searchQuery]);
 
   // Separate assigned vs unassigned
   const assignedRecords = useMemo(() => 
-    filteredRecords.filter(r => r.assignment), [filteredRecords]);
+    filteredRecords.filter(r => r.assignment !== null), [filteredRecords]);
   const unassignedRecords = useMemo(() => 
-    filteredRecords.filter(r => !r.assignment), [filteredRecords]);
+    filteredRecords.filter(r => r.assignment === null), [filteredRecords]);
 
   const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["payment-records"] });
-    queryClient.invalidateQueries({ queryKey: ["enriched-payment-records"] });
+    queryClient.invalidateQueries({ queryKey: ["all-interviews-payment"] });
     queryClient.invalidateQueries({ queryKey: ["budget-stats"] });
   };
 
-  const renderPaymentRow = (record: EnrichedPaymentRecord) => {
+  const renderPaymentRow = (record: PaymentInterviewRecord) => {
     const journeySteps = createJourneySteps({
-      auditExists: !!record.audit,
-      auditPassedAt: record.audit?.status === "Audit Passed" ? record.audit.reviewed_at : null,
-      assignedAt: record.assignment?.assigned_at,
-      paymentReceivedAt: record.payment_type === "new_payment" ? record.created_at : null,
-      bookletPrintedAt: record.booklet_printed_at,
-      bookletReceivedAt: record.booklet_received_at,
-      bookletDeliveredAt: record.booklet_delivered_at,
+      auditExists: true,
+      auditPassedAt: record.status === "Audit Passed" ? record.reviewed_at : null,
+      assignedAt: record.assignment?.assigned_at || null,
+      paymentReceivedAt: record.payment?.payment_type === "new_payment" ? record.payment.id : null,
+      bookletPrintedAt: record.payment?.booklet_printed_at || null,
+      bookletReceivedAt: record.payment?.booklet_received_at || null,
+      bookletDeliveredAt: record.payment?.booklet_delivered_at || null,
     });
 
     return (
       <TableRow key={record.id}>
         <TableCell>
           <div className="space-y-1">
-            <span className="font-mono text-sm font-medium">{record.folder_name}</span>
-            {record.interview_id && (
-              <p className="text-xs text-muted-foreground">ID: {record.interview_id}</p>
+            <span className="font-mono text-sm font-medium">{record.file_name}</span>
+            {record.interviewee_name && (
+              <p className="text-xs text-muted-foreground">{record.interviewee_name}</p>
             )}
           </div>
         </TableCell>
         <TableCell>
           <Badge 
             variant={
-              record.payment_type === "new_payment" ? "default" :
-              record.payment_type === "addition" ? "secondary" : "destructive"
+              record.status === "Audit Passed" ? "default" :
+              record.status === "Audit Failed" ? "destructive" : "secondary"
             }
           >
-            {record.payment_type === "new_payment" ? "New" :
-             record.payment_type === "addition" ? "Addition" : "Deduction"}
+            {record.status}
           </Badge>
         </TableCell>
         <TableCell className="text-right font-medium">
-          {record.payment_type === "deduction" ? "-" : ""}
-          {record.names_count.toLocaleString()}
+          {record.total_names?.toLocaleString() || "-"}
         </TableCell>
-        <TableCell className="text-right">
-          ${record.amount?.toFixed(2) || "0.00"}
+        <TableCell>
+          {record.payment ? (
+            <div className="space-y-1">
+              <Badge variant="outline" className="text-xs">
+                {record.payment.invoice_number}
+              </Badge>
+              <p className="text-xs text-muted-foreground">
+                ${record.payment.amount?.toFixed(2) || "0.00"}
+              </p>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">No payment</span>
+          )}
         </TableCell>
         <TableCell className="hidden md:table-cell">
-          {record.invoice_number}
+          {record.assignment?.team_name || "-"}
         </TableCell>
         <TableCell className="min-w-[300px]">
           <InterviewJourneyTracker steps={journeySteps} compact />
@@ -148,32 +143,17 @@ const PaymentTracking = () => {
       {/* Budget Stats */}
       <BudgetStatsCard stats={budgetStats || null} isLoading={statsLoading} />
 
-      {/* Filters */}
+      {/* Search */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by folder name or interview ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <Select value={selectedInvoice} onValueChange={setSelectedInvoice}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="All Invoices" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Invoices</SelectItem>
-                {invoices?.map(inv => (
-                  <SelectItem key={inv.invoice_number} value={inv.invoice_number}>
-                    {inv.invoice_number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by folder name, interviewee, or invoice..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
           </div>
         </CardContent>
       </Card>
@@ -202,7 +182,7 @@ const PaymentTracking = () => {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" />
-                Interviews Ready for Payment Processing
+                Interviews Assigned to Data Entry Teams
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -223,10 +203,10 @@ const PaymentTracking = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Folder Name</TableHead>
-                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
                         <TableHead className="text-right">Names</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="hidden md:table-cell">Invoice</TableHead>
+                        <TableHead>Payment</TableHead>
+                        <TableHead className="hidden md:table-cell">Team</TableHead>
                         <TableHead>Journey Status</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -258,7 +238,7 @@ const PaymentTracking = () => {
               ) : unassignedRecords.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>All interviews are assigned to clerks</p>
+                  <p>All interviews are assigned to teams</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -266,10 +246,10 @@ const PaymentTracking = () => {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Folder Name</TableHead>
-                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
                         <TableHead className="text-right">Names</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="hidden md:table-cell">Invoice</TableHead>
+                        <TableHead>Payment</TableHead>
+                        <TableHead className="hidden md:table-cell">Team</TableHead>
                         <TableHead>Journey Status</TableHead>
                       </TableRow>
                     </TableHeader>
