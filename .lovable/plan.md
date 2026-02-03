@@ -1,137 +1,317 @@
 
-# Implementation Plan: Show All Interviews on Payment Tracking Page
+# Implementation Plan: Enhanced Payment Status Management
 
 ## Overview
-Modify the Payment Tracking page to display all interviews from the `audits` table, separated into two tabs:
-- **Assigned to Clerks**: Interviews with records in `interview_assignments`
-- **Not Assigned**: Interviews without assignment records
-
-## Current Behavior
-The page queries `payment_records` table and enriches with audit/assignment data. This only shows interviews that have appeared on invoices.
-
-## Desired Behavior
-The page should show ALL interviews from `audits` table, regardless of whether they have payment records. Payment info should be enriched if available.
+This plan adds three major capabilities to the Payment Tracking page:
+1. **Manual Payment Status Updates** - Update interviews to "Payment Received" or "Payment Revoked (Rework)" with bulk support
+2. **Manual Text-Based Invoice Entry** - Input multiple folder names via text field (comma, space, or newline separated) and assign payment types
+3. **Combined Upload Dialog** - A unified dialog offering both PDF upload and manual text entry options
 
 ---
 
-## Changes Required
+## Part 1: Manual Payment Status Updates for Assigned Interviews
 
-### 1. Update `usePaymentTracking.ts` Hook
+### Current Behavior
+The `BulkJourneyUpdateDialog` only allows updating journey stages (Booklet Printed/Received/Delivered) for records that already have payment records.
 
-Create a new hook `useAllInterviewsForPayment` that:
-1. Fetches all audits with their metadata (similar to InterviewTracking)
-2. Fetches all interview_assignments to determine assigned vs unassigned
-3. Left-joins payment_records data if available
-4. Returns unified record type
+### Required Changes
 
-**New Data Flow:**
-```
-audits (all) 
-  + LEFT JOIN interview_metadata
-  + LEFT JOIN interview_assignments 
-  + LEFT JOIN payment_records (by folder_name)
-```
+**Modify `BulkJourneyUpdateDialog.tsx`:**
+- Add new payment status options:
+  - "Payment Received" (creates/updates payment record with type `new_payment`)
+  - "Payment Revoked (Rework)" (creates/updates payment record with type `deduction`)
+- Handle interviews without existing payment records by creating new ones
+- Group options into two sections: "Payment Status" and "Booklet Journey"
 
-**New Interface:**
+**New Options Structure:**
 ```typescript
-export interface PaymentInterviewRecord {
-  // From audit
-  id: string;
-  file_name: string;
-  status: string;
-  reviewed_at: string | null;
-  
-  // From metadata
-  total_names: number | null;
-  interviewer_code: string | null;
-  contractor_id: string | null;
-  interviewee_name: string | null;
-  
-  // From assignment (null if not assigned)
-  assignment: {
-    id: string;
-    team_id: string;
-    team_name: string | null;
-    assigned_at: string | null;
-    entry_status: string | null;
-  } | null;
-  
-  // From payment_records (null if not on any invoice)
-  payment: {
-    id: string;
-    invoice_number: string;
-    payment_type: string;
-    names_count: number;
-    amount: number | null;
-    booklet_printed_at: string | null;
-    booklet_received_at: string | null;
-    booklet_delivered_at: string | null;
-  } | null;
+const PAYMENT_OPTIONS = [
+  { id: "payment_received", label: "Mark as Payment Received", icon: DollarSign, type: "new_payment" },
+  { id: "payment_revoked", label: "Mark as Payment Revoked (Rework)", icon: RotateCcw, type: "deduction" },
+];
+
+const JOURNEY_STAGES = [
+  { id: "booklet_printed_at", label: "Booklet Printed", icon: Printer },
+  { id: "booklet_received_at", label: "Booklet Received", icon: Package },
+  { id: "booklet_delivered_at", label: "Booklet Delivered", icon: Truck },
+];
+```
+
+**New Hook: `useCreateOrUpdatePaymentStatus`**
+Add to `usePaymentTracking.ts`:
+```typescript
+export const useCreateOrUpdatePaymentStatus = () => {
+  return useMutation({
+    mutationFn: async ({ 
+      auditId, 
+      folderName, 
+      paymentType,
+      namesCount,
+      contractorId
+    }: {
+      auditId: string;
+      folderName: string;
+      paymentType: "new_payment" | "deduction" | "addition";
+      namesCount: number;
+      contractorId?: string;
+    }) => {
+      // Check if payment record exists for this folder
+      const { data: existing } = await supabase
+        .from("payment_records")
+        .select("id")
+        .eq("folder_name", folderName)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing record
+        await supabase
+          .from("payment_records")
+          .update({ payment_type: paymentType })
+          .eq("id", existing.id);
+      } else {
+        // Create new record
+        await supabase
+          .from("payment_records")
+          .insert({
+            folder_name: folderName,
+            audit_id: auditId,
+            payment_type: paymentType,
+            names_count: namesCount || 0,
+            invoice_number: `MANUAL-${Date.now()}`,
+            invoice_date: new Date().toISOString().split('T')[0],
+          });
+      }
+    },
+  });
+};
+```
+
+---
+
+## Part 2: Manual Text-Based Invoice Entry Dialog
+
+### New Component: `ManualInvoiceEntryDialog.tsx`
+
+A dialog that allows users to:
+1. Type or paste multiple folder names (comma, space, or newline separated)
+2. Select the payment category (New Payment, Addition, Deduction)
+3. Preview matched interviews with their names count with the ability to manually override the total names.
+4. Confirm and save
+
+**UI Layout:**
+```text
++--------------------------------------------------+
+|  Manual Invoice Entry                            |
+|--------------------------------------------------|
+|  Enter folder names (one per line, or comma/     |
+|  space separated):                               |
+|  +--------------------------------------------+  |
+|  | NG71_696_20251103_1035                     |  |
+|  | NG71_697_20251103_1040                     |  |
+|  | NG71_698_20251103_1045                     |  |
+|  +--------------------------------------------+  |
+|                                                  |
+|  Payment Category:                               |
+|  [Dropdown: New Payment / Addition / Deduction]  |
+|                                                  |
+|  Invoice Number (optional):                      |
+|  [_________________________________]             |
+|                                                  |
+|  ----- Preview -----                             |
+|  Found: 45 interviews                            |
+|  Not Found: 3 folder names                       |
+|  Total Names: 1,234                              |
+|                                                  |
+|  [Preview Details]                               |
+|  +------------------------------------------+    |
+|  | Folder Name         | Names | Status    |    |
+|  | NG71_696...         | 28    | Found     |    |
+|  | NG71_697...         | 35    | Found     |    |
+|  | NG71_INVALID        | -     | Not Found |    |
+|  +------------------------------------------+    |
+|                                                  |
+|  [Cancel]                    [Save XX Records]   |
++--------------------------------------------------+
+```
+
+**Component Props:**
+```typescript
+interface ManualInvoiceEntryDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onComplete: () => void;
 }
 ```
 
-### 2. Update `PaymentTracking.tsx` Page
-
-**Modify data fetching:**
-- Use new `useAllInterviewsForPayment()` hook instead of `useEnrichedPaymentRecords()`
-- Apply same role-based filtering as InterviewTracking
-
-**Update table rendering:**
-- Adjust columns to show relevant data for interviews without payment records
-- Show "No payment" or similar for interviews not yet on invoices
-- Journey tracker should show early stages even without payment
-
-**Update tab separation logic:**
+**Parsing Logic:**
 ```typescript
-const assignedInterviews = records.filter(r => r.assignment !== null);
-const unassignedInterviews = records.filter(r => r.assignment === null);
+const parseInput = (input: string): string[] => {
+  // Split by newlines, commas, or multiple spaces
+  return input
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+};
 ```
 
-### 3. Update Journey Tracker Logic
-
-Modify `createJourneySteps` to handle interviews without payment records:
-- Submitted: Based on audit existence (always true)
-- BAC Passed: Based on audit status = "Audit Passed"
-- Transcribed: Based on assignment existence
-- Payment Received: Based on payment record existence
-- Booklet stages: Based on payment record timestamps (or null)
+**Matching Logic:**
+1. Take folder names list
+2. Query `audits` table to match by `file_name`
+3. Get `interview_metadata` for names count
+4. Display matched vs unmatched
 
 ---
 
-## Files to Modify
+## Part 3: Combined Upload Dialog
 
-| File | Changes |
-|------|---------|
-| `src/hooks/usePaymentTracking.ts` | Add `useAllInterviewsForPayment` hook |
-| `src/pages/PaymentTracking.tsx` | Use new hook, update UI rendering |
+### Modify Page to Use Tabs/Options
+
+Update `PaymentTracking.tsx` to show a unified "Add Payment Data" button that opens a dialog with two options:
+1. **Upload Invoice PDF** - existing functionality
+2. **Manual Entry** - new text-based entry
+
+**Option A: Single Combined Dialog with Tabs**
+```typescript
+<CombinedUploadDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+  <Tabs defaultValue="pdf">
+    <TabsList>
+      <TabsTrigger value="pdf">Upload PDF</TabsTrigger>
+      <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+    </TabsList>
+    <TabsContent value="pdf">
+      {/* Existing PDF upload UI */}
+    </TabsContent>
+    <TabsContent value="manual">
+      {/* New manual entry UI */}
+    </TabsContent>
+  </Tabs>
+</CombinedUploadDialog>
+```
+
+**Option B: Dropdown Button** (Recommended for cleaner UX)
+```typescript
+<DropdownMenu>
+  <DropdownMenuTrigger asChild>
+    <Button>
+      <Upload className="h-4 w-4 mr-2" />
+      Add Payment Data
+      <ChevronDown className="h-4 w-4 ml-2" />
+    </Button>
+  </DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem onClick={() => setPdfDialogOpen(true)}>
+      <FileText className="h-4 w-4 mr-2" />
+      Upload Invoice PDF
+    </DropdownMenuItem>
+    <DropdownMenuItem onClick={() => setManualDialogOpen(true)}>
+      <Edit className="h-4 w-4 mr-2" />
+      Manual Entry
+    </DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
 
 ---
 
-## Technical Details
+## Part 4: RLS Policy Update
 
-### Query Strategy (with batching)
-```typescript
-// 1. Fetch all audits with metadata
-const { data: audits } = await supabase
-  .from("audits")
-  .select(`
-    id, file_name, status, reviewed_at,
-    interview_metadata(total_names, interviewer_code, contractor_id, interviewee_name)
-  `)
-  .limit(5000);
-
-// 2. Batch fetch assignments
-const assignmentMap = await batchedQuery(auditIds, "interview_assignments", "audit_id");
-
-// 3. Batch fetch payment records by folder_name
-const paymentMap = await batchedQuery(folderNames, "payment_records", "folder_name");
-
-// 4. Combine and return
+Add UPDATE policy for contractors on `payment_records`:
+```sql
+CREATE POLICY "Contractors can update journey status"
+  ON payment_records FOR UPDATE
+  USING (
+    has_role(auth.uid(), 'contractor') OR 
+    has_role(auth.uid(), 'admin') OR 
+    has_role(auth.uid(), 'super_admin')
+  );
 ```
 
-### Role-Based Filtering
-Apply the same filtering logic from InterviewTracking:
-- Super Admin: See all
-- Contractor: Filter by contractor_id
-- Admin: Filter by assigned field managers
-- Field Manager: Filter by team assignments
+---
+
+## Files to Create/Modify
+
+| File | Type | Purpose |
+|------|------|---------|
+| `src/components/payment/BulkJourneyUpdateDialog.tsx` | Modify | Add payment status options (Received/Revoked) |
+| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Create | New text-based entry dialog |
+| `src/components/payment/CombinedUploadDialog.tsx` | Create | Wrapper with PDF + Manual tabs |
+| `src/hooks/usePaymentTracking.ts` | Modify | Add `useCreateOrUpdatePaymentStatus` and `useBulkCreatePayments` hooks |
+| `src/pages/PaymentTracking.tsx` | Modify | Use combined dialog with dropdown button |
+| SQL Migration | Create | Add UPDATE policy for contractors |
+
+---
+
+## Data Flow for Manual Entry
+
+```text
+User enters folder names
+        ↓
+Parse input (split by comma/space/newline)
+        ↓
+Query audits table for matches
+        ↓
+Fetch interview_metadata for names count
+        ↓
+Display preview with matched/unmatched
+        ↓
+User selects payment type
+        ↓
+User confirms
+        ↓
+Create payment_records for each match
+        ↓
+Refresh data & close dialog
+```
+
+---
+
+## Technical Implementation Details
+
+### 1. Folder Name Validation
+```typescript
+// Valid formats: NG71_696_20251103_1035
+const FOLDER_NAME_PATTERN = /^[A-Z]{2}\d{2}_\d+_\d{8}_\d{4}$/;
+
+const validateFolderName = (name: string): boolean => {
+  return FOLDER_NAME_PATTERN.test(name);
+};
+```
+
+### 2. Batch Insert for Manual Entry
+```typescript
+const useBulkCreatePayments = () => {
+  return useMutation({
+    mutationFn: async (entries: {
+      folder_name: string;
+      audit_id: string | null;
+      names_count: number;
+      payment_type: "new_payment" | "addition" | "deduction";
+      invoice_number: string;
+    }[]) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const records = entries.map(e => ({
+        ...e,
+        invoice_date: new Date().toISOString().split('T')[0],
+        created_by: user?.id,
+      }));
+      
+      const { error } = await supabase
+        .from("payment_records")
+        .upsert(records, { 
+          onConflict: "invoice_number,folder_name,payment_type",
+          ignoreDuplicates: false 
+        });
+        
+      if (error) throw error;
+    },
+  });
+};
+```
+
+### 3. Preview Component
+Show a scrollable list with:
+- Green checkmark for matched folders
+- Red X for unmatched folders
+- Names count from metadata
+- Warning for folders without audit records
