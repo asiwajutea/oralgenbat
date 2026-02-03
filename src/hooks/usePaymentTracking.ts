@@ -291,6 +291,110 @@ export const useUpdateJourneyStatus = () => {
   });
 };
 
+// NEW: Create or update payment status for an interview
+export const useCreateOrUpdatePaymentStatus = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      auditId, 
+      folderName, 
+      paymentType,
+      namesCount,
+      contractorId
+    }: {
+      auditId: string;
+      folderName: string;
+      paymentType: "new_payment" | "deduction" | "addition";
+      namesCount: number;
+      contractorId?: string;
+    }) => {
+      // Check if payment record exists for this folder
+      const { data: existing } = await supabase
+        .from("payment_records")
+        .select("id")
+        .eq("folder_name", folderName)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing record
+        const { error } = await supabase
+          .from("payment_records")
+          .update({ payment_type: paymentType })
+          .eq("id", existing.id);
+        
+        if (error) throw error;
+      } else {
+        // Create new record
+        const { error } = await supabase
+          .from("payment_records")
+          .insert({
+            folder_name: folderName,
+            audit_id: auditId,
+            payment_type: paymentType,
+            names_count: namesCount || 0,
+            invoice_number: `MANUAL-${Date.now()}`,
+            invoice_date: new Date().toISOString().split('T')[0],
+          });
+        
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["payment-records"] });
+      queryClient.invalidateQueries({ queryKey: ["all-interviews-payment"] });
+      queryClient.invalidateQueries({ queryKey: ["budget-stats"] });
+    },
+    onError: (error) => {
+      console.error("Create/update payment error:", error);
+      throw error;
+    },
+  });
+};
+
+// NEW: Bulk create payment records for manual entry
+export const useBulkCreatePayments = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      entries 
+    }: {
+      entries: Array<{
+        folder_name: string;
+        audit_id: string | null;
+        names_count: number;
+        payment_type: "new_payment" | "addition" | "deduction";
+        invoice_number: string;
+      }>;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const records = entries.map(e => ({
+        ...e,
+        invoice_date: new Date().toISOString().split('T')[0],
+        created_by: user?.id,
+      }));
+      
+      const { error } = await supabase
+        .from("payment_records")
+        .insert(records);
+        
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["payment-records"] });
+      queryClient.invalidateQueries({ queryKey: ["all-interviews-payment"] });
+      queryClient.invalidateQueries({ queryKey: ["budget-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (error) => {
+      console.error("Bulk create payments error:", error);
+      throw error;
+    },
+  });
+};
+
 export const useInvoices = () => {
   return useQuery({
     queryKey: ["invoices"],

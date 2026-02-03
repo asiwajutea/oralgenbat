@@ -5,9 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Search, Users, FolderOpen, RefreshCw } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Upload, Search, Users, FolderOpen, RefreshCw, FileText, Edit, ChevronDown } from "lucide-react";
 import { BudgetStatsCard } from "@/components/payment/BudgetStatsCard";
 import { InvoiceUploadDialog } from "@/components/payment/InvoiceUploadDialog";
+import { ManualInvoiceEntryDialog } from "@/components/payment/ManualInvoiceEntryDialog";
 import { PaymentTable } from "@/components/payment/PaymentTable";
 import { useAllInterviewsForPayment, useBudgetStats } from "@/hooks/usePaymentTracking";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,7 +23,8 @@ const PaymentTracking = () => {
   const { userRole, profile } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
 
   // Determine contractor filter based on role
   const contractorId = useMemo(() => {
@@ -72,10 +80,25 @@ const PaymentTracking = () => {
             Refresh
           </Button>
           {canUpload && (
-            <Button onClick={() => setUploadDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Invoice
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Add Payment Data
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setPdfDialogOpen(true)}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Upload Invoice PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setManualDialogOpen(true)}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Manual Entry
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
@@ -136,11 +159,16 @@ const PaymentTracking = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Upload Dialog */}
+      {/* Upload Dialogs */}
       <InvoiceUploadDialog 
-        open={uploadDialogOpen} 
-        onOpenChange={setUploadDialogOpen}
+        open={pdfDialogOpen} 
+        onOpenChange={setPdfDialogOpen}
         onUploadComplete={handleRefresh}
+      />
+      <ManualInvoiceEntryDialog
+        open={manualDialogOpen}
+        onOpenChange={setManualDialogOpen}
+        onComplete={handleRefresh}
       />
     </div>
   );
