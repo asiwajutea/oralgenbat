@@ -1,317 +1,354 @@
 
-# Implementation Plan: Enhanced Payment Status Management
+# Implementation Plan: Payment Tracking Enhancement & In-App Announcements
 
 ## Overview
-This plan adds three major capabilities to the Payment Tracking page:
-1. **Manual Payment Status Updates** - Update interviews to "Payment Received" or "Payment Revoked (Rework)" with bulk support
-2. **Manual Text-Based Invoice Entry** - Input multiple folder names via text field (comma, space, or newline separated) and assign payment types
-3. **Combined Upload Dialog** - A unified dialog offering both PDF upload and manual text entry options
+
+This plan addresses two major feature requests:
+
+### Feature 1: Editable Total Names on Invoice Entry
+Allow users to edit the sum total of names directly in the Manual Invoice Entry dialog (the "22,675" shown in the preview stats), not just individual interview counts.
+
+### Feature 2: In-App Announcement System
+Create a comprehensive notification/announcement system with:
+- Role-based announcement creation (Super Admin, Contractor, Sub-Contractor, QA Manager)
+- Targeting options (all users, contractor group, role, specific users)
+- Scheduling and auto-delete capabilities
+- Modern modal UI with customizable display frequency
+- Dedicated Notice Board page for reading past announcements
+- Push notification integration
 
 ---
 
-## Part 1: Manual Payment Status Updates for Assigned Interviews
+## Feature 1: Editable Total Names
 
 ### Current Behavior
-The `BulkJourneyUpdateDialog` only allows updating journey stages (Booklet Printed/Received/Delivered) for records that already have payment records.
+The `ManualInvoiceEntryDialog` calculates total names from individual interview records. Users can only edit per-interview counts.
 
 ### Required Changes
 
-**Modify `BulkJourneyUpdateDialog.tsx`:**
-- Add new payment status options:
-  - "Payment Received" (creates/updates payment record with type `new_payment`)
-  - "Payment Revoked (Rework)" (creates/updates payment record with type `deduction`)
-- Handle interviews without existing payment records by creating new ones
-- Group options into two sections: "Payment Status" and "Booklet Journey"
+**Modify `ManualInvoiceEntryDialog.tsx`:**
+1. Add a new `totalNamesOverride` state that allows direct editing of the aggregate total
+2. Add an edit button next to the "Total Names: X" badge in the preview section
+3. When the override is set, distribute proportionally or use as-is for invoice recording
+4. Store the override value for accurate stats
 
-**New Options Structure:**
-```typescript
-const PAYMENT_OPTIONS = [
-  { id: "payment_received", label: "Mark as Payment Received", icon: DollarSign, type: "new_payment" },
-  { id: "payment_revoked", label: "Mark as Payment Revoked (Rework)", icon: RotateCcw, type: "deduction" },
-];
-
-const JOURNEY_STAGES = [
-  { id: "booklet_printed_at", label: "Booklet Printed", icon: Printer },
-  { id: "booklet_received_at", label: "Booklet Received", icon: Package },
-  { id: "booklet_delivered_at", label: "Booklet Delivered", icon: Truck },
-];
+**UI Flow:**
+```text
+Preview Section:
++-----------------------------------------------+
+| Found: 209 | Not Found: 1 | Total Names: 22,675 [Edit icon] |
++-----------------------------------------------+
 ```
 
-**New Hook: `useCreateOrUpdatePaymentStatus`**
-Add to `usePaymentTracking.ts`:
-```typescript
-export const useCreateOrUpdatePaymentStatus = () => {
-  return useMutation({
-    mutationFn: async ({ 
-      auditId, 
-      folderName, 
-      paymentType,
-      namesCount,
-      contractorId
-    }: {
-      auditId: string;
-      folderName: string;
-      paymentType: "new_payment" | "deduction" | "addition";
-      namesCount: number;
-      contractorId?: string;
-    }) => {
-      // Check if payment record exists for this folder
-      const { data: existing } = await supabase
-        .from("payment_records")
-        .select("id")
-        .eq("folder_name", folderName)
-        .maybeSingle();
-
-      if (existing) {
-        // Update existing record
-        await supabase
-          .from("payment_records")
-          .update({ payment_type: paymentType })
-          .eq("id", existing.id);
-      } else {
-        // Create new record
-        await supabase
-          .from("payment_records")
-          .insert({
-            folder_name: folderName,
-            audit_id: auditId,
-            payment_type: paymentType,
-            names_count: namesCount || 0,
-            invoice_number: `MANUAL-${Date.now()}`,
-            invoice_date: new Date().toISOString().split('T')[0],
-          });
-      }
-    },
-  });
-};
-```
+When user clicks edit on Total Names:
+- Show inline input or modal for entering the correct total
+- Save this as `totalNamesOverride` 
+- Display the overridden value with an indicator that it was manually adjusted
 
 ---
 
-## Part 2: Manual Text-Based Invoice Entry Dialog
+## Feature 2: In-App Announcement System
 
-### New Component: `ManualInvoiceEntryDialog.tsx`
+### Database Schema
 
-A dialog that allows users to:
-1. Type or paste multiple folder names (comma, space, or newline separated)
-2. Select the payment category (New Payment, Addition, Deduction)
-3. Preview matched interviews with their names count with the ability to manually override the total names.
-4. Confirm and save
+**New Table: `announcements`**
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| title | text | Announcement title |
+| content | text | Main announcement body |
+| cta_text | text? | Optional CTA button text |
+| cta_url | text? | Optional CTA button URL |
+| created_by | uuid | Creator user ID |
+| created_at | timestamp | Creation timestamp |
+| scheduled_at | timestamp? | Future publish date (null = immediate) |
+| expires_at | timestamp? | Auto-delete after this date |
+| is_active | boolean | Whether announcement is visible |
+| display_frequency | text | 'once', 'every_login', 'daily', 'weekly' |
+| require_acknowledgment | boolean | User must check box to dismiss |
+| target_type | text | 'all', 'contractor', 'role', 'user' |
+| target_contractor_id | text? | If targeting contractor group |
+| target_role | app_role? | If targeting specific role |
+| target_user_ids | uuid[]? | If targeting specific users |
+| priority | integer | Display order (higher = more important) |
+| style | text | 'info', 'warning', 'success', 'announcement' |
 
-**UI Layout:**
-```text
-+--------------------------------------------------+
-|  Manual Invoice Entry                            |
-|--------------------------------------------------|
-|  Enter folder names (one per line, or comma/     |
-|  space separated):                               |
-|  +--------------------------------------------+  |
-|  | NG71_696_20251103_1035                     |  |
-|  | NG71_697_20251103_1040                     |  |
-|  | NG71_698_20251103_1045                     |  |
-|  +--------------------------------------------+  |
-|                                                  |
-|  Payment Category:                               |
-|  [Dropdown: New Payment / Addition / Deduction]  |
-|                                                  |
-|  Invoice Number (optional):                      |
-|  [_________________________________]             |
-|                                                  |
-|  ----- Preview -----                             |
-|  Found: 45 interviews                            |
-|  Not Found: 3 folder names                       |
-|  Total Names: 1,234                              |
-|                                                  |
-|  [Preview Details]                               |
-|  +------------------------------------------+    |
-|  | Folder Name         | Names | Status    |    |
-|  | NG71_696...         | 28    | Found     |    |
-|  | NG71_697...         | 35    | Found     |    |
-|  | NG71_INVALID        | -     | Not Found |    |
-|  +------------------------------------------+    |
-|                                                  |
-|  [Cancel]                    [Save XX Records]   |
-+--------------------------------------------------+
-```
+**New Table: `announcement_dismissals`**
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| announcement_id | uuid | FK to announcements |
+| user_id | uuid | User who dismissed |
+| dismissed_at | timestamp | When dismissed |
+| acknowledged | boolean | If acknowledged (for require_acknowledgment) |
 
-**Component Props:**
+### RLS Policies
+
+**announcements:**
+- Super Admins can manage all announcements
+- Contractors can create announcements targeting their contractor group
+- Sub-Contractors can create announcements for their assigned field managers
+- QA Managers can create announcements for data entry teams
+- All authenticated users can read active announcements that target them
+
+**announcement_dismissals:**
+- Users can insert/read their own dismissals
+- Service role can manage all
+
+### Creator Permission Logic
+
+| Creator Role | Can Target |
+|-------------|------------|
+| Super Admin | All users, any contractor, any role, specific users |
+| Contractor | Users in their contractor group only |
+| Sub-Contractor | Field managers assigned to them |
+| QA Manager | Data entry clerks and QA managers |
+
+### New Components
+
+**1. `AnnouncementModal.tsx`**
+Modern, visually appealing modal that appears on login:
+- Glassmorphism or gradient background
+- Wrapped text content
+- Optional CTA button (primary styling)
+- Minimal close button (top-right X)
+- Optional acknowledgment checkbox
+- Smooth animations (fade/slide in)
+
+**2. `AnnouncementProvider.tsx`**
+Context provider that:
+- Fetches pending announcements on auth state change
+- Checks dismissal status and frequency rules
+- Queues announcements for display
+- Handles the display logic based on frequency settings
+
+**3. `NoticeBoard.tsx` (New Page)**
+Dedicated page at `/notices` where users can:
+- View all announcements (past and current)
+- Filter by date, priority, read status
+- Mark as read/acknowledged
+
+**4. `CreateAnnouncementDialog.tsx`**
+Admin dialog for creating announcements with:
+- Rich text input (title, content)
+- Target selection (dropdown with role-based options)
+- Schedule date picker
+- Expiry date picker  
+- Display frequency selector
+- Require acknowledgment toggle
+- CTA configuration (optional)
+- Priority level selector
+- Style/theme selector
+
+### Integration Points
+
+**Layout.tsx:**
+Add `<AnnouncementProvider>` wrapper that checks for pending announcements on mount
+
+**NotificationBell.tsx:**
+Add announcement icon type and link announcements to Notice Board
+
+**useNotifications.ts:**
+Extend to create user_notifications when new announcements are published (for push notifications)
+
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/components/announcements/AnnouncementModal.tsx` | Display modal for announcements |
+| `src/components/announcements/AnnouncementProvider.tsx` | Context for managing announcement display |
+| `src/components/announcements/CreateAnnouncementDialog.tsx` | Create/edit announcements |
+| `src/components/announcements/AnnouncementCard.tsx` | Card component for Notice Board |
+| `src/pages/NoticeBoard.tsx` | Dedicated page for viewing all announcements |
+| `src/hooks/useAnnouncements.ts` | Data fetching and mutations for announcements |
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Add editable total names override |
+| `src/components/Layout.tsx` | Add AnnouncementProvider |
+| `src/components/NotificationBell.tsx` | Add announcement notification type |
+| `src/App.tsx` | Add /notices route |
+| `src/hooks/useNotifications.ts` | Add announcement notification type |
+| Database Migration | Create announcements tables and policies |
+
+---
+
+## Technical Details
+
+### Announcement Display Logic
+
 ```typescript
-interface ManualInvoiceEntryDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onComplete: () => void;
+// Determine if announcement should show
+function shouldShowAnnouncement(announcement, dismissals, lastLoginAt) {
+  const dismissal = dismissals.find(d => d.announcement_id === announcement.id);
+  
+  if (!dismissal) return true;
+  
+  switch (announcement.display_frequency) {
+    case 'once':
+      return false; // Already dismissed
+    case 'every_login':
+      return dismissal.dismissed_at < lastLoginAt;
+    case 'daily':
+      return isMoreThanOneDayAgo(dismissal.dismissed_at);
+    case 'weekly':
+      return isMoreThanOneWeekAgo(dismissal.dismissed_at);
+  }
 }
 ```
 
-**Parsing Logic:**
+### Target Matching Logic
+
 ```typescript
-const parseInput = (input: string): string[] => {
-  // Split by newlines, commas, or multiple spaces
-  return input
-    .split(/[\n,]+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-};
+// Check if announcement targets current user
+function isTargetedToUser(announcement, user, userRole, profile) {
+  switch (announcement.target_type) {
+    case 'all':
+      return true;
+    case 'contractor':
+      return profile.contractor_id === announcement.target_contractor_id 
+          || profile.active_contractor_id === announcement.target_contractor_id;
+    case 'role':
+      return userRole === announcement.target_role;
+    case 'user':
+      return announcement.target_user_ids?.includes(user.id);
+  }
+}
 ```
 
-**Matching Logic:**
-1. Take folder names list
-2. Query `audits` table to match by `file_name`
-3. Get `interview_metadata` for names count
-4. Display matched vs unmatched
-
----
-
-## Part 3: Combined Upload Dialog
-
-### Modify Page to Use Tabs/Options
-
-Update `PaymentTracking.tsx` to show a unified "Add Payment Data" button that opens a dialog with two options:
-1. **Upload Invoice PDF** - existing functionality
-2. **Manual Entry** - new text-based entry
-
-**Option A: Single Combined Dialog with Tabs**
-```typescript
-<CombinedUploadDialog open={dialogOpen} onOpenChange={setDialogOpen}>
-  <Tabs defaultValue="pdf">
-    <TabsList>
-      <TabsTrigger value="pdf">Upload PDF</TabsTrigger>
-      <TabsTrigger value="manual">Manual Entry</TabsTrigger>
-    </TabsList>
-    <TabsContent value="pdf">
-      {/* Existing PDF upload UI */}
-    </TabsContent>
-    <TabsContent value="manual">
-      {/* New manual entry UI */}
-    </TabsContent>
-  </Tabs>
-</CombinedUploadDialog>
-```
-
-**Option B: Dropdown Button** (Recommended for cleaner UX)
-```typescript
-<DropdownMenu>
-  <DropdownMenuTrigger asChild>
-    <Button>
-      <Upload className="h-4 w-4 mr-2" />
-      Add Payment Data
-      <ChevronDown className="h-4 w-4 ml-2" />
-    </Button>
-  </DropdownMenuTrigger>
-  <DropdownMenuContent>
-    <DropdownMenuItem onClick={() => setPdfDialogOpen(true)}>
-      <FileText className="h-4 w-4 mr-2" />
-      Upload Invoice PDF
-    </DropdownMenuItem>
-    <DropdownMenuItem onClick={() => setManualDialogOpen(true)}>
-      <Edit className="h-4 w-4 mr-2" />
-      Manual Entry
-    </DropdownMenuItem>
-  </DropdownMenuContent>
-</DropdownMenu>
-```
-
----
-
-## Part 4: RLS Policy Update
-
-Add UPDATE policy for contractors on `payment_records`:
-```sql
-CREATE POLICY "Contractors can update journey status"
-  ON payment_records FOR UPDATE
-  USING (
-    has_role(auth.uid(), 'contractor') OR 
-    has_role(auth.uid(), 'admin') OR 
-    has_role(auth.uid(), 'super_admin')
-  );
-```
-
----
-
-## Files to Create/Modify
-
-| File | Type | Purpose |
-|------|------|---------|
-| `src/components/payment/BulkJourneyUpdateDialog.tsx` | Modify | Add payment status options (Received/Revoked) |
-| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Create | New text-based entry dialog |
-| `src/components/payment/CombinedUploadDialog.tsx` | Create | Wrapper with PDF + Manual tabs |
-| `src/hooks/usePaymentTracking.ts` | Modify | Add `useCreateOrUpdatePaymentStatus` and `useBulkCreatePayments` hooks |
-| `src/pages/PaymentTracking.tsx` | Modify | Use combined dialog with dropdown button |
-| SQL Migration | Create | Add UPDATE policy for contractors |
-
----
-
-## Data Flow for Manual Entry
+### Modern Modal UI Design
 
 ```text
-User enters folder names
-        ↓
-Parse input (split by comma/space/newline)
-        ↓
-Query audits table for matches
-        ↓
-Fetch interview_metadata for names count
-        ↓
-Display preview with matched/unmatched
-        ↓
-User selects payment type
-        ↓
-User confirms
-        ↓
-Create payment_records for each match
-        ↓
-Refresh data & close dialog
++------------------------------------------------+
+|                                           [X]  |
+|                                                |
+|     [Icon based on style]                      |
+|                                                |
+|     ANNOUNCEMENT TITLE                         |
+|                                                |
+|     Lorem ipsum dolor sit amet,                |
+|     consectetur adipiscing elit.               |
+|     Sed do eiusmod tempor incididunt           |
+|     ut labore et dolore magna aliqua.          |
+|                                                |
+|     [ ] I have read and acknowledged           |
+|         this announcement                      |
+|                                                |
+|           [Optional CTA Button]                |
+|                                                |
++------------------------------------------------+
+```
+
+**Styling Features:**
+- Backdrop blur effect
+- Gradient or themed header based on style
+- Smooth entrance animation (scale + fade)
+- Rounded corners, soft shadows
+- Responsive sizing (max-width with padding)
+
+---
+
+## Database Migration SQL
+
+```sql
+-- Announcements table
+CREATE TABLE announcements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  content text NOT NULL,
+  cta_text text,
+  cta_url text,
+  created_by uuid REFERENCES profiles(id) NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  scheduled_at timestamptz,
+  expires_at timestamptz,
+  is_active boolean DEFAULT true,
+  display_frequency text DEFAULT 'once' CHECK (display_frequency IN ('once', 'every_login', 'daily', 'weekly')),
+  require_acknowledgment boolean DEFAULT false,
+  target_type text DEFAULT 'all' CHECK (target_type IN ('all', 'contractor', 'role', 'user')),
+  target_contractor_id text,
+  target_role app_role,
+  target_user_ids uuid[],
+  priority integer DEFAULT 0,
+  style text DEFAULT 'info' CHECK (style IN ('info', 'warning', 'success', 'announcement'))
+);
+
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+
+-- Dismissals table
+CREATE TABLE announcement_dismissals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  announcement_id uuid REFERENCES announcements(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid NOT NULL,
+  dismissed_at timestamptz DEFAULT now(),
+  acknowledged boolean DEFAULT false,
+  UNIQUE(announcement_id, user_id)
+);
+
+ALTER TABLE announcement_dismissals ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for announcements
+CREATE POLICY "Super admins can manage all announcements"
+  ON announcements FOR ALL
+  USING (has_role(auth.uid(), 'super_admin'));
+
+CREATE POLICY "Authorized creators can insert announcements"
+  ON announcements FOR INSERT
+  WITH CHECK (
+    has_role(auth.uid(), 'super_admin') OR
+    has_role(auth.uid(), 'contractor') OR
+    has_role(auth.uid(), 'sub_contractor') OR
+    has_role(auth.uid(), 'quality_assurance_manager')
+  );
+
+CREATE POLICY "Users can view targeted active announcements"
+  ON announcements FOR SELECT
+  USING (
+    is_active = true AND
+    (scheduled_at IS NULL OR scheduled_at <= now()) AND
+    (expires_at IS NULL OR expires_at > now()) AND
+    (
+      target_type = 'all' OR
+      (target_type = 'contractor' AND target_contractor_id IN (
+        SELECT contractor_id FROM profiles WHERE id = auth.uid()
+        UNION
+        SELECT active_contractor_id FROM profiles WHERE id = auth.uid()
+      )) OR
+      (target_type = 'role' AND target_role IN (
+        SELECT role FROM user_roles WHERE user_id = auth.uid()
+      )) OR
+      (target_type = 'user' AND auth.uid() = ANY(target_user_ids))
+    )
+  );
+
+CREATE POLICY "Creators can manage own announcements"
+  ON announcements FOR UPDATE
+  USING (created_by = auth.uid());
+
+-- RLS Policies for dismissals
+CREATE POLICY "Users can insert own dismissals"
+  ON announcement_dismissals FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own dismissals"
+  ON announcement_dismissals FOR SELECT
+  USING (auth.uid() = user_id);
 ```
 
 ---
 
-## Technical Implementation Details
+## Implementation Sequence
 
-### 1. Folder Name Validation
-```typescript
-// Valid formats: NG71_696_20251103_1035
-const FOLDER_NAME_PATTERN = /^[A-Z]{2}\d{2}_\d+_\d{8}_\d{4}$/;
-
-const validateFolderName = (name: string): boolean => {
-  return FOLDER_NAME_PATTERN.test(name);
-};
-```
-
-### 2. Batch Insert for Manual Entry
-```typescript
-const useBulkCreatePayments = () => {
-  return useMutation({
-    mutationFn: async (entries: {
-      folder_name: string;
-      audit_id: string | null;
-      names_count: number;
-      payment_type: "new_payment" | "addition" | "deduction";
-      invoice_number: string;
-    }[]) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      const records = entries.map(e => ({
-        ...e,
-        invoice_date: new Date().toISOString().split('T')[0],
-        created_by: user?.id,
-      }));
-      
-      const { error } = await supabase
-        .from("payment_records")
-        .upsert(records, { 
-          onConflict: "invoice_number,folder_name,payment_type",
-          ignoreDuplicates: false 
-        });
-        
-      if (error) throw error;
-    },
-  });
-};
-```
-
-### 3. Preview Component
-Show a scrollable list with:
-- Green checkmark for matched folders
-- Red X for unmatched folders
-- Names count from metadata
-- Warning for folders without audit records
+1. **Database Migration** - Create tables and RLS policies
+2. **Feature 1** - Update ManualInvoiceEntryDialog with editable total
+3. **Create useAnnouncements hook** - Data fetching layer
+4. **Create AnnouncementModal** - Display component
+5. **Create AnnouncementProvider** - Display logic
+6. **Integrate into Layout** - Provider wrapper
+7. **Create CreateAnnouncementDialog** - Admin creation UI
+8. **Create NoticeBoard page** - History viewing
+9. **Add route and navigation** - App.tsx and nav updates
+10. **Update NotificationBell** - Add announcement type
+11. **Push notification integration** - Trigger on new announcements
