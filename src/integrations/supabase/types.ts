@@ -83,6 +83,101 @@ export type Database = {
         }
         Relationships: []
       }
+      announcement_dismissals: {
+        Row: {
+          acknowledged: boolean | null
+          announcement_id: string
+          dismissed_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged?: boolean | null
+          announcement_id: string
+          dismissed_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          acknowledged?: boolean | null
+          announcement_id?: string
+          dismissed_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_dismissals_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      announcements: {
+        Row: {
+          content: string
+          created_at: string | null
+          created_by: string
+          cta_text: string | null
+          cta_url: string | null
+          display_frequency: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          priority: number | null
+          require_acknowledgment: boolean | null
+          scheduled_at: string | null
+          style: string | null
+          target_contractor_id: string | null
+          target_role: Database["public"]["Enums"]["app_role"] | null
+          target_type: string | null
+          target_user_ids: string[] | null
+          title: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          created_by: string
+          cta_text?: string | null
+          cta_url?: string | null
+          display_frequency?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          priority?: number | null
+          require_acknowledgment?: boolean | null
+          scheduled_at?: string | null
+          style?: string | null
+          target_contractor_id?: string | null
+          target_role?: Database["public"]["Enums"]["app_role"] | null
+          target_type?: string | null
+          target_user_ids?: string[] | null
+          title: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          created_by?: string
+          cta_text?: string | null
+          cta_url?: string | null
+          display_frequency?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          priority?: number | null
+          require_acknowledgment?: boolean | null
+          scheduled_at?: string | null
+          style?: string | null
+          target_contractor_id?: string | null
+          target_role?: Database["public"]["Enums"]["app_role"] | null
+          target_type?: string | null
+          target_user_ids?: string[] | null
+          title?: string
+        }
+        Relationships: []
+      }
       audit_checklist_progress: {
         Row: {
           audit_id: string

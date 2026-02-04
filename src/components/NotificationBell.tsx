@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Check, CheckCheck, FileText, AlertTriangle, RefreshCw, Trophy, Clock } from "lucide-react";
+import { Bell, Check, CheckCheck, FileText, AlertTriangle, RefreshCw, Trophy, Clock, Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,6 +32,8 @@ const getNotificationIcon = (type: string) => {
       return <Check className="h-4 w-4 text-green-500" />;
     case "flagged_issue":
       return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+    case "announcement":
+      return <Megaphone className="h-4 w-4 text-purple-500" />;
     default:
       return <Bell className="h-4 w-4 text-muted-foreground" />;
   }
@@ -58,6 +60,10 @@ const NotificationBell = () => {
     if (notification.type === "issue_resolved" || notification.type === "flagged_issue") {
       // Navigate to data entry page for issue-related notifications
       navigate("/data-entry");
+      setOpen(false);
+    } else if (notification.type === "announcement") {
+      // Navigate to notice board for announcements
+      navigate("/notices");
       setOpen(false);
     } else if (notification.metadata?.audit_id) {
       navigate(`/review/${notification.metadata.audit_id}`);
