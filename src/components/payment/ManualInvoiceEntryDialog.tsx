@@ -46,6 +46,8 @@ export const ManualInvoiceEntryDialog = ({
   const [isSearching, setIsSearching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [totalNamesOverride, setTotalNamesOverride] = useState<number | null>(null);
+  const [isEditingTotal, setIsEditingTotal] = useState(false);
 
   const bulkCreate = useBulkCreatePayments();
 
@@ -125,13 +127,16 @@ export const ManualInvoiceEntryDialog = ({
   const stats = useMemo(() => {
     const found = previewRecords.filter(r => r.found).length;
     const notFound = previewRecords.filter(r => !r.found).length;
-    const totalNames = previewRecords.reduce((sum, r) => {
+    const calculatedTotal = previewRecords.reduce((sum, r) => {
       const count = r.names_override ?? r.names_count;
       return sum + count;
     }, 0);
+    
+    // Use override if set, otherwise use calculated
+    const totalNames = totalNamesOverride !== null ? totalNamesOverride : calculatedTotal;
 
-    return { found, notFound, totalNames };
-  }, [previewRecords]);
+    return { found, notFound, totalNames, calculatedTotal };
+  }, [previewRecords, totalNamesOverride]);
 
   const handleNamesOverride = (index: number, value: string) => {
     const numValue = parseInt(value, 10);
@@ -187,7 +192,15 @@ export const ManualInvoiceEntryDialog = ({
     setInvoiceNumber("");
     setPreviewRecords([]);
     setEditingIndex(null);
+    setTotalNamesOverride(null);
+    setIsEditingTotal(false);
     onOpenChange(false);
+  };
+
+  const handleTotalOverride = (value: string) => {
+    const numValue = parseInt(value, 10);
+    setTotalNamesOverride(isNaN(numValue) ? null : numValue);
+    setIsEditingTotal(false);
   };
 
   return (
@@ -265,8 +278,36 @@ export const ManualInvoiceEntryDialog = ({
                     Not Found: {stats.notFound}
                   </Badge>
                 )}
-                <Badge variant="outline">
-                  Total Names: {stats.totalNames.toLocaleString()}
+                <Badge variant="outline" className="gap-1">
+                  Total Names: 
+                  {isEditingTotal ? (
+                    <Input
+                      type="number"
+                      className="w-24 h-6 text-xs inline-flex ml-1"
+                      defaultValue={stats.totalNames}
+                      onBlur={(e) => handleTotalOverride(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleTotalOverride((e.target as HTMLInputElement).value);
+                        }
+                        if (e.key === 'Escape') {
+                          setIsEditingTotal(false);
+                        }
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setIsEditingTotal(true)}
+                      className="inline-flex items-center gap-1 hover:text-primary ml-1"
+                    >
+                      {stats.totalNames.toLocaleString()}
+                      {totalNamesOverride !== null && (
+                        <span className="text-xs text-muted-foreground">(edited)</span>
+                      )}
+                      <Edit2 className="h-3 w-3 opacity-50" />
+                    </button>
+                  )}
                 </Badge>
               </div>
 

@@ -45,6 +45,7 @@ import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
 import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
 import SmsLogs from "./pages/SmsLogs";
 import PaymentTracking from "./pages/PaymentTracking";
+import NoticeBoard from "./pages/NoticeBoard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -299,6 +300,16 @@ const App = () => (
                   <Layout>
                     <Achievements />
               </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/notices"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <NoticeBoard />
+                  </Layout>
                 </ProtectedRoute>
               }
             />
