@@ -1,390 +1,354 @@
 
-# Implementation Plan: Payment Tracking Enhancements, Announcements Integration & SMS Log Filters
+# Implementation Plan: Payment Tracking Enhancement & In-App Announcements
 
 ## Overview
 
-This plan addresses multiple improvements across different pages:
+This plan addresses two major feature requests:
 
-1. **Payment Tracking Page**
-   - Mobile-optimized collapsible accordion view
-   - Journey tracker status reflection fixes
-   - Stat card calculation using overridden total names
-   - Comprehensive filters and pagination improvements
-   - Journey status display on tracking page
+### Feature 1: Editable Total Names on Invoice Entry
+Allow users to edit the sum total of names directly in the Manual Invoice Entry dialog (the "22,675" shown in the preview stats), not just individual interview counts.
 
-2. **Homepage & Announcements**
-   - Add unread announcement count + Notice Board navigation
-   - Fix announcement notifications not appearing in NotificationBell
-   - Trigger push notifications when announcements are posted
-
-3. **SMS Logs Page**
-   - Advanced comprehensive filters with date range
-   - Filter counter badge
-   - Additional sorting options
+### Feature 2: In-App Announcement System
+Create a comprehensive notification/announcement system with:
+- Role-based announcement creation (Super Admin, Contractor, Sub-Contractor, QA Manager)
+- Targeting options (all users, contractor group, role, specific users)
+- Scheduling and auto-delete capabilities
+- Modern modal UI with customizable display frequency
+- Dedicated Notice Board page for reading past announcements
+- Push notification integration
 
 ---
 
-## Part 1: Payment Tracking - Mobile Accordion View
+## Feature 1: Editable Total Names
 
-### Problem
-The table layout doesn't fit well on mobile screens and requires horizontal scrolling.
+### Current Behavior
+The `ManualInvoiceEntryDialog` calculates total names from individual interview records. Users can only edit per-interview counts.
 
-### Solution
-Create a mobile-responsive accordion view similar to Team Management and Interview Tracking pages.
+### Required Changes
 
-**Modify `PaymentTable.tsx`:**
-- Add `useIsMobile()` hook
-- Render table on desktop, accordion on mobile
-- Each accordion item shows folder name in header, expands to show journey tracker and details
+**Modify `ManualInvoiceEntryDialog.tsx`:**
+1. Add a new `totalNamesOverride` state that allows direct editing of the aggregate total
+2. Add an edit button next to the "Total Names: X" badge in the preview section
+3. When the override is set, distribute proportionally or use as-is for invoice recording
+4. Store the override value for accurate stats
 
-**Mobile Accordion Structure:**
+**UI Flow:**
 ```text
-+--------------------------------------------+
-| [checkbox] NG71_696_20251103_1035      [v] |
-+--------------------------------------------+
-| Status: Audit Passed                       |
-| Names: 28                                  |
-| Team: Team Alpha                           |
-| Payment: INV-2025-001 ($56.00)             |
-|                                            |
-| Journey:                                   |
-| [○ → ○ → ○ → ● → ○ → ○ → ○]                |
-| Submitted → BAC → Trans → Pay → Print...  |
-+--------------------------------------------+
+Preview Section:
++-----------------------------------------------+
+| Found: 209 | Not Found: 1 | Total Names: 22,675 [Edit icon] |
++-----------------------------------------------+
 ```
+
+When user clicks edit on Total Names:
+- Show inline input or modal for entering the correct total
+- Save this as `totalNamesOverride` 
+- Display the overridden value with an indicator that it was manually adjusted
 
 ---
 
-## Part 2: Journey Tracker Status Fix
+## Feature 2: In-App Announcement System
 
-### Problem
-Payment status updates are not reflecting on the journey tracker because `paymentReceivedAt` is checking for `record.payment.id` instead of properly detecting payment status.
+### Database Schema
 
-### Current Code (Incorrect):
-```typescript
-paymentReceivedAt: record.payment?.payment_type === "new_payment" ? record.payment.id : null,
-```
+**New Table: `announcements`**
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| title | text | Announcement title |
+| content | text | Main announcement body |
+| cta_text | text? | Optional CTA button text |
+| cta_url | text? | Optional CTA button URL |
+| created_by | uuid | Creator user ID |
+| created_at | timestamp | Creation timestamp |
+| scheduled_at | timestamp? | Future publish date (null = immediate) |
+| expires_at | timestamp? | Auto-delete after this date |
+| is_active | boolean | Whether announcement is visible |
+| display_frequency | text | 'once', 'every_login', 'daily', 'weekly' |
+| require_acknowledgment | boolean | User must check box to dismiss |
+| target_type | text | 'all', 'contractor', 'role', 'user' |
+| target_contractor_id | text? | If targeting contractor group |
+| target_role | app_role? | If targeting specific role |
+| target_user_ids | uuid[]? | If targeting specific users |
+| priority | integer | Display order (higher = more important) |
+| style | text | 'info', 'warning', 'success', 'announcement' |
 
-### Fix:
-The condition checks `payment_type === "new_payment"` but the ID is not a timestamp. For the journey tracker to show completion, we need to pass a truthy value (not null) when payment exists.
+**New Table: `announcement_dismissals`**
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| announcement_id | uuid | FK to announcements |
+| user_id | uuid | User who dismissed |
+| dismissed_at | timestamp | When dismissed |
+| acknowledged | boolean | If acknowledged (for require_acknowledgment) |
 
-**Update `createJourneySteps` call in `PaymentTable.tsx`:**
-```typescript
-// Payment is considered "received" if payment record exists with new_payment or addition type
-// Revoked (deduction) should NOT show as payment received
-paymentReceivedAt: record.payment && record.payment.payment_type !== "deduction" 
-  ? record.payment.id  // Any truthy value works for "completed" status
-  : null,
-```
+### RLS Policies
 
----
+**announcements:**
+- Super Admins can manage all announcements
+- Contractors can create announcements targeting their contractor group
+- Sub-Contractors can create announcements for their assigned field managers
+- QA Managers can create announcements for data entry teams
+- All authenticated users can read active announcements that target them
 
-## Part 3: Stat Card with Overridden Total Names
+**announcement_dismissals:**
+- Users can insert/read their own dismissals
+- Service role can manage all
 
-### Problem
-The `useBudgetStats` hook sums `names_count` from `payment_records` but doesn't account for manually overridden totals.
+### Creator Permission Logic
 
-### Solution
-The current implementation already uses `names_count` from payment_records. If users are manually overriding totals in `ManualInvoiceEntryDialog`, we need to ensure those overridden values are saved to `payment_records.names_count`.
+| Creator Role | Can Target |
+|-------------|------------|
+| Super Admin | All users, any contractor, any role, specific users |
+| Contractor | Users in their contractor group only |
+| Sub-Contractor | Field managers assigned to them |
+| QA Manager | Data entry clerks and QA managers |
 
-**Verify in `ManualInvoiceEntryDialog.tsx`:**
-The dialog should use `totalNamesOverride` when creating records. If override exists, distribute proportionally or use as aggregate:
-```typescript
-// When saving, if totalNamesOverride is set:
-// Option 1: Store as a single record with the override
-// Option 2: Adjust individual records proportionally
-```
+### New Components
 
-**Add invoice-level override storage:**
-Currently, individual records have `names_count`. For invoice-level override, we could:
-1. Store aggregate in a new `invoice_metadata` table, OR
-2. Use a single aggregate payment_record with the total, OR  
-3. Proportionally distribute the override across records
+**1. `AnnouncementModal.tsx`**
+Modern, visually appealing modal that appears on login:
+- Glassmorphism or gradient background
+- Wrapped text content
+- Optional CTA button (primary styling)
+- Minimal close button (top-right X)
+- Optional acknowledgment checkbox
+- Smooth animations (fade/slide in)
 
-Recommended: Store the total as a metadata field on the payment_records created from that manual entry session, using `totalNamesOverride` divided proportionally.
+**2. `AnnouncementProvider.tsx`**
+Context provider that:
+- Fetches pending announcements on auth state change
+- Checks dismissal status and frequency rules
+- Queues announcements for display
+- Handles the display logic based on frequency settings
 
----
+**3. `NoticeBoard.tsx` (New Page)**
+Dedicated page at `/notices` where users can:
+- View all announcements (past and current)
+- Filter by date, priority, read status
+- Mark as read/acknowledged
 
-## Part 4: Comprehensive Filters & Pagination
+**4. `CreateAnnouncementDialog.tsx`**
+Admin dialog for creating announcements with:
+- Rich text input (title, content)
+- Target selection (dropdown with role-based options)
+- Schedule date picker
+- Expiry date picker  
+- Display frequency selector
+- Require acknowledgment toggle
+- CTA configuration (optional)
+- Priority level selector
+- Style/theme selector
 
-### Add Filters to `PaymentTracking.tsx`
+### Integration Points
 
-**New Filter State:**
-```typescript
-const [filters, setFilters] = useState({
-  paymentStatus: "", // new_payment, deduction, addition, no_payment
-  journeyStatus: "", // payment_received, booklet_printed, etc.
-  entryStatus: "", // typing_in_progress, completed
-  sortField: "file_name",
-  sortOrder: "desc" as "asc" | "desc",
-});
-const [showFilters, setShowFilters] = useState(false);
-```
+**Layout.tsx:**
+Add `<AnnouncementProvider>` wrapper that checks for pending announcements on mount
 
-**Filter UI (Collapsible):**
-- Payment Status dropdown (All, Payment Received, Payment Revoked, Additions, No Payment)
-- Journey Stage dropdown (All stages)
-- Entry Status dropdown (Typing In Progress, Completed)
-- Sort By dropdown with order toggle
-- Active filter counter badge
+**NotificationBell.tsx:**
+Add announcement icon type and link announcements to Notice Board
 
-**Replace current pagination with `AuditPagination` component:**
-- Import and use `AuditPagination` from `@/components/AuditPagination`
-- Add items per page selector (10, 25, 50, 100)
-- Match the interviews page pagination style
+**useNotifications.ts:**
+Extend to create user_notifications when new announcements are published (for push notifications)
 
----
+### Files to Create
 
-## Part 5: Journey Status Display Column
+| File | Purpose |
+|------|---------|
+| `src/components/announcements/AnnouncementModal.tsx` | Display modal for announcements |
+| `src/components/announcements/AnnouncementProvider.tsx` | Context for managing announcement display |
+| `src/components/announcements/CreateAnnouncementDialog.tsx` | Create/edit announcements |
+| `src/components/announcements/AnnouncementCard.tsx` | Card component for Notice Board |
+| `src/pages/NoticeBoard.tsx` | Dedicated page for viewing all announcements |
+| `src/hooks/useAnnouncements.ts` | Data fetching and mutations for announcements |
 
-### Problem
-The "Status" column shows audit status, not journey status.
-
-### Solution
-Add a new column or modify the status badge to show current journey stage:
-
-**Derive journey status from data:**
-```typescript
-const getJourneyStatus = (record: PaymentInterviewRecord): string => {
-  if (record.payment?.booklet_delivered_at) return "Booklet Delivered";
-  if (record.payment?.booklet_received_at) return "Booklet Received";
-  if (record.payment?.booklet_printed_at) return "Booklet Printed";
-  if (record.payment && record.payment.payment_type !== "deduction") return "Payment Received";
-  if (record.assignment) return "Transcribed";
-  if (record.status === "Audit Passed") return "BAC Passed";
-  return "Submitted";
-};
-```
-
-Display this in the table/accordion as "Journey Status" badge.
-
----
-
-## Part 6: Homepage - Announcement Count & Navigation
-
-### Problem
-Homepage doesn't show unread announcements or link to Notice Board.
-
-### Solution
-**Add to dashboard components (AdminDashboard, ContractorDashboard, etc.):**
-- Query unread announcements count using `useAnnouncements().pendingAnnouncements.length`
-- Add a Notice Board card/button in Quick Actions
-
-**Sample UI in AdminDashboard.tsx:**
-```typescript
-import { useAnnouncements } from "@/hooks/useAnnouncements";
-import { Megaphone } from "lucide-react";
-
-// In component:
-const { pendingAnnouncements } = useAnnouncements();
-const unreadNoticesCount = pendingAnnouncements.length;
-
-// In Quick Actions:
-<Button 
-  variant="outline" 
-  className="w-full justify-between"
-  onClick={() => navigate("/notices")}
->
-  <span className="flex items-center gap-2">
-    <Megaphone className="h-4 w-4" />
-    Notice Board
-  </span>
-  {unreadNoticesCount > 0 && (
-    <Badge variant="secondary">{unreadNoticesCount}</Badge>
-  )}
-  <ArrowRight className="h-4 w-4" />
-</Button>
-```
-
----
-
-## Part 7: Announcement Notifications
-
-### Problem
-1. Announcements not showing in NotificationBell
-2. No push notification when announcement is posted
-
-### Root Cause
-When an announcement is created, no `user_notification` record is inserted for targeted users.
-
-### Solution
-**Add database trigger or modify `createAnnouncement` mutation:**
-
-Option A: Database Trigger (preferred for reliability)
-```sql
-CREATE OR REPLACE FUNCTION notify_new_announcement()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Insert notification for all targeted users
-  INSERT INTO user_notifications (user_id, type, title, message, metadata)
-  SELECT 
-    p.id,
-    'announcement',
-    'New Announcement: ' || NEW.title,
-    LEFT(NEW.content, 100) || '...',
-    jsonb_build_object('announcement_id', NEW.id)
-  FROM profiles p
-  INNER JOIN user_roles ur ON ur.user_id = p.id
-  WHERE p.is_approved = true
-  AND (
-    NEW.target_type = 'all' OR
-    (NEW.target_type = 'contractor' AND (p.contractor_id = NEW.target_contractor_id OR p.active_contractor_id = NEW.target_contractor_id)) OR
-    (NEW.target_type = 'role' AND ur.role = NEW.target_role) OR
-    (NEW.target_type = 'user' AND p.id = ANY(NEW.target_user_ids))
-  );
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER on_announcement_created
-  AFTER INSERT ON announcements
-  FOR EACH ROW
-  WHEN (NEW.is_active = true AND (NEW.scheduled_at IS NULL OR NEW.scheduled_at <= now()))
-  EXECUTE FUNCTION notify_new_announcement();
-```
-
-Option B: Modify `useAnnouncements.createAnnouncement` to insert notifications after creation (less reliable but simpler)
-
----
-
-## Part 8: SMS Logs Advanced Filters
-
-### Current State
-Basic search + status filter only.
-
-### Add Features:
-
-**New Filter State in `SmsLogs.tsx`:**
-```typescript
-const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-  from: undefined,
-  to: undefined,
-});
-const [sortField, setSortField] = useState<"created_at" | "recipients_count">("created_at");
-const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-```
-
-**Filter UI:**
-- Date range picker (from/to)
-- Contractor filter dropdown
-- Sort by dropdown (Date, Recipients Count)
-- Sort order toggle
-- **Filter Counter Badge:** Shows count of active filters
-
-**Active Filters Counter:**
-```typescript
-const activeFilterCount = useMemo(() => {
-  let count = 0;
-  if (statusFilter !== "all") count++;
-  if (searchQuery) count++;
-  if (dateRange.from || dateRange.to) count++;
-  return count;
-}, [statusFilter, searchQuery, dateRange]);
-```
-
-Display badge next to "Filters" button showing active count.
-
-**Updated Query:**
-```typescript
-let query = supabase
-  .from("sms_notification_logs")
-  .select("*")
-  .order(sortField, { ascending: sortOrder === "asc" })
-  .limit(100);
-
-if (statusFilter !== "all") query = query.eq("status", statusFilter);
-if (dateRange.from) query = query.gte("created_at", dateRange.from.toISOString());
-if (dateRange.to) query = query.lte("created_at", dateRange.to.toISOString());
-if (searchQuery) query = query.or(`...`);
-```
-
----
-
-## Files to Modify
+### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/payment/PaymentTable.tsx` | Mobile accordion, journey status fix, journey status column, pagination update |
-| `src/pages/PaymentTracking.tsx` | Add filters UI, filter state, collapsible filter section |
-| `src/hooks/usePaymentTracking.ts` | Update budget stats to work with overridden totals (if needed) |
-| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Ensure totalNamesOverride is properly saved |
-| `src/components/home/AdminDashboard.tsx` | Add Notice Board navigation with count |
-| `src/components/home/ContractorDashboard.tsx` | Add Notice Board navigation with count |
-| `src/components/home/SubContractorDashboard.tsx` | Add Notice Board navigation with count |
-| `src/components/home/QAManagerDashboard.tsx` | Add Notice Board navigation with count |
-| `src/pages/SmsLogs.tsx` | Advanced filters, date range, sorting, filter counter |
-| SQL Migration | Add trigger for announcement notifications |
-
----
-
-## Implementation Sequence
-
-1. **Payment Table Mobile Accordion** - Responsive design with collapsible items
-2. **Journey Tracker Fix** - Correct payment status detection
-3. **Payment Filters & Pagination** - Add comprehensive filtering with AuditPagination
-4. **Journey Status Column** - Display current journey stage
-5. **Stat Card Override** - Ensure overridden totals reflect correctly
-6. **Homepage Notice Board Links** - Add navigation + count to dashboards
-7. **Announcement Notifications** - Create trigger for user_notifications
-8. **SMS Log Filters** - Date range, sorting, filter counter
+| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Add editable total names override |
+| `src/components/Layout.tsx` | Add AnnouncementProvider |
+| `src/components/NotificationBell.tsx` | Add announcement notification type |
+| `src/App.tsx` | Add /notices route |
+| `src/hooks/useNotifications.ts` | Add announcement notification type |
+| Database Migration | Create announcements tables and policies |
 
 ---
 
 ## Technical Details
 
-### Mobile Accordion Item Component
+### Announcement Display Logic
+
 ```typescript
-const MobilePaymentCard = ({ record, selected, onToggle }: { ... }) => {
-  const journeyStatus = getJourneyStatus(record);
-  const journeySteps = createJourneySteps({ ... });
+// Determine if announcement should show
+function shouldShowAnnouncement(announcement, dismissals, lastLoginAt) {
+  const dismissal = dismissals.find(d => d.announcement_id === announcement.id);
   
-  return (
-    <AccordionItem value={record.id}>
-      <div className="flex items-center gap-2 p-2">
-        <Checkbox checked={selected} onCheckedChange={onToggle} />
-        <AccordionTrigger className="flex-1 hover:no-underline">
-          <div className="flex items-center justify-between w-full">
-            <span className="font-mono text-sm">{record.file_name}</span>
-            <Badge variant="outline" className="text-xs">{journeyStatus}</Badge>
-          </div>
-        </AccordionTrigger>
-      </div>
-      <AccordionContent className="px-4 pb-4">
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Status:</span>
-              <Badge>{record.status}</Badge>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Names:</span> 
-              {record.total_names || "-"}
-            </div>
-            {/* ... more fields */}
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">Journey Progress</p>
-            <InterviewJourneyTracker steps={journeySteps} />
-          </div>
-        </div>
-      </AccordionContent>
-    </AccordionItem>
-  );
-};
+  if (!dismissal) return true;
+  
+  switch (announcement.display_frequency) {
+    case 'once':
+      return false; // Already dismissed
+    case 'every_login':
+      return dismissal.dismissed_at < lastLoginAt;
+    case 'daily':
+      return isMoreThanOneDayAgo(dismissal.dismissed_at);
+    case 'weekly':
+      return isMoreThanOneWeekAgo(dismissal.dismissed_at);
+  }
+}
 ```
 
-### Filter Counter Badge
+### Target Matching Logic
+
 ```typescript
-<Button 
-  variant="outline" 
-  onClick={() => setShowFilters(!showFilters)}
-  className="gap-2"
->
-  <Filter className="h-4 w-4" />
-  Filters
-  {activeFilterCount > 0 && (
-    <Badge variant="secondary" className="ml-1">{activeFilterCount}</Badge>
-  )}
-</Button>
+// Check if announcement targets current user
+function isTargetedToUser(announcement, user, userRole, profile) {
+  switch (announcement.target_type) {
+    case 'all':
+      return true;
+    case 'contractor':
+      return profile.contractor_id === announcement.target_contractor_id 
+          || profile.active_contractor_id === announcement.target_contractor_id;
+    case 'role':
+      return userRole === announcement.target_role;
+    case 'user':
+      return announcement.target_user_ids?.includes(user.id);
+  }
+}
 ```
+
+### Modern Modal UI Design
+
+```text
++------------------------------------------------+
+|                                           [X]  |
+|                                                |
+|     [Icon based on style]                      |
+|                                                |
+|     ANNOUNCEMENT TITLE                         |
+|                                                |
+|     Lorem ipsum dolor sit amet,                |
+|     consectetur adipiscing elit.               |
+|     Sed do eiusmod tempor incididunt           |
+|     ut labore et dolore magna aliqua.          |
+|                                                |
+|     [ ] I have read and acknowledged           |
+|         this announcement                      |
+|                                                |
+|           [Optional CTA Button]                |
+|                                                |
++------------------------------------------------+
+```
+
+**Styling Features:**
+- Backdrop blur effect
+- Gradient or themed header based on style
+- Smooth entrance animation (scale + fade)
+- Rounded corners, soft shadows
+- Responsive sizing (max-width with padding)
+
+---
+
+## Database Migration SQL
+
+```sql
+-- Announcements table
+CREATE TABLE announcements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  content text NOT NULL,
+  cta_text text,
+  cta_url text,
+  created_by uuid REFERENCES profiles(id) NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  scheduled_at timestamptz,
+  expires_at timestamptz,
+  is_active boolean DEFAULT true,
+  display_frequency text DEFAULT 'once' CHECK (display_frequency IN ('once', 'every_login', 'daily', 'weekly')),
+  require_acknowledgment boolean DEFAULT false,
+  target_type text DEFAULT 'all' CHECK (target_type IN ('all', 'contractor', 'role', 'user')),
+  target_contractor_id text,
+  target_role app_role,
+  target_user_ids uuid[],
+  priority integer DEFAULT 0,
+  style text DEFAULT 'info' CHECK (style IN ('info', 'warning', 'success', 'announcement'))
+);
+
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+
+-- Dismissals table
+CREATE TABLE announcement_dismissals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  announcement_id uuid REFERENCES announcements(id) ON DELETE CASCADE NOT NULL,
+  user_id uuid NOT NULL,
+  dismissed_at timestamptz DEFAULT now(),
+  acknowledged boolean DEFAULT false,
+  UNIQUE(announcement_id, user_id)
+);
+
+ALTER TABLE announcement_dismissals ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for announcements
+CREATE POLICY "Super admins can manage all announcements"
+  ON announcements FOR ALL
+  USING (has_role(auth.uid(), 'super_admin'));
+
+CREATE POLICY "Authorized creators can insert announcements"
+  ON announcements FOR INSERT
+  WITH CHECK (
+    has_role(auth.uid(), 'super_admin') OR
+    has_role(auth.uid(), 'contractor') OR
+    has_role(auth.uid(), 'sub_contractor') OR
+    has_role(auth.uid(), 'quality_assurance_manager')
+  );
+
+CREATE POLICY "Users can view targeted active announcements"
+  ON announcements FOR SELECT
+  USING (
+    is_active = true AND
+    (scheduled_at IS NULL OR scheduled_at <= now()) AND
+    (expires_at IS NULL OR expires_at > now()) AND
+    (
+      target_type = 'all' OR
+      (target_type = 'contractor' AND target_contractor_id IN (
+        SELECT contractor_id FROM profiles WHERE id = auth.uid()
+        UNION
+        SELECT active_contractor_id FROM profiles WHERE id = auth.uid()
+      )) OR
+      (target_type = 'role' AND target_role IN (
+        SELECT role FROM user_roles WHERE user_id = auth.uid()
+      )) OR
+      (target_type = 'user' AND auth.uid() = ANY(target_user_ids))
+    )
+  );
+
+CREATE POLICY "Creators can manage own announcements"
+  ON announcements FOR UPDATE
+  USING (created_by = auth.uid());
+
+-- RLS Policies for dismissals
+CREATE POLICY "Users can insert own dismissals"
+  ON announcement_dismissals FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own dismissals"
+  ON announcement_dismissals FOR SELECT
+  USING (auth.uid() = user_id);
+```
+
+---
+
+## Implementation Sequence
+
+1. **Database Migration** - Create tables and RLS policies
+2. **Feature 1** - Update ManualInvoiceEntryDialog with editable total
+3. **Create useAnnouncements hook** - Data fetching layer
+4. **Create AnnouncementModal** - Display component
+5. **Create AnnouncementProvider** - Display logic
+6. **Integrate into Layout** - Provider wrapper
+7. **Create CreateAnnouncementDialog** - Admin creation UI
+8. **Create NoticeBoard page** - History viewing
+9. **Add route and navigation** - App.tsx and nav updates
+10. **Update NotificationBell** - Add announcement type
+11. **Push notification integration** - Trigger on new announcements

@@ -14,17 +14,13 @@ import {
   FileText,
   ArrowRight,
   CheckCircle2,
-  XCircle,
-  Megaphone,
+  XCircle
 } from "lucide-react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
-import { useAnnouncements } from "@/hooks/useAnnouncements";
 
 const SubContractorDashboard = () => {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const { pendingAnnouncements } = useAnnouncements();
-  const unreadNoticesCount = pendingAnnouncements.length;
 
   // Get assigned field managers
   const { data: assignedManagers = [] } = useQuery({
@@ -310,21 +306,6 @@ const SubContractorDashboard = () => {
                 My Analytics
               </span>
               <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              className="w-full justify-between"
-              onClick={() => navigate("/notices")}
-            >
-              <span className="flex items-center gap-2">
-                <Megaphone className="h-4 w-4" />
-                Notice Board
-              </span>
-              {unreadNoticesCount > 0 ? (
-                <Badge variant="secondary">{unreadNoticesCount}</Badge>
-              ) : (
-                <ArrowRight className="h-4 w-4" />
-              )}
             </Button>
             {flaggedCount > 0 && (
               <Button 
