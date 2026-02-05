@@ -17,20 +17,16 @@ import {
   Search,
   Plus,
   BarChart3,
-  ArrowRight,
-  Megaphone
+  ArrowRight
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AdminStatsCard } from "@/components/AdminStatsCard";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
-import { useAnnouncements } from "@/hooks/useAnnouncements";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
-  const { pendingAnnouncements } = useAnnouncements();
-  const unreadNoticesCount = pendingAnnouncements.length;
 
   // Get system-wide stats
   const { data: stats } = useQuery({
@@ -262,20 +258,6 @@ const AdminDashboard = () => {
                 Team Assignments
               </span>
               <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              className="w-full justify-between"
-              onClick={() => navigate("/notices")}
-            >
-              <span className="flex items-center gap-2">
-                <Megaphone className="h-4 w-4" />
-                Notice Board
-              </span>
-              {unreadNoticesCount > 0 && (
-                <Badge variant="secondary">{unreadNoticesCount}</Badge>
-              )}
-              {unreadNoticesCount === 0 && <ArrowRight className="h-4 w-4" />}
             </Button>
           </CardContent>
         </Card>

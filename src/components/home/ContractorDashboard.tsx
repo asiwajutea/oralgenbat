@@ -32,20 +32,16 @@ import {
   ChevronDown,
   Activity,
   UserCheck,
-  Megaphone,
 } from "lucide-react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { format } from "date-fns";
 import { useState } from "react";
-import { useAnnouncements } from "@/hooks/useAnnouncements";
 
 const ContractorDashboard = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [fmPerfOpen, setFmPerfOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
-  const { pendingAnnouncements } = useAnnouncements();
-  const unreadNoticesCount = pendingAnnouncements.length;
   
   const contractorId = profile?.active_contractor_id || profile?.contractor_id;
 
@@ -375,21 +371,6 @@ const ContractorDashboard = () => {
                   Analytics
                 </span>
                 <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full justify-between h-auto py-4"
-                onClick={() => navigate("/notices")}
-              >
-                <span className="flex items-center gap-2">
-                  <Megaphone className="h-4 w-4" />
-                  Notice Board
-                </span>
-                {unreadNoticesCount > 0 ? (
-                  <Badge variant="secondary">{unreadNoticesCount}</Badge>
-                ) : (
-                  <ArrowRight className="h-4 w-4" />
-                )}
               </Button>
               {flaggedCount > 0 && (
                 <Button 
