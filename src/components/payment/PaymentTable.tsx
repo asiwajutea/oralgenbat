@@ -1,23 +1,17 @@
 import { useMemo, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { FileText, Users, FolderOpen, Edit } from "lucide-react";
 import { InterviewJourneyTracker, createJourneySteps } from "@/components/payment/InterviewJourneyTracker";
 import { PaymentInterviewRecord } from "@/hooks/usePaymentTracking";
 import { BulkJourneyUpdateDialog } from "@/components/payment/BulkJourneyUpdateDialog";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-  PaginationEllipsis,
-} from "@/components/ui/pagination";
+import { AuditPagination } from "@/components/AuditPagination";
 
 interface PaymentTableProps {
   records: PaymentInterviewRecord[];
@@ -26,19 +20,40 @@ interface PaymentTableProps {
   onRefresh: () => void;
 }
 
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
+
+// Derive journey status from record data
+const getJourneyStatus = (record: PaymentInterviewRecord): string => {
+  if (record.payment?.booklet_delivered_at) return "Booklet Delivered";
+  if (record.payment?.booklet_received_at) return "Booklet Received";
+  if (record.payment?.booklet_printed_at) return "Booklet Printed";
+  if (record.payment && record.payment.payment_type !== "deduction") return "Payment Received";
+  if (record.assignment) return "Transcribed";
+  if (record.status === "Audit Passed") return "BAC Passed";
+  return "Submitted";
+};
+
+// Get journey status badge variant
+const getJourneyBadgeVariant = (status: string): "default" | "secondary" | "outline" | "destructive" => {
+  if (status === "Booklet Delivered") return "default";
+  if (status === "Booklet Received" || status === "Booklet Printed") return "secondary";
+  if (status === "Payment Received" || status === "Transcribed") return "outline";
+  return "outline";
+};
 
 export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTableProps) => {
+  const isMobile = useIsMobile();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_PAGE_SIZE);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   // Pagination
-  const totalPages = Math.ceil(records.length / PAGE_SIZE);
+  const totalPages = Math.ceil(records.length / itemsPerPage);
   const paginatedRecords = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return records.slice(start, start + PAGE_SIZE);
-  }, [records, currentPage]);
+    const start = (currentPage - 1) * itemsPerPage;
+    return records.slice(start, start + itemsPerPage);
+  }, [records, currentPage, itemsPerPage]);
 
   // Reset page when records change
   useMemo(() => {
@@ -78,34 +93,31 @@ export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTab
   };
 
   const selectedRecords = records.filter(r => selectedIds.has(r.id));
-
-  // Generate page numbers for pagination
-  const getPageNumbers = () => {
-    const pages: (number | "ellipsis")[] = [];
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push("ellipsis");
-      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
-        pages.push(i);
-      }
-      if (currentPage < totalPages - 2) pages.push("ellipsis");
-      pages.push(totalPages);
-    }
-    return pages;
+  
+  const handleItemsPerPageChange = (newSize: number) => {
+    setItemsPerPage(newSize);
+    setCurrentPage(1);
   };
 
-  const renderPaymentRow = (record: PaymentInterviewRecord) => {
+  const createRecordJourneySteps = (record: PaymentInterviewRecord) => {
     const journeySteps = createJourneySteps({
       auditExists: true,
       auditPassedAt: record.status === "Audit Passed" ? record.reviewed_at : null,
       assignedAt: record.assignment?.assigned_at || null,
-      paymentReceivedAt: record.payment?.payment_type === "new_payment" ? record.payment.id : null,
+      // Fix: Payment is received if record exists and is not a deduction
+      paymentReceivedAt: record.payment && record.payment.payment_type !== "deduction" 
+        ? record.payment.id 
+        : null,
       bookletPrintedAt: record.payment?.booklet_printed_at || null,
       bookletReceivedAt: record.payment?.booklet_received_at || null,
       bookletDeliveredAt: record.payment?.booklet_delivered_at || null,
     });
+    return journeySteps;
+  };
+
+  const renderPaymentRow = (record: PaymentInterviewRecord) => {
+    const journeySteps = createRecordJourneySteps(record);
+    const journeyStatus = getJourneyStatus(record);
 
     return (
       <TableRow key={record.id}>
@@ -125,13 +137,8 @@ export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTab
           </div>
         </TableCell>
         <TableCell>
-          <Badge 
-            variant={
-              record.status === "Audit Passed" ? "default" :
-              record.status === "Audit Failed" ? "destructive" : "secondary"
-            }
-          >
-            {record.status}
+          <Badge variant={getJourneyBadgeVariant(journeyStatus)}>
+            {journeyStatus}
           </Badge>
         </TableCell>
         <TableCell className="text-right font-medium">
@@ -158,6 +165,77 @@ export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTab
           <InterviewJourneyTracker steps={journeySteps} compact />
         </TableCell>
       </TableRow>
+    );
+  };
+
+  // Mobile accordion view
+  const renderMobileCard = (record: PaymentInterviewRecord) => {
+    const journeySteps = createRecordJourneySteps(record);
+    const journeyStatus = getJourneyStatus(record);
+
+    return (
+      <AccordionItem key={record.id} value={record.id} className="border rounded-lg mb-2 bg-card">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <Checkbox
+            checked={selectedIds.has(record.id)}
+            onCheckedChange={() => toggleOne(record.id)}
+            aria-label={`Select ${record.file_name}`}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <AccordionTrigger className="flex-1 hover:no-underline py-0 [&>svg]:ml-auto">
+            <div className="flex items-center justify-between w-full gap-2 pr-2">
+              <span className="font-mono text-xs truncate max-w-[180px]">{record.file_name}</span>
+              <Badge variant={getJourneyBadgeVariant(journeyStatus)} className="text-[10px] shrink-0">
+                {journeyStatus}
+              </Badge>
+            </div>
+          </AccordionTrigger>
+        </div>
+        <AccordionContent className="px-3 pb-3 pt-0">
+          <div className="space-y-3">
+            {record.interviewee_name && (
+              <p className="text-xs text-muted-foreground">{record.interviewee_name}</p>
+            )}
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="text-xs text-muted-foreground">Names</span>
+                <p className="font-medium">{record.total_names?.toLocaleString() || "-"}</p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Team</span>
+                <p className="font-medium truncate">{record.assignment?.team_name || "-"}</p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Payment</span>
+                <p className="font-medium">
+                  {record.payment ? (
+                    <span className="flex flex-col">
+                      <span className="text-xs">{record.payment.invoice_number}</span>
+                      <span className="text-xs text-muted-foreground">${record.payment.amount?.toFixed(2) || "0.00"}</span>
+                    </span>
+                  ) : "—"}
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Audit Status</span>
+                <Badge 
+                  variant={
+                    record.status === "Audit Passed" ? "default" :
+                    record.status === "Audit Failed" ? "destructive" : "secondary"
+                  }
+                  className="text-[10px]"
+                >
+                  {record.status}
+                </Badge>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">Journey Progress</p>
+              <InterviewJourneyTracker steps={journeySteps} compact />
+            </div>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
     );
   };
 
@@ -205,71 +283,59 @@ export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTab
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10">
-                        <Checkbox
-                          checked={isAllSelected}
-                          onCheckedChange={toggleAll}
-                          aria-label="Select all on page"
-                          {...(isSomeSelected && !isAllSelected ? { "data-state": "indeterminate" } : {})}
-                        />
-                      </TableHead>
-                      <TableHead>Folder Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Names</TableHead>
-                      <TableHead>Payment</TableHead>
-                      <TableHead className="hidden md:table-cell">Team</TableHead>
-                      <TableHead>Journey Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedRecords.map(renderPaymentRow)}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, records.length)} of {records.length}
-                  </p>
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious 
-                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                        />
-                      </PaginationItem>
-                      {getPageNumbers().map((page, i) => (
-                        <PaginationItem key={i}>
-                          {page === "ellipsis" ? (
-                            <PaginationEllipsis />
-                          ) : (
-                            <PaginationLink
-                              onClick={() => setCurrentPage(page)}
-                              isActive={currentPage === page}
-                              className="cursor-pointer"
-                            >
-                              {page}
-                            </PaginationLink>
-                          )}
-                        </PaginationItem>
-                      ))}
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
+              {isMobile ? (
+                // Mobile accordion view
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Checkbox
+                      checked={isAllSelected}
+                      onCheckedChange={toggleAll}
+                      aria-label="Select all on page"
+                    />
+                    <span className="text-xs text-muted-foreground">Select all</span>
+                  </div>
+                  <Accordion type="single" collapsible className="space-y-0">
+                    {paginatedRecords.map(renderMobileCard)}
+                  </Accordion>
+                </div>
+              ) : (
+                // Desktop table view
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={isAllSelected}
+                            onCheckedChange={toggleAll}
+                            aria-label="Select all on page"
+                            {...(isSomeSelected && !isAllSelected ? { "data-state": "indeterminate" } : {})}
+                          />
+                        </TableHead>
+                        <TableHead>Folder Name</TableHead>
+                        <TableHead>Journey Status</TableHead>
+                        <TableHead className="text-right">Names</TableHead>
+                        <TableHead>Payment</TableHead>
+                        <TableHead className="hidden md:table-cell">Team</TableHead>
+                        <TableHead>Journey Progress</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedRecords.map(renderPaymentRow)}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
+
+              {/* Pagination - using AuditPagination component */}
+              <AuditPagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalCount={records.length}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={handleItemsPerPageChange}
+              />
             </>
           )}
         </CardContent>
