@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { format } from "date-fns";
 import { 
   MessageSquare, 
@@ -36,7 +47,11 @@ import {
   Users,
   RefreshCw,
   Search,
-  Eye
+  Eye,
+  Filter,
+  CalendarIcon,
+  ArrowUpDown,
+  X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -60,18 +75,58 @@ export default function SmsLogs() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLog, setSelectedLog] = useState<SmsLog | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [sortField, setSortField] = useState<"created_at" | "recipients_count">("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [contractorFilter, setContractorFilter] = useState<string>("");
+
+  // Count active filters
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (statusFilter !== "all") count++;
+    if (searchQuery) count++;
+    if (dateFrom) count++;
+    if (dateTo) count++;
+    if (contractorFilter) count++;
+    return count;
+  }, [statusFilter, searchQuery, dateFrom, dateTo, contractorFilter]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setSearchQuery("");
+    setDateFrom(undefined);
+    setDateTo(undefined);
+    setContractorFilter("");
+  };
 
   const { data: logs, isLoading, refetch } = useQuery({
-    queryKey: ["sms-logs", statusFilter, searchQuery],
+    queryKey: ["sms-logs", statusFilter, searchQuery, dateFrom, dateTo, contractorFilter, sortField, sortOrder],
     queryFn: async () => {
       let query = supabase
         .from("sms_notification_logs")
         .select("*")
-        .order("created_at", { ascending: false })
+        .order(sortField, { ascending: sortOrder === "asc" })
         .limit(100);
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter);
+      }
+      
+      if (dateFrom) {
+        query = query.gte("created_at", dateFrom.toISOString());
+      }
+      
+      if (dateTo) {
+        const endOfDay = new Date(dateTo);
+        endOfDay.setHours(23, 59, 59, 999);
+        query = query.lte("created_at", endOfDay.toISOString());
+      }
+      
+      if (contractorFilter) {
+        query = query.eq("contractor_id", contractorFilter);
       }
 
       if (searchQuery) {
@@ -81,6 +136,20 @@ export default function SmsLogs() {
       const { data, error } = await query;
       if (error) throw error;
       return data as SmsLog[];
+    },
+  });
+  
+  // Get unique contractor IDs for filter dropdown
+  const { data: contractorIds = [] } = useQuery({
+    queryKey: ["sms-contractor-ids"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sms_notification_logs")
+        .select("contractor_id");
+      
+      if (error) throw error;
+      const unique = [...new Set((data || []).map(d => d.contractor_id).filter(Boolean))];
+      return unique as string[];
     },
   });
 
@@ -181,28 +250,135 @@ export default function SmsLogs() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                placeholder="Search by file name, interviewer code, or contractor..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Search by file name, interviewer code, or contractor..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="sent">Sent</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                  <SelectItem value="no_recipients">No Recipients</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowFilters(!showFilters)}
+                className="gap-2"
+              >
+                <Filter className="w-4 h-4" />
+                More Filters
+                {activeFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-1">{activeFilterCount}</Badge>
+                )}
+              </Button>
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
+                  <X className="w-4 h-4" />
+                  Clear
+                </Button>
+              )}
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="sent">Sent</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="error">Error</SelectItem>
-                <SelectItem value="no_recipients">No Recipients</SelectItem>
-              </SelectContent>
-            </Select>
+
+            {/* Collapsible Advanced Filters */}
+            <Collapsible open={showFilters} onOpenChange={setShowFilters}>
+              <CollapsibleContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t">
+                  {/* Date From */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Date From</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateFrom ? format(dateFrom, "PPP") : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={dateFrom}
+                          onSelect={setDateFrom}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Date To */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Date To</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start text-left font-normal">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateTo ? format(dateTo, "PPP") : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={dateTo}
+                          onSelect={setDateTo}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Contractor Filter */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Contractor</label>
+                    <Select value={contractorFilter} onValueChange={setContractorFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All contractors" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">All contractors</SelectItem>
+                        {contractorIds.map(id => (
+                          <SelectItem key={id} value={id}>{id}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Sort */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Sort By</label>
+                    <div className="flex gap-2">
+                      <Select value={sortField} onValueChange={(v) => setSortField(v as "created_at" | "recipients_count")}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="created_at">Date</SelectItem>
+                          <SelectItem value="recipients_count">Recipients</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                      >
+                        <ArrowUpDown className={`h-4 w-4 ${sortOrder === "asc" ? "rotate-180" : ""}`} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         </CardContent>
       </Card>

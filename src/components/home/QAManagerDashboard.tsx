@@ -13,16 +13,20 @@ import {
   XCircle,
   AlertTriangle,
   FileText,
-  Search
+  Search,
+  Megaphone,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { toast } from "sonner";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
+import { useAnnouncements } from "@/hooks/useAnnouncements";
 
 const QAManagerDashboard = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const { pendingAnnouncements } = useAnnouncements();
+  const unreadNoticesCount = pendingAnnouncements.length;
 
   // Get overall quality stats
   const { data: stats } = useQuery({
@@ -226,6 +230,21 @@ const QAManagerDashboard = () => {
                 Analytics Dashboard
               </span>
               <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="outline" 
+              className="w-full justify-between"
+              onClick={() => navigate("/notices")}
+            >
+              <span className="flex items-center gap-2">
+                <Megaphone className="h-4 w-4" />
+                Notice Board
+              </span>
+              {unreadNoticesCount > 0 ? (
+                <Badge variant="secondary">{unreadNoticesCount}</Badge>
+              ) : (
+                <ArrowRight className="h-4 w-4" />
+              )}
             </Button>
           </CardContent>
         </Card>
