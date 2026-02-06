@@ -35,16 +35,20 @@ export const useAnnouncements = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // Fetch active announcements targeted to user
+  // Fetch active announcements targeted to user (filter by expiry and schedule)
   const { data: announcements = [], isLoading: announcementsLoading } = useQuery({
     queryKey: ["announcements", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
 
+      const now = new Date().toISOString();
+
       const { data, error } = await supabase
         .from("announcements")
         .select("*")
         .eq("is_active", true)
+        .or(`expires_at.is.null,expires_at.gt.${now}`)
+        .or(`scheduled_at.is.null,scheduled_at.lte.${now}`)
         .order("priority", { ascending: false })
         .order("created_at", { ascending: false });
 
@@ -201,23 +205,30 @@ export const useAnnouncements = () => {
 
   // Check if announcement should be shown based on frequency
   const shouldShowAnnouncement = (announcement: Announcement): boolean => {
-    const dismissal = dismissals.find(d => d.announcement_id === announcement.id);
-    
-    if (!dismissal) return true;
-
-    // If acknowledgment is required and was acknowledged, don't show again for "once"
-    if (announcement.require_acknowledgment && dismissal.acknowledged && announcement.display_frequency === "once") {
+    // Check expiry first (backup client-side check)
+    if (announcement.expires_at && new Date(announcement.expires_at) < new Date()) {
       return false;
     }
+
+    // Check scheduled time (backup client-side check)
+    if (announcement.scheduled_at && new Date(announcement.scheduled_at) > new Date()) {
+      return false;
+    }
+
+    const dismissal = dismissals.find(d => d.announcement_id === announcement.id);
+    
+    // Never dismissed - show it
+    if (!dismissal) return true;
 
     const dismissedAt = new Date(dismissal.dismissed_at);
     const now = new Date();
 
     switch (announcement.display_frequency) {
       case "once":
+        // If already dismissed, never show again
         return false;
       case "every_login":
-        // Show on every session - handled by provider
+        // Handled by provider using session storage - don't include in pending here
         return false;
       case "daily":
         const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);

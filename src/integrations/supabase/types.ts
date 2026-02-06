@@ -277,6 +277,8 @@ export type Database = {
         Row: {
           action_plan: string | null
           artifact_correction: string[] | null
+          artifact_correction_resolved_at: string | null
+          artifact_correction_resolved_by: string | null
           file_name: string
           file_url: string
           id: string
@@ -299,6 +301,8 @@ export type Database = {
         Insert: {
           action_plan?: string | null
           artifact_correction?: string[] | null
+          artifact_correction_resolved_at?: string | null
+          artifact_correction_resolved_by?: string | null
           file_name: string
           file_url: string
           id?: string
@@ -321,6 +325,8 @@ export type Database = {
         Update: {
           action_plan?: string | null
           artifact_correction?: string[] | null
+          artifact_correction_resolved_at?: string | null
+          artifact_correction_resolved_by?: string | null
           file_name?: string
           file_url?: string
           id?: string

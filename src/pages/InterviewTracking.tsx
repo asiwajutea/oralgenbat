@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -86,6 +86,9 @@ interface TrackingInterview {
   issue_resolved_by: string | null;
   resolve_comment: string | null;
   assignment_id: string | null;
+  // Artifact correction resolution fields
+  artifact_correction_resolved_at: string | null;
+  artifact_correction_resolved_by: string | null;
 }
 
 const InterviewTracking = () => {
@@ -230,6 +233,8 @@ const InterviewTracking = () => {
           review_comment,
           action_plan,
           artifact_correction,
+          artifact_correction_resolved_at,
+          artifact_correction_resolved_by,
           interview_metadata (
             audit_id,
             contractor_id,
@@ -323,6 +328,9 @@ const InterviewTracking = () => {
           issue_resolved_by: assignment?.issue_resolved_by || null,
           resolve_comment: assignment?.resolve_comment || null,
           assignment_id: assignment?.id || null,
+          // Artifact correction resolution fields
+          artifact_correction_resolved_at: (audit as any).artifact_correction_resolved_at || null,
+          artifact_correction_resolved_by: (audit as any).artifact_correction_resolved_by || null,
           // For filtering - use metadata if available, otherwise extract from file_name
           contractor_id: meta?.contractor_id || contractorIdFromFileName,
           interviewer_code: meta?.interviewer_code || interviewerCodeFromFileName,
@@ -375,9 +383,12 @@ const InterviewTracking = () => {
       // Apply other filters
       if (filters.fieldManager && interview.field_manager !== filters.fieldManager) return false;
       
-      // Status filter - special case for "With Issues"
+      // Status filter - special cases for "With Issues" and "Failed - Unresolved"
       if (filters.status === "With Issues") {
         if (!interview.is_flagged_for_issue || interview.issue_resolved_at) return false;
+      } else if (filters.status === "Failed - Unresolved") {
+        // Show failed interviews whose artifact correction hasn't been marked resolved
+        if (interview.status !== "Audit Failed" || interview.artifact_correction_resolved_at) return false;
       } else if (filters.status && interview.status !== filters.status) {
         return false;
       }
@@ -488,18 +499,50 @@ const InterviewTracking = () => {
 
   const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery;
 
-  // Build status options including "With Issues"
+  // Build status options including "With Issues" and "Failed - Unresolved"
   const statusFilterOptions = useMemo(() => {
     const options = [...filterOptions.statuses];
     // Add "With Issues" as a special filter option
     if (!options.includes("With Issues")) {
       options.push("With Issues");
     }
+    // Add "Failed - Unresolved" for interviews whose artifact correction hasn't been marked resolved
+    if (!options.includes("Failed - Unresolved")) {
+      options.push("Failed - Unresolved");
+    }
     return options.sort((a, b) => (a ?? '').localeCompare(b ?? ''));
   }, [filterOptions.statuses]);
 
   // Check if user can resolve issues (field managers, admins, super admins, sub_contractors)
   const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin || isSubContractor;
+
+  // Mutation to mark artifact correction as resolved
+  const markAsResolvedMutation = useMutation({
+    mutationFn: async (auditId: string) => {
+      const { error } = await supabase
+        .from("audits")
+        .update({
+          artifact_correction_resolved_at: new Date().toISOString(),
+          artifact_correction_resolved_by: user?.id,
+        })
+        .eq("id", auditId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      toast({
+        title: "Marked as Resolved",
+        description: "Artifact correction marked as resolved.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark as resolved",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleViewIssue = (interview: TrackingInterview) => {
     setSelectedIssueInterview(interview);
@@ -975,15 +1018,39 @@ const InterviewTracking = () => {
                               </Button>
                             )}
                             {interview.status === "Audit Failed" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewFailed(interview)}
-                                className="gap-1"
-                              >
-                                <Eye className="h-3 w-3" />
-                                View Failed
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewFailed(interview)}
+                                  className="gap-1"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  View Failed
+                                </Button>
+                                {/* Mark as Resolved button for failed interviews */}
+                                {interview.artifact_correction_resolved_at ? (
+                                  <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Resolved
+                                  </Badge>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => markAsResolvedMutation.mutate(interview.id)}
+                                    disabled={markAsResolvedMutation.isPending}
+                                    className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                                  >
+                                    {markAsResolvedMutation.isPending ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Flag className="h-3 w-3" />
+                                    )}
+                                    Mark Resolved
+                                  </Button>
+                                )}
+                              </>
                             )}
                             {/* View Issue Button - Mobile */}
                             {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
@@ -1147,15 +1214,39 @@ const InterviewTracking = () => {
                               </Button>
                             )}
                             {interview.status === "Audit Failed" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewFailed(interview)}
-                                className="gap-1"
-                              >
-                                <Eye className="h-3 w-3" />
-                                View
-                              </Button>
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewFailed(interview)}
+                                  className="gap-1"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  View
+                                </Button>
+                                {/* Mark as Resolved button for failed interviews */}
+                                {interview.artifact_correction_resolved_at ? (
+                                  <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Resolved
+                                  </Badge>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => markAsResolvedMutation.mutate(interview.id)}
+                                    disabled={markAsResolvedMutation.isPending}
+                                    className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                                  >
+                                    {markAsResolvedMutation.isPending ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Flag className="h-3 w-3" />
+                                    )}
+                                    Mark Resolved
+                                  </Button>
+                                )}
+                              </>
                             )}
                             {/* View Issue Button - Desktop */}
                             {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
