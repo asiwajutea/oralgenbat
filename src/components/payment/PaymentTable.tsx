@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,12 +55,12 @@ export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTab
     return records.slice(start, start + itemsPerPage);
   }, [records, currentPage, itemsPerPage]);
 
-  // Reset page when records change
-  useMemo(() => {
+  // Reset page when total pages changes and current page is out of bounds
+  useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(1);
     }
-  }, [totalPages, currentPage]);
+  }, [totalPages]);
 
   // Selection handlers
   const isAllSelected = paginatedRecords.length > 0 && paginatedRecords.every(r => selectedIds.has(r.id));
