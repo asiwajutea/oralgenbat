@@ -1,390 +1,275 @@
 
-# Implementation Plan: Payment Tracking Enhancements, Announcements Integration & SMS Log Filters
+# Implementation Plan: Fix Blank Payment Page, Announcement Visibility, and Add "Mark as Resolved" Feature
 
-## Overview
+## Issues Identified
 
-This plan addresses multiple improvements across different pages:
+### Issue 1: Payment Tracking Page Going Blank
+The Payment Tracking page may be crashing due to unhandled errors in the data fetching or rendering logic. Common causes include:
+- Unhandled promise rejections in async operations
+- Null/undefined access when data is still loading
+- Issues with the `AuditPagination` component when `totalPages` is 0
 
-1. **Payment Tracking Page**
-   - Mobile-optimized collapsible accordion view
-   - Journey tracker status reflection fixes
-   - Stat card calculation using overridden total names
-   - Comprehensive filters and pagination improvements
-   - Journey status display on tracking page
+**Root cause identified:** In `PaymentTable.tsx` line 59-63, there's a `useMemo` that resets the page, but it's being used incorrectly (useMemo shouldn't have side effects like calling `setCurrentPage`). This can cause an infinite re-render loop.
 
-2. **Homepage & Announcements**
-   - Add unread announcement count + Notice Board navigation
-   - Fix announcement notifications not appearing in NotificationBell
-   - Trigger push notifications when announcements are posted
+### Issue 2: Announcement Modal Not Following Visibility Rules
+Several bugs identified in `useAnnouncements.ts`:
 
-3. **SMS Logs Page**
-   - Advanced comprehensive filters with date range
-   - Filter counter badge
-   - Additional sorting options
+1. **Expiry date not checked at query level** - The database query only filters by `is_active = true` but doesn't filter out expired announcements (`expires_at < now()`)
 
----
+2. **Scheduled announcements shown before their time** - The query doesn't check `scheduled_at`
 
-## Part 1: Payment Tracking - Mobile Accordion View
+3. **"Show once" logic is broken** - In `shouldShowAnnouncement()`:
+   - When `display_frequency === "once"` and a dismissal exists, it returns `false` (correct)
+   - But the check happens after a complex acknowledgment check that may bypass it
+   
+4. **"Every login" logic is flawed** - The function returns `false` for `every_login`, which means it will NEVER show after the first dismissal. This is incorrect - it should use session-based logic.
 
-### Problem
-The table layout doesn't fit well on mobile screens and requires horizontal scrolling.
-
-### Solution
-Create a mobile-responsive accordion view similar to Team Management and Interview Tracking pages.
-
-**Modify `PaymentTable.tsx`:**
-- Add `useIsMobile()` hook
-- Render table on desktop, accordion on mobile
-- Each accordion item shows folder name in header, expands to show journey tracker and details
-
-**Mobile Accordion Structure:**
-```text
-+--------------------------------------------+
-| [checkbox] NG71_696_20251103_1035      [v] |
-+--------------------------------------------+
-| Status: Audit Passed                       |
-| Names: 28                                  |
-| Team: Team Alpha                           |
-| Payment: INV-2025-001 ($56.00)             |
-|                                            |
-| Journey:                                   |
-| [○ → ○ → ○ → ● → ○ → ○ → ○]                |
-| Submitted → BAC → Trans → Pay → Print...  |
-+--------------------------------------------+
-```
+### Issue 3: New Feature - "Mark as Resolved" for Failed Interviews
+Add ability to mark failed interviews as having their artifact corrections resolved (sent via email), with visual indicator.
 
 ---
 
-## Part 2: Journey Tracker Status Fix
+## Solution Plan
 
-### Problem
-Payment status updates are not reflecting on the journey tracker because `paymentReceivedAt` is checking for `record.payment.id` instead of properly detecting payment status.
+### Part 1: Fix Payment Tracking Page Blank Issue
 
-### Current Code (Incorrect):
+**File: `src/components/payment/PaymentTable.tsx`**
+
+Replace the problematic `useMemo` with a proper `useEffect`:
+
 ```typescript
-paymentReceivedAt: record.payment?.payment_type === "new_payment" ? record.payment.id : null,
+// BEFORE (causing issues):
+useMemo(() => {
+  if (currentPage > totalPages && totalPages > 0) {
+    setCurrentPage(1);
+  }
+}, [totalPages, currentPage]);
+
+// AFTER (correct):
+useEffect(() => {
+  if (currentPage > totalPages && totalPages > 0) {
+    setCurrentPage(1);
+  }
+}, [totalPages]);
 ```
 
-### Fix:
-The condition checks `payment_type === "new_payment"` but the ID is not a timestamp. For the journey tracker to show completion, we need to pass a truthy value (not null) when payment exists.
-
-**Update `createJourneySteps` call in `PaymentTable.tsx`:**
-```typescript
-// Payment is considered "received" if payment record exists with new_payment or addition type
-// Revoked (deduction) should NOT show as payment received
-paymentReceivedAt: record.payment && record.payment.payment_type !== "deduction" 
-  ? record.payment.id  // Any truthy value works for "completed" status
-  : null,
-```
+Also add error boundary handling with try/catch for async operations.
 
 ---
 
-## Part 3: Stat Card with Overridden Total Names
+### Part 2: Fix Announcement Visibility Rules
 
-### Problem
-The `useBudgetStats` hook sums `names_count` from `payment_records` but doesn't account for manually overridden totals.
+**File: `src/hooks/useAnnouncements.ts`**
 
-### Solution
-The current implementation already uses `names_count` from payment_records. If users are manually overriding totals in `ManualInvoiceEntryDialog`, we need to ensure those overridden values are saved to `payment_records.names_count`.
-
-**Verify in `ManualInvoiceEntryDialog.tsx`:**
-The dialog should use `totalNamesOverride` when creating records. If override exists, distribute proportionally or use as aggregate:
+1. **Update the announcements query** to filter by `expires_at` and `scheduled_at`:
 ```typescript
-// When saving, if totalNamesOverride is set:
-// Option 1: Store as a single record with the override
-// Option 2: Adjust individual records proportionally
+const { data, error } = await supabase
+  .from("announcements")
+  .select("*")
+  .eq("is_active", true)
+  .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
+  .or('scheduled_at.is.null,scheduled_at.lte.' + new Date().toISOString())
+  .order("priority", { ascending: false })
+  .order("created_at", { ascending: false });
 ```
 
-**Add invoice-level override storage:**
-Currently, individual records have `names_count`. For invoice-level override, we could:
-1. Store aggregate in a new `invoice_metadata` table, OR
-2. Use a single aggregate payment_record with the total, OR  
-3. Proportionally distribute the override across records
-
-Recommended: Store the total as a metadata field on the payment_records created from that manual entry session, using `totalNamesOverride` divided proportionally.
-
----
-
-## Part 4: Comprehensive Filters & Pagination
-
-### Add Filters to `PaymentTracking.tsx`
-
-**New Filter State:**
+2. **Fix `shouldShowAnnouncement` function** with corrected logic:
 ```typescript
-const [filters, setFilters] = useState({
-  paymentStatus: "", // new_payment, deduction, addition, no_payment
-  journeyStatus: "", // payment_received, booklet_printed, etc.
-  entryStatus: "", // typing_in_progress, completed
-  sortField: "file_name",
-  sortOrder: "desc" as "asc" | "desc",
-});
-const [showFilters, setShowFilters] = useState(false);
-```
+const shouldShowAnnouncement = (announcement: Announcement): boolean => {
+  // Check expiry first (in case client-side check is needed as backup)
+  if (announcement.expires_at && new Date(announcement.expires_at) < new Date()) {
+    return false;
+  }
+  
+  // Check scheduled time
+  if (announcement.scheduled_at && new Date(announcement.scheduled_at) > new Date()) {
+    return false;
+  }
+  
+  const dismissal = dismissals.find(d => d.announcement_id === announcement.id);
+  
+  // Never dismissed - show it
+  if (!dismissal) return true;
 
-**Filter UI (Collapsible):**
-- Payment Status dropdown (All, Payment Received, Payment Revoked, Additions, No Payment)
-- Journey Stage dropdown (All stages)
-- Entry Status dropdown (Typing In Progress, Completed)
-- Sort By dropdown with order toggle
-- Active filter counter badge
+  const dismissedAt = new Date(dismissal.dismissed_at);
+  const now = new Date();
 
-**Replace current pagination with `AuditPagination` component:**
-- Import and use `AuditPagination` from `@/components/AuditPagination`
-- Add items per page selector (10, 25, 50, 100)
-- Match the interviews page pagination style
-
----
-
-## Part 5: Journey Status Display Column
-
-### Problem
-The "Status" column shows audit status, not journey status.
-
-### Solution
-Add a new column or modify the status badge to show current journey stage:
-
-**Derive journey status from data:**
-```typescript
-const getJourneyStatus = (record: PaymentInterviewRecord): string => {
-  if (record.payment?.booklet_delivered_at) return "Booklet Delivered";
-  if (record.payment?.booklet_received_at) return "Booklet Received";
-  if (record.payment?.booklet_printed_at) return "Booklet Printed";
-  if (record.payment && record.payment.payment_type !== "deduction") return "Payment Received";
-  if (record.assignment) return "Transcribed";
-  if (record.status === "Audit Passed") return "BAC Passed";
-  return "Submitted";
+  switch (announcement.display_frequency) {
+    case "once":
+      // If already dismissed, never show again
+      return false;
+    case "every_login":
+      // Handled by provider - check session storage
+      return false;
+    case "daily":
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      return dismissedAt < oneDayAgo;
+    case "weekly":
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return dismissedAt < oneWeekAgo;
+    default:
+      return false;
+  }
 };
 ```
 
-Display this in the table/accordion as "Journey Status" badge.
+**File: `src/components/announcements/AnnouncementProvider.tsx`**
 
----
-
-## Part 6: Homepage - Announcement Count & Navigation
-
-### Problem
-Homepage doesn't show unread announcements or link to Notice Board.
-
-### Solution
-**Add to dashboard components (AdminDashboard, ContractorDashboard, etc.):**
-- Query unread announcements count using `useAnnouncements().pendingAnnouncements.length`
-- Add a Notice Board card/button in Quick Actions
-
-**Sample UI in AdminDashboard.tsx:**
+Add session-based tracking for "every_login" announcements using `sessionStorage`:
 ```typescript
-import { useAnnouncements } from "@/hooks/useAnnouncements";
-import { Megaphone } from "lucide-react";
+// Track which announcements were shown this session
+const shownThisSession = sessionStorage.getItem('announcements_shown_this_session');
+const shownIds = shownThisSession ? JSON.parse(shownThisSession) : [];
 
-// In component:
-const { pendingAnnouncements } = useAnnouncements();
-const unreadNoticesCount = pendingAnnouncements.length;
-
-// In Quick Actions:
-<Button 
-  variant="outline" 
-  className="w-full justify-between"
-  onClick={() => navigate("/notices")}
->
-  <span className="flex items-center gap-2">
-    <Megaphone className="h-4 w-4" />
-    Notice Board
-  </span>
-  {unreadNoticesCount > 0 && (
-    <Badge variant="secondary">{unreadNoticesCount}</Badge>
-  )}
-  <ArrowRight className="h-4 w-4" />
-</Button>
-```
-
----
-
-## Part 7: Announcement Notifications
-
-### Problem
-1. Announcements not showing in NotificationBell
-2. No push notification when announcement is posted
-
-### Root Cause
-When an announcement is created, no `user_notification` record is inserted for targeted users.
-
-### Solution
-**Add database trigger or modify `createAnnouncement` mutation:**
-
-Option A: Database Trigger (preferred for reliability)
-```sql
-CREATE OR REPLACE FUNCTION notify_new_announcement()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Insert notification for all targeted users
-  INSERT INTO user_notifications (user_id, type, title, message, metadata)
-  SELECT 
-    p.id,
-    'announcement',
-    'New Announcement: ' || NEW.title,
-    LEFT(NEW.content, 100) || '...',
-    jsonb_build_object('announcement_id', NEW.id)
-  FROM profiles p
-  INNER JOIN user_roles ur ON ur.user_id = p.id
-  WHERE p.is_approved = true
-  AND (
-    NEW.target_type = 'all' OR
-    (NEW.target_type = 'contractor' AND (p.contractor_id = NEW.target_contractor_id OR p.active_contractor_id = NEW.target_contractor_id)) OR
-    (NEW.target_type = 'role' AND ur.role = NEW.target_role) OR
-    (NEW.target_type = 'user' AND p.id = ANY(NEW.target_user_ids))
-  );
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE TRIGGER on_announcement_created
-  AFTER INSERT ON announcements
-  FOR EACH ROW
-  WHEN (NEW.is_active = true AND (NEW.scheduled_at IS NULL OR NEW.scheduled_at <= now()))
-  EXECUTE FUNCTION notify_new_announcement();
-```
-
-Option B: Modify `useAnnouncements.createAnnouncement` to insert notifications after creation (less reliable but simpler)
-
----
-
-## Part 8: SMS Logs Advanced Filters
-
-### Current State
-Basic search + status filter only.
-
-### Add Features:
-
-**New Filter State in `SmsLogs.tsx`:**
-```typescript
-const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-  from: undefined,
-  to: undefined,
+// Filter out already-shown-this-session for every_login type
+const sessionFilteredAnnouncements = pendingAnnouncements.filter(a => {
+  if (a.display_frequency === 'every_login') {
+    return !shownIds.includes(a.id);
+  }
+  return true;
 });
-const [sortField, setSortField] = useState<"created_at" | "recipients_count">("created_at");
-const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-```
 
-**Filter UI:**
-- Date range picker (from/to)
-- Contractor filter dropdown
-- Sort by dropdown (Date, Recipients Count)
-- Sort order toggle
-- **Filter Counter Badge:** Shows count of active filters
-
-**Active Filters Counter:**
-```typescript
-const activeFilterCount = useMemo(() => {
-  let count = 0;
-  if (statusFilter !== "all") count++;
-  if (searchQuery) count++;
-  if (dateRange.from || dateRange.to) count++;
-  return count;
-}, [statusFilter, searchQuery, dateRange]);
-```
-
-Display badge next to "Filters" button showing active count.
-
-**Updated Query:**
-```typescript
-let query = supabase
-  .from("sms_notification_logs")
-  .select("*")
-  .order(sortField, { ascending: sortOrder === "asc" })
-  .limit(100);
-
-if (statusFilter !== "all") query = query.eq("status", statusFilter);
-if (dateRange.from) query = query.gte("created_at", dateRange.from.toISOString());
-if (dateRange.to) query = query.lte("created_at", dateRange.to.toISOString());
-if (searchQuery) query = query.or(`...`);
+// When dismissing, add to session storage for every_login
+const dismissCurrent = (acknowledged: boolean) => {
+  if (currentAnnouncement) {
+    if (currentAnnouncement.display_frequency === 'every_login') {
+      const shown = sessionStorage.getItem('announcements_shown_this_session');
+      const ids = shown ? JSON.parse(shown) : [];
+      ids.push(currentAnnouncement.id);
+      sessionStorage.setItem('announcements_shown_this_session', JSON.stringify(ids));
+    }
+    dismissAnnouncement({ announcementId: currentAnnouncement.id, acknowledged });
+    setCurrentAnnouncement(null);
+  }
+};
 ```
 
 ---
 
-## Files to Modify
+### Part 3: Add "Mark as Resolved" Feature for Failed Interviews
 
-| File | Changes |
-|------|---------|
-| `src/components/payment/PaymentTable.tsx` | Mobile accordion, journey status fix, journey status column, pagination update |
-| `src/pages/PaymentTracking.tsx` | Add filters UI, filter state, collapsible filter section |
-| `src/hooks/usePaymentTracking.ts` | Update budget stats to work with overridden totals (if needed) |
-| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Ensure totalNamesOverride is properly saved |
-| `src/components/home/AdminDashboard.tsx` | Add Notice Board navigation with count |
-| `src/components/home/ContractorDashboard.tsx` | Add Notice Board navigation with count |
-| `src/components/home/SubContractorDashboard.tsx` | Add Notice Board navigation with count |
-| `src/components/home/QAManagerDashboard.tsx` | Add Notice Board navigation with count |
-| `src/pages/SmsLogs.tsx` | Advanced filters, date range, sorting, filter counter |
-| SQL Migration | Add trigger for announcement notifications |
+**Database Migration:**
+Add a new column to the `audits` table:
+```sql
+ALTER TABLE audits ADD COLUMN artifact_correction_resolved_at timestamptz;
+ALTER TABLE audits ADD COLUMN artifact_correction_resolved_by uuid;
+```
+
+**File: `src/pages/InterviewTracking.tsx`**
+
+1. Add the resolved fields to the `TrackingInterview` interface:
+```typescript
+interface TrackingInterview {
+  // ... existing fields
+  artifact_correction_resolved_at: string | null;
+  artifact_correction_resolved_by: string | null;
+}
+```
+
+2. Add a mutation hook for marking as resolved:
+```typescript
+const markAsResolvedMutation = useMutation({
+  mutationFn: async (auditId: string) => {
+    const { error } = await supabase
+      .from("audits")
+      .update({
+        artifact_correction_resolved_at: new Date().toISOString(),
+        artifact_correction_resolved_by: user?.id
+      })
+      .eq("id", auditId);
+    if (error) throw error;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+    toast({ title: "Marked as Resolved", description: "Artifact correction marked as resolved." });
+  },
+});
+```
+
+3. Add visual indicator and button to the table/accordion:
+   - For failed interviews (`status === "Audit Failed"`):
+     - If NOT resolved: Show "Mark as Resolved" button with an orange outline
+     - If resolved: Show a green "Resolved" badge with checkmark icon
+   - The visual indicator should be prominent to easily identify resolved vs unresolved failed interviews
+
+**UI Changes in Table Row:**
+```typescript
+// In the renderRow function for failed interviews:
+{interview.status === "Audit Failed" && (
+  interview.artifact_correction_resolved_at ? (
+    <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+      <CheckCircle className="h-3 w-3" />
+      Resolved
+    </Badge>
+  ) : (
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50"
+      onClick={() => markAsResolvedMutation.mutate(interview.id)}
+    >
+      <Flag className="h-3 w-3" />
+      Mark Resolved
+    </Button>
+  )
+)}
+```
+
+**Add Filter Option:**
+Add a filter option to show only "Failed - Unresolved" interviews.
+
+---
+
+## Files to Create/Modify
+
+| File | Action | Changes |
+|------|--------|---------|
+| `src/components/payment/PaymentTable.tsx` | Modify | Fix useMemo to useEffect for page reset |
+| `src/hooks/useAnnouncements.ts` | Modify | Add expiry/schedule filters, fix shouldShowAnnouncement logic |
+| `src/components/announcements/AnnouncementProvider.tsx` | Modify | Add session storage tracking for every_login |
+| `src/pages/InterviewTracking.tsx` | Modify | Add Mark as Resolved button and visual indicator, add filter |
+| SQL Migration | Create | Add artifact_correction_resolved_at and artifact_correction_resolved_by columns |
 
 ---
 
 ## Implementation Sequence
 
-1. **Payment Table Mobile Accordion** - Responsive design with collapsible items
-2. **Journey Tracker Fix** - Correct payment status detection
-3. **Payment Filters & Pagination** - Add comprehensive filtering with AuditPagination
-4. **Journey Status Column** - Display current journey stage
-5. **Stat Card Override** - Ensure overridden totals reflect correctly
-6. **Homepage Notice Board Links** - Add navigation + count to dashboards
-7. **Announcement Notifications** - Create trigger for user_notifications
-8. **SMS Log Filters** - Date range, sorting, filter counter
+1. **Fix Payment Table** - Replace useMemo with useEffect to prevent blank page
+2. **Fix Announcement Visibility** - Update query and shouldShowAnnouncement logic
+3. **Fix AnnouncementProvider** - Add session storage for every_login
+4. **Database Migration** - Add resolved columns to audits table
+5. **Add Mark as Resolved** - Update InterviewTracking with button and visual indicator
+6. **Add Filter** - Add "Failed - Unresolved" filter option
 
 ---
 
-## Technical Details
+## Visual Design for "Mark as Resolved" Feature
 
-### Mobile Accordion Item Component
-```typescript
-const MobilePaymentCard = ({ record, selected, onToggle }: { ... }) => {
-  const journeyStatus = getJourneyStatus(record);
-  const journeySteps = createJourneySteps({ ... });
-  
-  return (
-    <AccordionItem value={record.id}>
-      <div className="flex items-center gap-2 p-2">
-        <Checkbox checked={selected} onCheckedChange={onToggle} />
-        <AccordionTrigger className="flex-1 hover:no-underline">
-          <div className="flex items-center justify-between w-full">
-            <span className="font-mono text-sm">{record.file_name}</span>
-            <Badge variant="outline" className="text-xs">{journeyStatus}</Badge>
-          </div>
-        </AccordionTrigger>
-      </div>
-      <AccordionContent className="px-4 pb-4">
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Status:</span>
-              <Badge>{record.status}</Badge>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Names:</span> 
-              {record.total_names || "-"}
-            </div>
-            {/* ... more fields */}
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-2">Journey Progress</p>
-            <InterviewJourneyTracker steps={journeySteps} />
-          </div>
-        </div>
-      </AccordionContent>
-    </AccordionItem>
-  );
-};
-```
+```text
+Failed Interview Row (Before Resolving):
++---------------------------------------------------------------------------------+
+| NG71_696_20251103 | Audit Failed | [Mark Resolved] | Action Plan | View Issue  |
++---------------------------------------------------------------------------------+
+                                     ↑ Orange outline button
 
-### Filter Counter Badge
-```typescript
-<Button 
-  variant="outline" 
-  onClick={() => setShowFilters(!showFilters)}
-  className="gap-2"
->
-  <Filter className="h-4 w-4" />
-  Filters
-  {activeFilterCount > 0 && (
-    <Badge variant="secondary" className="ml-1">{activeFilterCount}</Badge>
-  )}
-</Button>
+Failed Interview Row (After Resolving):
++---------------------------------------------------------------------------------+
+| NG71_696_20251103 | Audit Failed | ✓ Resolved      | Action Plan | View Issue  |
++---------------------------------------------------------------------------------+
+                                     ↑ Green badge with checkmark
+
+Mobile Accordion (Failed & Unresolved):
++--------------------------------------------+
+| NG71_696_20251103                     [v]  |
+| Status: Audit Failed                       |
+| [orange border highlight]                  |
+| [Mark as Resolved] button                  |
++--------------------------------------------+
+
+Mobile Accordion (Failed & Resolved):
++--------------------------------------------+
+| NG71_696_20251103                     [v]  |
+| Status: Audit Failed | ✓ Resolved          |
+| [green subtle background]                  |
++--------------------------------------------+
 ```
