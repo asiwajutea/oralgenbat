@@ -108,9 +108,9 @@ const PaymentTracking = () => {
     setEntryStatusFilter("");
   };
 
-  // Filter and sort records
+  // Filter and sort records - ensure records is defined before processing
   const filteredRecords = useMemo(() => {
-    if (!records) return [];
+    if (!records || !Array.isArray(records)) return [];
 
     let filtered = records;
 
