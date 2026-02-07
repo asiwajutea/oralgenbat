@@ -178,6 +178,48 @@ export type Database = {
         }
         Relationships: []
       }
+      artifact_correction_comments: {
+        Row: {
+          audit_id: string
+          comment: string
+          created_at: string
+          id: string
+          parent_comment_id: string | null
+          user_id: string
+        }
+        Insert: {
+          audit_id: string
+          comment: string
+          created_at?: string
+          id?: string
+          parent_comment_id?: string | null
+          user_id: string
+        }
+        Update: {
+          audit_id?: string
+          comment?: string
+          created_at?: string
+          id?: string
+          parent_comment_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "artifact_correction_comments_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "artifact_correction_comments_parent_comment_id_fkey"
+            columns: ["parent_comment_id"]
+            isOneToOne: false
+            referencedRelation: "artifact_correction_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_checklist_progress: {
         Row: {
           audit_id: string
