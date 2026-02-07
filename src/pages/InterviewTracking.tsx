@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -26,7 +26,8 @@ import {
   ChevronDown,
   AlertTriangle,
   Flag,
-  FileArchive
+  FileArchive,
+  MessageCircle
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -48,6 +49,8 @@ import { Label } from "@/components/ui/label";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
 import { BulkMetadataUploadDialog } from "@/components/tracking/BulkMetadataUploadDialog";
+import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
+import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -89,6 +92,7 @@ interface TrackingInterview {
   // Artifact correction resolution fields
   artifact_correction_resolved_at: string | null;
   artifact_correction_resolved_by: string | null;
+  has_resolution_comments: boolean;
 }
 
 const InterviewTracking = () => {
@@ -139,6 +143,14 @@ const InterviewTracking = () => {
   const [showIssueDialog, setShowIssueDialog] = useState(false);
   const [selectedIssueInterview, setSelectedIssueInterview] = useState<TrackingInterview | null>(null);
   const resolveIssueMutation = useResolveIssue();
+
+  // Mark Resolved dialog state
+  const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
+  const [markResolvedInterview, setMarkResolvedInterview] = useState<TrackingInterview | null>(null);
+  
+  // Resolved Comments modal state
+  const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
+  const [resolvedCommentsInterview, setResolvedCommentsInterview] = useState<TrackingInterview | null>(null);
 
   // File upload refs
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -331,6 +343,7 @@ const InterviewTracking = () => {
           // Artifact correction resolution fields
           artifact_correction_resolved_at: (audit as any).artifact_correction_resolved_at || null,
           artifact_correction_resolved_by: (audit as any).artifact_correction_resolved_by || null,
+          has_resolution_comments: false, // Will be populated after we fetch comments count
           // For filtering - use metadata if available, otherwise extract from file_name
           contractor_id: meta?.contractor_id || contractorIdFromFileName,
           interviewer_code: meta?.interviewer_code || interviewerCodeFromFileName,
@@ -383,12 +396,15 @@ const InterviewTracking = () => {
       // Apply other filters
       if (filters.fieldManager && interview.field_manager !== filters.fieldManager) return false;
       
-      // Status filter - special cases for "With Issues" and "Failed - Unresolved"
+      // Status filter - special cases for "With Issues", "Failed - Unresolved", and "Failed - Resolved"
       if (filters.status === "With Issues") {
         if (!interview.is_flagged_for_issue || interview.issue_resolved_at) return false;
       } else if (filters.status === "Failed - Unresolved") {
         // Show failed interviews whose artifact correction hasn't been marked resolved
         if (interview.status !== "Audit Failed" || interview.artifact_correction_resolved_at) return false;
+      } else if (filters.status === "Failed - Resolved") {
+        // Show failed interviews that have been marked as resolved
+        if (interview.status !== "Audit Failed" || !interview.artifact_correction_resolved_at) return false;
       } else if (filters.status && interview.status !== filters.status) {
         return false;
       }
@@ -510,39 +526,27 @@ const InterviewTracking = () => {
     if (!options.includes("Failed - Unresolved")) {
       options.push("Failed - Unresolved");
     }
+    // Add "Failed - Resolved" for interviews whose artifact correction has been marked resolved
+    if (!options.includes("Failed - Resolved")) {
+      options.push("Failed - Resolved");
+    }
     return options.sort((a, b) => (a ?? '').localeCompare(b ?? ''));
   }, [filterOptions.statuses]);
 
   // Check if user can resolve issues (field managers, admins, super admins, sub_contractors)
   const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin || isSubContractor;
 
-  // Mutation to mark artifact correction as resolved
-  const markAsResolvedMutation = useMutation({
-    mutationFn: async (auditId: string) => {
-      const { error } = await supabase
-        .from("audits")
-        .update({
-          artifact_correction_resolved_at: new Date().toISOString(),
-          artifact_correction_resolved_by: user?.id,
-        })
-        .eq("id", auditId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
-      toast({
-        title: "Marked as Resolved",
-        description: "Artifact correction marked as resolved.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to mark as resolved",
-        variant: "destructive",
-      });
-    },
-  });
+  // Handler to open Mark Resolved dialog
+  const handleMarkResolved = (interview: TrackingInterview) => {
+    setMarkResolvedInterview(interview);
+    setShowMarkResolvedDialog(true);
+  };
+
+  // Handler to open Resolved Comments modal
+  const handleViewResolutionComments = (interview: TrackingInterview) => {
+    setResolvedCommentsInterview(interview);
+    setShowResolvedCommentsModal(true);
+  };
 
   const handleViewIssue = (interview: TrackingInterview) => {
     setSelectedIssueInterview(interview);
@@ -1030,23 +1034,24 @@ const InterviewTracking = () => {
                                 </Button>
                                 {/* Mark as Resolved button for failed interviews */}
                                 {interview.artifact_correction_resolved_at ? (
-                                  <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleViewResolutionComments(interview)}
+                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                  >
                                     <CheckCircle className="h-3 w-3" />
                                     Resolved
-                                  </Badge>
+                                    <MessageCircle className="h-3 w-3 ml-1" />
+                                  </Button>
                                 ) : (
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => markAsResolvedMutation.mutate(interview.id)}
-                                    disabled={markAsResolvedMutation.isPending}
+                                    onClick={() => handleMarkResolved(interview)}
                                     className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
                                   >
-                                    {markAsResolvedMutation.isPending ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Flag className="h-3 w-3" />
-                                    )}
+                                    <Flag className="h-3 w-3" />
                                     Mark Resolved
                                   </Button>
                                 )}
@@ -1226,23 +1231,24 @@ const InterviewTracking = () => {
                                 </Button>
                                 {/* Mark as Resolved button for failed interviews */}
                                 {interview.artifact_correction_resolved_at ? (
-                                  <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleViewResolutionComments(interview)}
+                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                  >
                                     <CheckCircle className="h-3 w-3" />
                                     Resolved
-                                  </Badge>
+                                    <MessageCircle className="h-3 w-3 ml-1" />
+                                  </Button>
                                 ) : (
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => markAsResolvedMutation.mutate(interview.id)}
-                                    disabled={markAsResolvedMutation.isPending}
+                                    onClick={() => handleMarkResolved(interview)}
                                     className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
                                   >
-                                    {markAsResolvedMutation.isPending ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Flag className="h-3 w-3" />
-                                    )}
+                                    <Flag className="h-3 w-3" />
                                     Mark Resolved
                                   </Button>
                                 )}
@@ -1333,6 +1339,28 @@ const InterviewTracking = () => {
         onResolve={handleResolveIssue}
         isResolving={resolveIssueMutation.isPending}
       />
+
+      {/* Mark as Resolved Dialog */}
+      {markResolvedInterview && (
+        <MarkResolvedDialog
+          open={showMarkResolvedDialog}
+          onOpenChange={setShowMarkResolvedDialog}
+          auditId={markResolvedInterview.id}
+          fileName={markResolvedInterview.file_name}
+        />
+      )}
+
+      {/* Resolved Comments Modal */}
+      {resolvedCommentsInterview && (
+        <ResolvedCommentsModal
+          open={showResolvedCommentsModal}
+          onOpenChange={setShowResolvedCommentsModal}
+          auditId={resolvedCommentsInterview.id}
+          fileName={resolvedCommentsInterview.file_name}
+          resolvedAt={resolvedCommentsInterview.artifact_correction_resolved_at}
+          resolvedBy={resolvedCommentsInterview.artifact_correction_resolved_by}
+        />
+      )}
     </div>
   );
 };
