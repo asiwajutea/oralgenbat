@@ -184,6 +184,7 @@ export type Database = {
           comment: string
           created_at: string
           id: string
+          is_read: boolean | null
           parent_comment_id: string | null
           user_id: string
         }
@@ -192,6 +193,7 @@ export type Database = {
           comment: string
           created_at?: string
           id?: string
+          is_read?: boolean | null
           parent_comment_id?: string | null
           user_id: string
         }
@@ -200,6 +202,7 @@ export type Database = {
           comment?: string
           created_at?: string
           id?: string
+          is_read?: boolean | null
           parent_comment_id?: string | null
           user_id?: string
         }
