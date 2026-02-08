@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList } from "lucide-react";
+import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, MessageCircle, Flag } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
 import { ReviewTimer } from "@/components/review/ReviewTimer";
+import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
+import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -58,6 +60,10 @@ const ReviewInterview = () => {
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
+  
+  // Resolution modal state
+  const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
+  const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
 
   // Checklist state
   const [checklistCompleted, setChecklistCompleted] = useState(false);
@@ -417,7 +423,9 @@ const ReviewInterview = () => {
         </div>
       </div>;
   }
-  return <div className="h-screen flex flex-col lg:flex-row">
+  return (
+    <>
+      <div className="h-screen flex flex-col lg:flex-row">
       {/* Mobile Tab Navigation - only visible on mobile/tablet */}
       <div className="lg:hidden flex-shrink-0 border-b bg-background sticky top-0 z-30">
         <div className="flex">
@@ -540,6 +548,34 @@ const ReviewInterview = () => {
           {/* Show review comments for failed interviews or re-audits */}
           <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} artifactCorrection={audit.artifact_correction} />
           
+          {/* Resolution status for failed interviews */}
+          {audit.status === "Audit Failed" && (
+            <div className="flex items-center gap-2">
+              {audit.artifact_correction_resolved_at ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowResolvedCommentsModal(true)}
+                  className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                >
+                  <CheckCircle className="h-3 w-3" />
+                  View Resolution Comments
+                  <MessageCircle className="h-3 w-3 ml-1" />
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowMarkResolvedDialog(true)}
+                  className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                >
+                  <Flag className="h-3 w-3" />
+                  Mark as Resolved
+                </Button>
+              )}
+            </div>
+          )}
+          
           {/* Show re-audit history if exists */}
           {audit.is_re_audit && <ReAuditHistory auditId={auditId!} />}
           
@@ -611,6 +647,26 @@ const ReviewInterview = () => {
       }`}>
         <PDFViewer pdfUrl={audit.file_url} />
       </div>
-    </div>;
+    </div>
+
+      {/* Mark Resolved Dialog */}
+      <MarkResolvedDialog
+        open={showMarkResolvedDialog}
+        onOpenChange={setShowMarkResolvedDialog}
+        auditId={auditId!}
+        fileName={audit.file_name}
+      />
+
+      {/* Resolved Comments Modal */}
+      <ResolvedCommentsModal
+        open={showResolvedCommentsModal}
+        onOpenChange={setShowResolvedCommentsModal}
+        auditId={auditId!}
+        fileName={audit.file_name}
+        resolvedAt={audit.artifact_correction_resolved_at}
+        resolvedBy={audit.artifact_correction_resolved_by}
+      />
+    </>
+  );
 };
 export default ReviewInterview;

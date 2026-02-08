@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -68,9 +68,11 @@ export function ResolvedCommentsModal({
 
       if (error) throw error;
 
-      // Fetch user names for each comment
+      // Fetch user names for each comment - use function to get display name
       if (commentsData && commentsData.length > 0) {
         const userIds = [...new Set(commentsData.map((c) => c.user_id))];
+        
+        // Fetch profiles for user names
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, full_name")
@@ -90,6 +92,26 @@ export function ResolvedCommentsModal({
     },
     enabled: open && !!auditId,
   });
+
+  // Mark comments as read when modal opens
+  useEffect(() => {
+    const markAsRead = async () => {
+      if (open && auditId && user?.id && comments.length > 0) {
+        // Mark all unread comments as read for this user (comments not created by this user)
+        const unreadCommentIds = comments
+          .filter((c) => c.user_id !== user.id && !(c as any).is_read)
+          .map((c) => c.id);
+
+        if (unreadCommentIds.length > 0) {
+          await supabase
+            .from("artifact_correction_comments")
+            .update({ is_read: true })
+            .in("id", unreadCommentIds);
+        }
+      }
+    };
+    markAsRead();
+  }, [open, auditId, user?.id, comments]);
 
   // Fetch resolver's name
   const { data: resolverName } = useQuery({

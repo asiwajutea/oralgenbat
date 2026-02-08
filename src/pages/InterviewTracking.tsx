@@ -93,6 +93,7 @@ interface TrackingInterview {
   artifact_correction_resolved_at: string | null;
   artifact_correction_resolved_by: string | null;
   has_resolution_comments: boolean;
+  unread_comment_count: number;
 }
 
 const InterviewTracking = () => {
@@ -343,7 +344,8 @@ const InterviewTracking = () => {
           // Artifact correction resolution fields
           artifact_correction_resolved_at: (audit as any).artifact_correction_resolved_at || null,
           artifact_correction_resolved_by: (audit as any).artifact_correction_resolved_by || null,
-          has_resolution_comments: false, // Will be populated after we fetch comments count
+          has_resolution_comments: false,
+          unread_comment_count: 0, // Will be populated after we fetch comments count
           // For filtering - use metadata if available, otherwise extract from file_name
           contractor_id: meta?.contractor_id || contractorIdFromFileName,
           interviewer_code: meta?.interviewer_code || interviewerCodeFromFileName,
@@ -373,17 +375,60 @@ const InterviewTracking = () => {
     enabled: !!user?.id,
   });
 
+  // Fetch unread comment counts for resolved failed interviews
+  const resolvedAuditIds = useMemo(() => 
+    interviews.filter(i => i.status === "Audit Failed" && i.artifact_correction_resolved_at).map(i => i.id),
+    [interviews]
+  );
+
+  const { data: unreadCommentCounts = {} } = useQuery({
+    queryKey: ["unread-comment-counts", resolvedAuditIds, user?.id],
+    queryFn: async () => {
+      if (resolvedAuditIds.length === 0 || !user?.id) return {};
+      
+      // Fetch comments that are not read and not created by the current user
+      const { data: comments, error } = await supabase
+        .from("artifact_correction_comments")
+        .select("audit_id, is_read, user_id")
+        .in("audit_id", resolvedAuditIds);
+      
+      if (error) {
+        console.error("Error fetching comment counts:", error);
+        return {};
+      }
+      
+      // Count unread comments per audit (comments not created by current user and not read)
+      const counts: Record<string, number> = {};
+      comments?.forEach(c => {
+        if (c.user_id !== user.id && !c.is_read) {
+          counts[c.audit_id] = (counts[c.audit_id] || 0) + 1;
+        }
+      });
+      
+      return counts;
+    },
+    enabled: resolvedAuditIds.length > 0 && !!user?.id,
+  });
+
+  // Merge unread counts into interviews
+  const interviewsWithUnreadCounts = useMemo(() => {
+    return interviews.map(i => ({
+      ...i,
+      unread_comment_count: unreadCommentCounts[i.id] || 0,
+    }));
+  }, [interviews, unreadCommentCounts]);
+
   // Get unique values for filter dropdowns
   const filterOptions = useMemo(() => {
-    const fieldManagers = [...new Set(interviews.map(i => i.field_manager).filter(Boolean))];
-    const statuses = [...new Set(interviews.map(i => i.status).filter(Boolean))];
-    const contractors = [...new Set(interviews.map(i => (i as any).contractor_id).filter(Boolean))];
+    const fieldManagers = [...new Set(interviewsWithUnreadCounts.map(i => i.field_manager).filter(Boolean))];
+    const statuses = [...new Set(interviewsWithUnreadCounts.map(i => i.status).filter(Boolean))];
+    const contractors = [...new Set(interviewsWithUnreadCounts.map(i => (i as any).contractor_id).filter(Boolean))];
     return { fieldManagers, statuses, contractors };
-  }, [interviews]);
+  }, [interviewsWithUnreadCounts]);
 
   // Apply filters and search
   const filteredInterviews = useMemo(() => {
-    return interviews.filter(interview => {
+    return interviewsWithUnreadCounts.filter(interview => {
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -421,7 +466,7 @@ const InterviewTracking = () => {
       
       return true;
     });
-  }, [interviews, searchQuery, filters]);
+  }, [interviewsWithUnreadCounts, searchQuery, filters]);
 
   // Sort interviews
   const sortedInterviews = useMemo(() => {
@@ -452,21 +497,21 @@ const InterviewTracking = () => {
 
   // Calculate total names for stat cards
   const nameStats = useMemo(() => {
-    const passed = interviews.filter(i => i.status === "Audit Passed");
-    const failed = interviews.filter(i => i.status === "Audit Failed");
-    const pending = interviews.filter(i => i.status === "Pending" || i.status === "Awaiting Review");
+    const passed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed");
+    const failed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed");
+    const pending = interviewsWithUnreadCounts.filter(i => i.status === "Pending" || i.status === "Awaiting Review");
     
-    const sum = (list: typeof interviews) => 
+    const sum = (list: typeof interviewsWithUnreadCounts) => 
       list.reduce((acc, i) => acc + (i.total_names || 0), 0);
     
     return {
-      total: sum(interviews),
+      total: sum(interviewsWithUnreadCounts),
       passed: sum(passed),
       failed: sum(failed),
       pending: sum(pending),
       filtered: sum(filteredInterviews),
     };
-  }, [interviews, filteredInterviews]);
+  }, [interviewsWithUnreadCounts, filteredInterviews]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -734,7 +779,7 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Total</p>
-                <p className="text-lg sm:text-2xl font-bold">{interviews.length}</p>
+                <p className="text-lg sm:text-2xl font-bold">{interviewsWithUnreadCounts.length}</p>
                 <p className="text-xs font-medium text-primary">
                   {nameStats.total.toLocaleString()} names
                 </p>
@@ -748,7 +793,7 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Passed</p>
-                <p className="text-lg sm:text-2xl font-bold">{interviews.filter(i => i.status === "Audit Passed").length}</p>
+                <p className="text-lg sm:text-2xl font-bold">{interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed").length}</p>
                 <p className="text-xs font-medium text-success">
                   {nameStats.passed.toLocaleString()} names
                 </p>
@@ -762,7 +807,7 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Failed</p>
-                <p className="text-lg sm:text-2xl font-bold">{interviews.filter(i => i.status === "Audit Failed").length}</p>
+                <p className="text-lg sm:text-2xl font-bold">{interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed").length}</p>
                 <p className="text-xs font-medium text-destructive">
                   {nameStats.failed.toLocaleString()} names
                 </p>
@@ -776,7 +821,7 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Unresolved Issues</p>
-                <p className="text-lg sm:text-2xl font-bold text-red-600">{interviews.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at).length}</p>
+                <p className="text-lg sm:text-2xl font-bold text-red-600">{interviewsWithUnreadCounts.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at).length}</p>
               </div>
             </CardContent>
           </Card>
@@ -787,7 +832,7 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">No Metadata</p>
-                <p className="text-lg sm:text-2xl font-bold text-orange-600">{interviews.filter(i => !i.has_metadata).length}</p>
+                <p className="text-lg sm:text-2xl font-bold text-orange-600">{interviewsWithUnreadCounts.filter(i => !i.has_metadata).length}</p>
               </div>
             </CardContent>
           </Card>
@@ -1038,11 +1083,16 @@ const InterviewTracking = () => {
                                     variant="secondary"
                                     size="sm"
                                     onClick={() => handleViewResolutionComments(interview)}
-                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
                                   >
                                     <CheckCircle className="h-3 w-3" />
                                     Resolved
                                     <MessageCircle className="h-3 w-3 ml-1" />
+                                    {interview.unread_comment_count > 0 && (
+                                      <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                                        {interview.unread_comment_count}
+                                      </span>
+                                    )}
                                   </Button>
                                 ) : (
                                   <Button
@@ -1235,11 +1285,16 @@ const InterviewTracking = () => {
                                     variant="secondary"
                                     size="sm"
                                     onClick={() => handleViewResolutionComments(interview)}
-                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
                                   >
                                     <CheckCircle className="h-3 w-3" />
                                     Resolved
                                     <MessageCircle className="h-3 w-3 ml-1" />
+                                    {interview.unread_comment_count > 0 && (
+                                      <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                                        {interview.unread_comment_count}
+                                      </span>
+                                    )}
                                   </Button>
                                 ) : (
                                   <Button

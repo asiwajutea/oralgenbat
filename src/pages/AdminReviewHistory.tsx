@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,8 +14,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
-import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown, Flag, MessageCircle, CheckCircle } from "lucide-react";
 import { jsPDF } from "jspdf";
+import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
+import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 
 type SortField = "file_name" | "reviewed_by" | "status" | "reviewed_at" | "review_duration_seconds" | "re_audit_count";
 type SortDirection = "asc" | "desc";
@@ -32,6 +34,8 @@ interface ReviewedAudit {
   re_audit_count: number;
   review_duration_seconds: number | null;
   artifact_correction: string[] | null;
+  artifact_correction_resolved_at: string | null;
+  artifact_correction_resolved_by: string | null;
 }
 
 interface AssignmentInfo {
@@ -52,6 +56,12 @@ const STORAGE_KEYS = {
 
 const AdminReviewHistory = () => {
   const isOnline = useOnlineStatus();
+  const queryClient = useQueryClient();
+  
+  // Resolution dialog state
+  const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
+  const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
+  const [selectedAudit, setSelectedAudit] = useState<ReviewedAudit | null>(null);
   const [currentPage, setCurrentPage] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.currentPage);
     return saved ? parseInt(saved, 10) : 1;
@@ -228,7 +238,7 @@ const AdminReviewHistory = () => {
     queryFn: async () => {
       let query = supabase
         .from("audits")
-        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction", { count: "exact" })
+        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction, artifact_correction_resolved_at, artifact_correction_resolved_by", { count: "exact" })
         .not("reviewed_at", "is", null)
         .order(sortField, { ascending: sortDirection === "asc" });
 
@@ -239,6 +249,10 @@ const AdminReviewHistory = () => {
           query = query.eq("status", "Audit Failed").contains("artifact_correction", ["mobile_metadata"]);
         } else if (statusFilter === "failed_both") {
           query = query.eq("status", "Audit Failed").contains("artifact_correction", ["scanned_pdf", "mobile_metadata"]);
+        } else if (statusFilter === "failed_resolved") {
+          query = query.eq("status", "Audit Failed").not("artifact_correction_resolved_at", "is", null);
+        } else if (statusFilter === "failed_unresolved") {
+          query = query.eq("status", "Audit Failed").is("artifact_correction_resolved_at", null);
         } else {
           query = query.eq("status", statusFilter as "Audit Passed" | "Audit Failed");
         }
@@ -766,6 +780,7 @@ const AdminReviewHistory = () => {
   }
 
   return (
+    <>
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center gap-3">
         <History className="h-8 w-8 text-primary" />
@@ -874,6 +889,8 @@ const AdminReviewHistory = () => {
             <SelectItem value="failed_pdf">Failed - PDF Issue</SelectItem>
             <SelectItem value="failed_metadata">Failed - Metadata Issue</SelectItem>
             <SelectItem value="failed_both">Failed - Both Issues</SelectItem>
+            <SelectItem value="failed_resolved">Failed - Resolved</SelectItem>
+            <SelectItem value="failed_unresolved">Failed - Unresolved</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -1089,6 +1106,32 @@ const AdminReviewHistory = () => {
         onItemsPerPageChange={handleItemsPerPageChange}
       />
     </div>
+
+      {/* Mark Resolved Dialog */}
+      {selectedAudit && (
+        <MarkResolvedDialog
+          open={showMarkResolvedDialog}
+          onOpenChange={(open) => {
+            setShowMarkResolvedDialog(open);
+            if (!open) queryClient.invalidateQueries({ queryKey: ["admin-review-history"] });
+          }}
+          auditId={selectedAudit.id}
+          fileName={selectedAudit.file_name}
+        />
+      )}
+
+      {/* Resolved Comments Modal */}
+      {selectedAudit && (
+        <ResolvedCommentsModal
+          open={showResolvedCommentsModal}
+          onOpenChange={setShowResolvedCommentsModal}
+          auditId={selectedAudit.id}
+          fileName={selectedAudit.file_name}
+          resolvedAt={selectedAudit.artifact_correction_resolved_at}
+          resolvedBy={selectedAudit.artifact_correction_resolved_by}
+        />
+      )}
+    </>
   );
 };
 
