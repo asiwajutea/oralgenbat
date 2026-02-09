@@ -178,6 +178,35 @@ export type Database = {
         }
         Relationships: []
       }
+      artifact_comment_reads: {
+        Row: {
+          comment_id: string
+          id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          comment_id: string
+          id?: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          comment_id?: string
+          id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "artifact_comment_reads_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "artifact_correction_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       artifact_correction_comments: {
         Row: {
           audit_id: string

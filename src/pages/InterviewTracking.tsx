@@ -375,9 +375,9 @@ const InterviewTracking = () => {
     enabled: !!user?.id,
   });
 
-  // Fetch unread comment counts for resolved failed interviews
+  // Fetch unread comment counts for all resolved interviews (not just failed)
   const resolvedAuditIds = useMemo(() => 
-    interviews.filter(i => i.status === "Audit Failed" && i.artifact_correction_resolved_at).map(i => i.id),
+    interviews.filter(i => i.artifact_correction_resolved_at).map(i => i.id),
     [interviews]
   );
 
@@ -386,21 +386,34 @@ const InterviewTracking = () => {
     queryFn: async () => {
       if (resolvedAuditIds.length === 0 || !user?.id) return {};
       
-      // Fetch comments that are not read and not created by the current user
+      // Fetch all comments for resolved audits (not by current user)
       const { data: comments, error } = await supabase
         .from("artifact_correction_comments")
-        .select("audit_id, is_read, user_id")
-        .in("audit_id", resolvedAuditIds);
+        .select("id, audit_id, user_id")
+        .in("audit_id", resolvedAuditIds)
+        .neq("user_id", user.id);
       
       if (error) {
         console.error("Error fetching comment counts:", error);
         return {};
       }
       
-      // Count unread comments per audit (comments not created by current user and not read)
+      if (!comments || comments.length === 0) return {};
+
+      // Fetch which of these comments the current user has already read
+      const commentIds = comments.map(c => c.id);
+      const { data: reads } = await supabase
+        .from("artifact_comment_reads" as any)
+        .select("comment_id")
+        .eq("user_id", user.id)
+        .in("comment_id", commentIds);
+      
+      const readSet = new Set((reads || []).map((r: any) => r.comment_id));
+      
+      // Count unread comments per audit
       const counts: Record<string, number> = {};
-      comments?.forEach(c => {
-        if (c.user_id !== user.id && !c.is_read) {
+      comments.forEach(c => {
+        if (!readSet.has(c.id)) {
           counts[c.audit_id] = (counts[c.audit_id] || 0) + 1;
         }
       });
@@ -1067,45 +1080,43 @@ const InterviewTracking = () => {
                               </Button>
                             )}
                             {interview.status === "Audit Failed" && (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleViewFailed(interview)}
-                                  className="gap-1"
-                                >
-                                  <Eye className="h-3 w-3" />
-                                  View Failed
-                                </Button>
-                                {/* Mark as Resolved button for failed interviews */}
-                                {interview.artifact_correction_resolved_at ? (
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => handleViewResolutionComments(interview)}
-                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
-                                  >
-                                    <CheckCircle className="h-3 w-3" />
-                                    Resolved
-                                    <MessageCircle className="h-3 w-3 ml-1" />
-                                    {interview.unread_comment_count > 0 && (
-                                      <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
-                                        {interview.unread_comment_count}
-                                      </span>
-                                    )}
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleMarkResolved(interview)}
-                                    className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
-                                  >
-                                    <Flag className="h-3 w-3" />
-                                    Mark Resolved
-                                  </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewFailed(interview)}
+                                className="gap-1"
+                              >
+                                <Eye className="h-3 w-3" />
+                                View Failed
+                              </Button>
+                            )}
+                            {/* Mark as Resolved / Resolved button for all interviews */}
+                            {interview.artifact_correction_resolved_at ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleViewResolutionComments(interview)}
+                                className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
+                              >
+                                <CheckCircle className="h-3 w-3" />
+                                Resolved
+                                <MessageCircle className="h-3 w-3 ml-1" />
+                                {interview.unread_comment_count > 0 && (
+                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                                    {interview.unread_comment_count}
+                                  </span>
                                 )}
-                              </>
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleMarkResolved(interview)}
+                                className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                              >
+                                <Flag className="h-3 w-3" />
+                                Mark Resolved
+                              </Button>
                             )}
                             {/* View Issue Button - Mobile */}
                             {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
@@ -1269,45 +1280,43 @@ const InterviewTracking = () => {
                               </Button>
                             )}
                             {interview.status === "Audit Failed" && (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleViewFailed(interview)}
-                                  className="gap-1"
-                                >
-                                  <Eye className="h-3 w-3" />
-                                  View
-                                </Button>
-                                {/* Mark as Resolved button for failed interviews */}
-                                {interview.artifact_correction_resolved_at ? (
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => handleViewResolutionComments(interview)}
-                                    className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
-                                  >
-                                    <CheckCircle className="h-3 w-3" />
-                                    Resolved
-                                    <MessageCircle className="h-3 w-3 ml-1" />
-                                    {interview.unread_comment_count > 0 && (
-                                      <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
-                                        {interview.unread_comment_count}
-                                      </span>
-                                    )}
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleMarkResolved(interview)}
-                                    className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
-                                  >
-                                    <Flag className="h-3 w-3" />
-                                    Mark Resolved
-                                  </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleViewFailed(interview)}
+                                className="gap-1"
+                              >
+                                <Eye className="h-3 w-3" />
+                                View
+                              </Button>
+                            )}
+                            {/* Mark as Resolved / Resolved button for all interviews */}
+                            {interview.artifact_correction_resolved_at ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => handleViewResolutionComments(interview)}
+                                className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
+                              >
+                                <CheckCircle className="h-3 w-3" />
+                                Resolved
+                                <MessageCircle className="h-3 w-3 ml-1" />
+                                {interview.unread_comment_count > 0 && (
+                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                                    {interview.unread_comment_count}
+                                  </span>
                                 )}
-                              </>
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleMarkResolved(interview)}
+                                className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                              >
+                                <Flag className="h-3 w-3" />
+                                Mark Resolved
+                              </Button>
                             )}
                             {/* View Issue Button - Desktop */}
                             {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
