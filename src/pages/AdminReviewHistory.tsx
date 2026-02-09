@@ -1061,6 +1061,22 @@ const AdminReviewHistory = () => {
                               </TooltipProvider>
                             );
                           })()}
+
+                          {/* Resolved indicator */}
+                          {audit.artifact_correction_resolved_at && (
+                            <Badge 
+                              variant="outline" 
+                              className="text-[10px] px-1.5 py-0 h-5 bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700 cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedAudit(audit);
+                                setShowResolvedCommentsModal(true);
+                              }}
+                            >
+                              <CheckCircle className="h-3 w-3 mr-0.5" />
+                              Resolved
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>

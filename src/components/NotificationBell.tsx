@@ -57,12 +57,17 @@ const NotificationBell = () => {
     }
     
     // Navigate based on notification type
-    if (notification.type === "issue_resolved" || notification.type === "flagged_issue") {
-      // Navigate to data entry page for issue-related notifications
+    if (notification.type === "comment_reply" || notification.type === "resolution_comment") {
+      // Navigate to review page with comments modal open
+      const auditId = notification.metadata?.audit_id;
+      if (auditId) {
+        navigate(`/review/${auditId}?showComments=true`);
+      }
+      setOpen(false);
+    } else if (notification.type === "issue_resolved" || notification.type === "flagged_issue") {
       navigate("/data-entry");
       setOpen(false);
     } else if (notification.type === "announcement") {
-      // Navigate to notice board for announcements
       navigate("/notices");
       setOpen(false);
     } else if (notification.metadata?.audit_id) {

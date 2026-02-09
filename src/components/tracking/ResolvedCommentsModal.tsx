@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,6 +55,7 @@ export function ResolvedCommentsModal({
   const queryClient = useQueryClient();
   const [newReply, setNewReply] = useState("");
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Fetch comments for this audit
   const { data: comments = [], isLoading } = useQuery({
@@ -68,11 +69,9 @@ export function ResolvedCommentsModal({
 
       if (error) throw error;
 
-      // Fetch user names for each comment - use function to get display name
       if (commentsData && commentsData.length > 0) {
         const userIds = [...new Set(commentsData.map((c) => c.user_id))];
         
-        // Fetch profiles for user names
         const { data: profiles } = await supabase
           .from("profiles")
           .select("id, full_name")
@@ -93,25 +92,40 @@ export function ResolvedCommentsModal({
     enabled: open && !!auditId,
   });
 
-  // Mark comments as read when modal opens
+  // Mark comments as read using artifact_comment_reads table
   useEffect(() => {
     const markAsRead = async () => {
-      if (open && auditId && user?.id && comments.length > 0) {
-        // Mark all unread comments as read for this user (comments not created by this user)
-        const unreadCommentIds = comments
-          .filter((c) => c.user_id !== user.id && !(c as any).is_read)
-          .map((c) => c.id);
+      if (!open || !auditId || !user?.id || comments.length === 0) return;
+      
+      // Get comments not created by this user
+      const otherUserComments = comments.filter((c) => c.user_id !== user.id);
+      if (otherUserComments.length === 0) return;
 
-        if (unreadCommentIds.length > 0) {
-          await supabase
-            .from("artifact_correction_comments")
-            .update({ is_read: true })
-            .in("id", unreadCommentIds);
-        }
-      }
+      // Upsert read records for all other users' comments
+      const reads = otherUserComments.map((c) => ({
+        comment_id: c.id,
+        user_id: user.id,
+        read_at: new Date().toISOString(),
+      }));
+
+      await supabase
+        .from("artifact_comment_reads" as any)
+        .upsert(reads, { onConflict: "comment_id,user_id" });
+
+      // Invalidate unread counts
+      queryClient.invalidateQueries({ queryKey: ["unread-comment-counts"] });
     };
     markAsRead();
   }, [open, auditId, user?.id, comments]);
+
+  // Auto-scroll to bottom when comments change or modal opens
+  useEffect(() => {
+    if (open && comments.length > 0) {
+      setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 100);
+    }
+  }, [open, comments.length]);
 
   // Fetch resolver's name
   const { data: resolverName } = useQuery({
@@ -150,6 +164,7 @@ export function ResolvedCommentsModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artifact-comments", auditId] });
+      queryClient.invalidateQueries({ queryKey: ["unread-comment-counts"] });
       setNewReply("");
       setReplyingToId(null);
       toast({
@@ -246,7 +261,7 @@ export function ResolvedCommentsModal({
               <p className="text-xs">Be the first to add a comment</p>
             </div>
           ) : (
-            <ScrollArea className="flex-1 pr-2">
+            <ScrollArea className="max-h-[300px] pr-2">
               <div className="space-y-4">
                 {topLevelComments.map((comment) => (
                   <div key={comment.id} className="space-y-2">
@@ -341,6 +356,8 @@ export function ResolvedCommentsModal({
                     )}
                   </div>
                 ))}
+                {/* Scroll anchor */}
+                <div ref={scrollRef} />
               </div>
             </ScrollArea>
           )}

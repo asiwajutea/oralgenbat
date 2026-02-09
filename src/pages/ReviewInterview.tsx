@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, MessageCircle, Flag } from "lucide-react";
@@ -52,6 +52,7 @@ const ReviewInterview = () => {
     auditId: string;
   }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const {
     userRole,
@@ -63,7 +64,9 @@ const ReviewInterview = () => {
   
   // Resolution modal state
   const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
-  const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
+  const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(
+    searchParams.get("showComments") === "true"
+  );
 
   // Checklist state
   const [checklistCompleted, setChecklistCompleted] = useState(false);
@@ -548,33 +551,31 @@ const ReviewInterview = () => {
           {/* Show review comments for failed interviews or re-audits */}
           <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} artifactCorrection={audit.artifact_correction} />
           
-          {/* Resolution status for failed interviews */}
-          {audit.status === "Audit Failed" && (
-            <div className="flex items-center gap-2">
-              {audit.artifact_correction_resolved_at ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowResolvedCommentsModal(true)}
-                  className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
-                >
-                  <CheckCircle className="h-3 w-3" />
-                  View Resolution Comments
-                  <MessageCircle className="h-3 w-3 ml-1" />
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowMarkResolvedDialog(true)}
-                  className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
-                >
-                  <Flag className="h-3 w-3" />
-                  Mark as Resolved
-                </Button>
-              )}
-            </div>
-          )}
+          {/* Resolution status for all interviews */}
+          <div className="flex items-center gap-2">
+            {audit.artifact_correction_resolved_at ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowResolvedCommentsModal(true)}
+                className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+              >
+                <CheckCircle className="h-3 w-3" />
+                View Resolution Comments
+                <MessageCircle className="h-3 w-3 ml-1" />
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowMarkResolvedDialog(true)}
+                className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+              >
+                <Flag className="h-3 w-3" />
+                Mark as Resolved
+              </Button>
+            )}
+          </div>
           
           {/* Show re-audit history if exists */}
           {audit.is_re_audit && <ReAuditHistory auditId={auditId!} />}
