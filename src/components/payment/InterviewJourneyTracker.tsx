@@ -65,7 +65,7 @@ export const InterviewJourneyTracker = ({ steps, compact = false }: InterviewJou
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[200px]">
                 <p className="font-medium">{step.label}</p>
-                {step.completedAt && (
+                {step.completedAt && !isNaN(new Date(step.completedAt).getTime()) && (
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(step.completedAt), "MMM d, yyyy")}
                   </p>
