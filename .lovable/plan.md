@@ -1,275 +1,59 @@
 
-# Implementation Plan: Fix Blank Payment Page, Announcement Visibility, and Add "Mark as Resolved" Feature
 
-## Issues Identified
+## Plan: Enhance Mark as Resolved Feature
 
-### Issue 1: Payment Tracking Page Going Blank
-The Payment Tracking page may be crashing due to unhandled errors in the data fetching or rendering logic. Common causes include:
-- Unhandled promise rejections in async operations
-- Null/undefined access when data is still loading
-- Issues with the `AuditPagination` component when `totalPages` is 0
+### 1. Fix Unread Message Counter (Per-User Read Tracking)
 
-**Root cause identified:** In `PaymentTable.tsx` line 59-63, there's a `useMemo` that resets the page, but it's being used incorrectly (useMemo shouldn't have side effects like calling `setCurrentPage`). This can cause an infinite re-render loop.
+**Problem:** Currently, `is_read` is a single boolean on each comment row -- marking it `true` affects all users. We need per-user read tracking.
 
-### Issue 2: Announcement Modal Not Following Visibility Rules
-Several bugs identified in `useAnnouncements.ts`:
-
-1. **Expiry date not checked at query level** - The database query only filters by `is_active = true` but doesn't filter out expired announcements (`expires_at < now()`)
-
-2. **Scheduled announcements shown before their time** - The query doesn't check `scheduled_at`
-
-3. **"Show once" logic is broken** - In `shouldShowAnnouncement()`:
-   - When `display_frequency === "once"` and a dismissal exists, it returns `false` (correct)
-   - But the check happens after a complex acknowledgment check that may bypass it
-   
-4. **"Every login" logic is flawed** - The function returns `false` for `every_login`, which means it will NEVER show after the first dismissal. This is incorrect - it should use session-based logic.
-
-### Issue 3: New Feature - "Mark as Resolved" for Failed Interviews
-Add ability to mark failed interviews as having their artifact corrections resolved (sent via email), with visual indicator.
-
----
-
-## Solution Plan
-
-### Part 1: Fix Payment Tracking Page Blank Issue
-
-**File: `src/components/payment/PaymentTable.tsx`**
-
-Replace the problematic `useMemo` with a proper `useEffect`:
-
-```typescript
-// BEFORE (causing issues):
-useMemo(() => {
-  if (currentPage > totalPages && totalPages > 0) {
-    setCurrentPage(1);
-  }
-}, [totalPages, currentPage]);
-
-// AFTER (correct):
-useEffect(() => {
-  if (currentPage > totalPages && totalPages > 0) {
-    setCurrentPage(1);
-  }
-}, [totalPages]);
-```
-
-Also add error boundary handling with try/catch for async operations.
-
----
-
-### Part 2: Fix Announcement Visibility Rules
-
-**File: `src/hooks/useAnnouncements.ts`**
-
-1. **Update the announcements query** to filter by `expires_at` and `scheduled_at`:
-```typescript
-const { data, error } = await supabase
-  .from("announcements")
-  .select("*")
-  .eq("is_active", true)
-  .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
-  .or('scheduled_at.is.null,scheduled_at.lte.' + new Date().toISOString())
-  .order("priority", { ascending: false })
-  .order("created_at", { ascending: false });
-```
-
-2. **Fix `shouldShowAnnouncement` function** with corrected logic:
-```typescript
-const shouldShowAnnouncement = (announcement: Announcement): boolean => {
-  // Check expiry first (in case client-side check is needed as backup)
-  if (announcement.expires_at && new Date(announcement.expires_at) < new Date()) {
-    return false;
-  }
-  
-  // Check scheduled time
-  if (announcement.scheduled_at && new Date(announcement.scheduled_at) > new Date()) {
-    return false;
-  }
-  
-  const dismissal = dismissals.find(d => d.announcement_id === announcement.id);
-  
-  // Never dismissed - show it
-  if (!dismissal) return true;
-
-  const dismissedAt = new Date(dismissal.dismissed_at);
-  const now = new Date();
-
-  switch (announcement.display_frequency) {
-    case "once":
-      // If already dismissed, never show again
-      return false;
-    case "every_login":
-      // Handled by provider - check session storage
-      return false;
-    case "daily":
-      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      return dismissedAt < oneDayAgo;
-    case "weekly":
-      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return dismissedAt < oneWeekAgo;
-    default:
-      return false;
-  }
-};
-```
-
-**File: `src/components/announcements/AnnouncementProvider.tsx`**
-
-Add session-based tracking for "every_login" announcements using `sessionStorage`:
-```typescript
-// Track which announcements were shown this session
-const shownThisSession = sessionStorage.getItem('announcements_shown_this_session');
-const shownIds = shownThisSession ? JSON.parse(shownThisSession) : [];
-
-// Filter out already-shown-this-session for every_login type
-const sessionFilteredAnnouncements = pendingAnnouncements.filter(a => {
-  if (a.display_frequency === 'every_login') {
-    return !shownIds.includes(a.id);
-  }
-  return true;
-});
-
-// When dismissing, add to session storage for every_login
-const dismissCurrent = (acknowledged: boolean) => {
-  if (currentAnnouncement) {
-    if (currentAnnouncement.display_frequency === 'every_login') {
-      const shown = sessionStorage.getItem('announcements_shown_this_session');
-      const ids = shown ? JSON.parse(shown) : [];
-      ids.push(currentAnnouncement.id);
-      sessionStorage.setItem('announcements_shown_this_session', JSON.stringify(ids));
-    }
-    dismissAnnouncement({ announcementId: currentAnnouncement.id, acknowledged });
-    setCurrentAnnouncement(null);
-  }
-};
-```
-
----
-
-### Part 3: Add "Mark as Resolved" Feature for Failed Interviews
+**Solution:** Create a new `artifact_comment_reads` table to track which comments each user has read.
 
 **Database Migration:**
-Add a new column to the `audits` table:
-```sql
-ALTER TABLE audits ADD COLUMN artifact_correction_resolved_at timestamptz;
-ALTER TABLE audits ADD COLUMN artifact_correction_resolved_by uuid;
-```
+- Create table `artifact_comment_reads` with columns: `id` (uuid), `comment_id` (uuid, FK to artifact_correction_comments), `user_id` (uuid), `read_at` (timestamptz), with a unique constraint on `(comment_id, user_id)`
+- Add RLS policies: users can insert/select/update their own reads
+- Drop the `is_read` column from `artifact_correction_comments` (no longer needed)
 
-**File: `src/pages/InterviewTracking.tsx`**
+**Code Changes:**
+- `ResolvedCommentsModal.tsx`: When modal opens, upsert all visible comment IDs into `artifact_comment_reads` for the current user. Remove the old `is_read` update logic.
+- `InterviewTracking.tsx`: Update the unread count query to use `artifact_comment_reads` -- count comments where `user_id != current_user` AND no matching row exists in `artifact_comment_reads` for the current user.
 
-1. Add the resolved fields to the `TrackingInterview` interface:
-```typescript
-interface TrackingInterview {
-  // ... existing fields
-  artifact_correction_resolved_at: string | null;
-  artifact_correction_resolved_by: string | null;
-}
-```
+### 2. Fix ScrollArea in ResolvedCommentsModal
 
-2. Add a mutation hook for marking as resolved:
-```typescript
-const markAsResolvedMutation = useMutation({
-  mutationFn: async (auditId: string) => {
-    const { error } = await supabase
-      .from("audits")
-      .update({
-        artifact_correction_resolved_at: new Date().toISOString(),
-        artifact_correction_resolved_by: user?.id
-      })
-      .eq("id", auditId);
-    if (error) throw error;
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
-    toast({ title: "Marked as Resolved", description: "Artifact correction marked as resolved." });
-  },
-});
-```
+**Problem:** The comments area can't scroll; latest messages are truncated.
 
-3. Add visual indicator and button to the table/accordion:
-   - For failed interviews (`status === "Audit Failed"`):
-     - If NOT resolved: Show "Mark as Resolved" button with an orange outline
-     - If resolved: Show a green "Resolved" badge with checkmark icon
-   - The visual indicator should be prominent to easily identify resolved vs unresolved failed interviews
+**Solution:** In `ResolvedCommentsModal.tsx`, give the `ScrollArea` a fixed max height (e.g., `max-h-[300px]`) and auto-scroll to the bottom when new comments arrive or when the modal opens.
 
-**UI Changes in Table Row:**
-```typescript
-// In the renderRow function for failed interviews:
-{interview.status === "Audit Failed" && (
-  interview.artifact_correction_resolved_at ? (
-    <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-      <CheckCircle className="h-3 w-3" />
-      Resolved
-    </Badge>
-  ) : (
-    <Button
-      variant="outline"
-      size="sm"
-      className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50"
-      onClick={() => markAsResolvedMutation.mutate(interview.id)}
-    >
-      <Flag className="h-3 w-3" />
-      Mark Resolved
-    </Button>
-  )
-)}
-```
+### 3. Mark Resolved for ALL Interviews Without Metadata
 
-**Add Filter Option:**
-Add a filter option to show only "Failed - Unresolved" interviews.
+**Problem:** Currently the Mark Resolved button only shows for `Audit Failed` interviews. The user wants it on all interviews without metadata, regardless of status.
 
----
+**Code Changes:**
+- `InterviewTracking.tsx` (both mobile and desktop views): Change the condition from `interview.status === "Audit Failed"` to also show the Mark Resolved / Resolved button when `!interview.has_metadata` (for any status).
+- `ReviewInterview.tsx`: Change the condition from `audit.status === "Audit Failed"` to also show when there's no metadata.
 
-## Files to Create/Modify
+### 4. Visual Indicator on Admin Review History Page
 
-| File | Action | Changes |
-|------|--------|---------|
-| `src/components/payment/PaymentTable.tsx` | Modify | Fix useMemo to useEffect for page reset |
-| `src/hooks/useAnnouncements.ts` | Modify | Add expiry/schedule filters, fix shouldShowAnnouncement logic |
-| `src/components/announcements/AnnouncementProvider.tsx` | Modify | Add session storage tracking for every_login |
-| `src/pages/InterviewTracking.tsx` | Modify | Add Mark as Resolved button and visual indicator, add filter |
-| SQL Migration | Create | Add artifact_correction_resolved_at and artifact_correction_resolved_by columns |
+**Problem:** No way to see which interviews are resolved in the table.
 
----
+**Code Changes:**
+- `AdminReviewHistory.tsx`: In the Status column of the table, add a small green "Resolved" badge next to the failed badge when `audit.artifact_correction_resolved_at` is set. Also add Mark Resolved / View Resolution buttons in a new Actions column or inline.
 
-## Implementation Sequence
+### 5. Notification Click Navigates to Review Page with Comment Box Open
 
-1. **Fix Payment Table** - Replace useMemo with useEffect to prevent blank page
-2. **Fix Announcement Visibility** - Update query and shouldShowAnnouncement logic
-3. **Fix AnnouncementProvider** - Add session storage for every_login
-4. **Database Migration** - Add resolved columns to audits table
-5. **Add Mark as Resolved** - Update InterviewTracking with button and visual indicator
-6. **Add Filter** - Add "Failed - Unresolved" filter option
+**Problem:** Clicking a comment reply notification doesn't navigate to the right page.
 
----
+**Code Changes:**
+- `NotificationBell.tsx`: Add handling for `comment_reply` and `resolution_comment` notification types. Navigate to `/review/{audit_id}?showComments=true`.
+- `ReviewInterview.tsx`: Read the `showComments` query parameter on mount. If present, auto-open the `ResolvedCommentsModal`.
 
-## Visual Design for "Mark as Resolved" Feature
+### Technical Summary of All File Changes
 
-```text
-Failed Interview Row (Before Resolving):
-+---------------------------------------------------------------------------------+
-| NG71_696_20251103 | Audit Failed | [Mark Resolved] | Action Plan | View Issue  |
-+---------------------------------------------------------------------------------+
-                                     ↑ Orange outline button
+| File | Change |
+|------|--------|
+| **Database migration** | Create `artifact_comment_reads` table, drop `is_read` from `artifact_correction_comments` |
+| `src/components/tracking/ResolvedCommentsModal.tsx` | Fix scroll (add max-h + auto-scroll), switch read tracking to `artifact_comment_reads` table, remove old `is_read` logic |
+| `src/pages/InterviewTracking.tsx` | Update unread count query to use `artifact_comment_reads`, show Mark Resolved button for all no-metadata interviews (not just failed), update `resolvedAuditIds` filter |
+| `src/pages/ReviewInterview.tsx` | Show Mark Resolved for no-metadata interviews, read `?showComments=true` query param to auto-open comments modal |
+| `src/pages/AdminReviewHistory.tsx` | Add resolved visual indicator (green badge) in table rows, add Mark Resolved / View Resolution action buttons |
+| `src/components/NotificationBell.tsx` | Handle `comment_reply` and `resolution_comment` notification types to navigate to `/review/{audit_id}?showComments=true` |
 
-Failed Interview Row (After Resolving):
-+---------------------------------------------------------------------------------+
-| NG71_696_20251103 | Audit Failed | ✓ Resolved      | Action Plan | View Issue  |
-+---------------------------------------------------------------------------------+
-                                     ↑ Green badge with checkmark
-
-Mobile Accordion (Failed & Unresolved):
-+--------------------------------------------+
-| NG71_696_20251103                     [v]  |
-| Status: Audit Failed                       |
-| [orange border highlight]                  |
-| [Mark as Resolved] button                  |
-+--------------------------------------------+
-
-Mobile Accordion (Failed & Resolved):
-+--------------------------------------------+
-| NG71_696_20251103                     [v]  |
-| Status: Audit Failed | ✓ Resolved          |
-| [green subtle background]                  |
-+--------------------------------------------+
-```
