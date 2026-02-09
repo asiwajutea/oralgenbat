@@ -106,7 +106,7 @@ export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTab
       assignedAt: record.assignment?.assigned_at || null,
       // Fix: Payment is received if record exists and is not a deduction
       paymentReceivedAt: record.payment && record.payment.payment_type !== "deduction" 
-        ? record.payment.id 
+        ? (record.payment.booklet_printed_at || record.payment.booklet_received_at || record.payment.booklet_delivered_at || new Date().toISOString()) 
         : null,
       bookletPrintedAt: record.payment?.booklet_printed_at || null,
       bookletReceivedAt: record.payment?.booklet_received_at || null,
