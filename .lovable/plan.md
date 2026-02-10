@@ -1,59 +1,72 @@
 
 
-## Plan: Enhance Mark as Resolved Feature
+## Plan: Fix Mark Resolved Visibility, Failed Count Discrepancy, Bulk PDF Download, Stat Counters, and Scrolling
 
-### 1. Fix Unread Message Counter (Per-User Read Tracking)
+### 1. Hide "Mark Resolved" for Passed and Ready-for-Review Interviews
 
-**Problem:** Currently, `is_read` is a single boolean on each comment row -- marking it `true` affects all users. We need per-user read tracking.
+Currently the Mark Resolved / Resolved button shows for ALL interviews unconditionally. We need to hide it when:
+- Status is "Audit Passed"
+- Status is "Awaiting Review" AND both PDF and metadata are uploaded
 
-**Solution:** Create a new `artifact_comment_reads` table to track which comments each user has read.
+**Files to change:**
+- `src/pages/InterviewTracking.tsx` (both mobile ~line 1093 and desktop ~line 1293): Wrap the Mark Resolved / Resolved button block in a condition:
+  ```
+  const showMarkResolved = interview.status !== "Audit Passed" && 
+    !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata);
+  ```
+- `src/pages/ReviewInterview.tsx` (~line 554-578): Same condition applied using `audit.status` and `metadata` presence.
 
-**Database Migration:**
-- Create table `artifact_comment_reads` with columns: `id` (uuid), `comment_id` (uuid, FK to artifact_correction_comments), `user_id` (uuid), `read_at` (timestamptz), with a unique constraint on `(comment_id, user_id)`
-- Add RLS policies: users can insert/select/update their own reads
-- Drop the `is_read` column from `artifact_correction_comments` (no longer needed)
+### 2. Fix Failed Interview Count Discrepancy (97 vs 104)
 
-**Code Changes:**
-- `ResolvedCommentsModal.tsx`: When modal opens, upsert all visible comment IDs into `artifact_comment_reads` for the current user. Remove the old `is_read` update logic.
-- `InterviewTracking.tsx`: Update the unread count query to use `artifact_comment_reads` -- count comments where `user_id != current_user` AND no matching row exists in `artifact_comment_reads` for the current user.
+The Interview Tracking page (97) applies role-based filtering -- it only shows interviews visible to the current user's role (e.g., scoped by contractor, field manager assignments). The Admin Review History page (104) shows ALL reviewed audits globally with no role filter.
 
-### 2. Fix ScrollArea in ResolvedCommentsModal
+**Root cause:** This is expected behavior for non-super-admin roles. However, if the user is a super_admin, the counts should match. The Interview Tracking query uses `.limit(5000)` which could also truncate results.
 
-**Problem:** The comments area can't scroll; latest messages are truncated.
+**Fix:** Increase the limit or remove it for super_admin, and ensure the Interview Tracking stats card for "Failed" matches the same data scope. No database change needed -- this is a data scope difference. I will add a note in the stats section clarifying "showing interviews within your access scope" for non-super-admin roles and verify the limit is not truncating data.
 
-**Solution:** In `ResolvedCommentsModal.tsx`, give the `ScrollArea` a fixed max height (e.g., `max-h-[300px]`) and auto-scroll to the bottom when new comments arrive or when the modal opens.
+### 3. Bulk PDF Download on Admin Review History
 
-### 3. Mark Resolved for ALL Interviews Without Metadata
+Add a "Download PDFs" button that appears when a filter is active and the filtered results contain interviews with PDFs. When clicked, it fetches all `file_url` values for the filtered set and downloads them as a ZIP file using JSZip (already installed).
 
-**Problem:** Currently the Mark Resolved button only shows for `Audit Failed` interviews. The user wants it on all interviews without metadata, regardless of status.
+**File to change:** `src/pages/AdminReviewHistory.tsx`
+- Add a `downloadFilteredPDFs` async function that:
+  1. Fetches all audit IDs matching the current filter (not just the current page)
+  2. Fetches their `file_url` values
+  3. Downloads each PDF file
+  4. Bundles them into a ZIP using JSZip
+  5. Triggers browser download
+- Add a "Download PDFs" button next to the Export dropdown, visible when `statusFilter !== "all"`.
+- Show a loading spinner during download.
 
-**Code Changes:**
-- `InterviewTracking.tsx` (both mobile and desktop views): Change the condition from `interview.status === "Audit Failed"` to also show the Mark Resolved / Resolved button when `!interview.has_metadata` (for any status).
-- `ReviewInterview.tsx`: Change the condition from `audit.status === "Audit Failed"` to also show when there's no metadata.
+### 4. Stat Counters on Interview Tracking and Payment Pages
 
-### 4. Visual Indicator on Admin Review History Page
+Add new stat cards showing:
+- **Total assigned to data entry team** (interviews with a team assignment)
+- **Total paid** (interviews with a payment record)
+- **Assigned but not paid** (interviews with assignment but no payment)
 
-**Problem:** No way to see which interviews are resolved in the table.
+**Files to change:**
+- `src/pages/InterviewTracking.tsx`: Add 2 new stat cards after the existing grid. Query `interview_assignments` count and cross-reference with `interview_payments`. Since we already have `team_assigned` on each interview, we can compute from existing data. For payment info, add a small query or use the payment tracking hook.
+- `src/pages/PaymentTracking.tsx`: Add stat cards above or alongside the existing `BudgetStatsCard`. Compute from the existing `records` data:
+  - `assignedRecords.length` (assigned to clerks)
+  - `records.filter(r => r.payment).length` (paid)
+  - `records.filter(r => r.assignment && !r.payment).length` (assigned but not paid)
 
-**Code Changes:**
-- `AdminReviewHistory.tsx`: In the Status column of the table, add a small green "Resolved" badge next to the failed badge when `audit.artifact_correction_resolved_at` is set. Also add Mark Resolved / View Resolution buttons in a new Actions column or inline.
+### 5. Fix ScrollArea Scrolling in ResolvedCommentsModal
 
-### 5. Notification Click Navigates to Review Page with Comment Box Open
+The `ScrollArea` from Radix requires the viewport to have a constrained height. Currently `max-h-[300px]` on the `ScrollArea` root doesn't propagate to the viewport.
 
-**Problem:** Clicking a comment reply notification doesn't navigate to the right page.
+**File to change:** `src/components/tracking/ResolvedCommentsModal.tsx`
+- Replace `<ScrollArea className="max-h-[300px] pr-2">` with a plain `div` that has `overflow-y-auto max-h-[300px]` styling, which reliably scrolls. The Radix ScrollArea component needs explicit height on the root, which conflicts with the flex layout.
+- Alternative: Add `h-[300px]` (fixed height) instead of `max-h-[300px]` to the ScrollArea, since Radix ScrollArea needs a fixed height container.
+- Keep the auto-scroll logic with `scrollRef`.
 
-**Code Changes:**
-- `NotificationBell.tsx`: Add handling for `comment_reply` and `resolution_comment` notification types. Navigate to `/review/{audit_id}?showComments=true`.
-- `ReviewInterview.tsx`: Read the `showComments` query parameter on mount. If present, auto-open the `ResolvedCommentsModal`.
+### Technical Summary
 
-### Technical Summary of All File Changes
-
-| File | Change |
-|------|--------|
-| **Database migration** | Create `artifact_comment_reads` table, drop `is_read` from `artifact_correction_comments` |
-| `src/components/tracking/ResolvedCommentsModal.tsx` | Fix scroll (add max-h + auto-scroll), switch read tracking to `artifact_comment_reads` table, remove old `is_read` logic |
-| `src/pages/InterviewTracking.tsx` | Update unread count query to use `artifact_comment_reads`, show Mark Resolved button for all no-metadata interviews (not just failed), update `resolvedAuditIds` filter |
-| `src/pages/ReviewInterview.tsx` | Show Mark Resolved for no-metadata interviews, read `?showComments=true` query param to auto-open comments modal |
-| `src/pages/AdminReviewHistory.tsx` | Add resolved visual indicator (green badge) in table rows, add Mark Resolved / View Resolution action buttons |
-| `src/components/NotificationBell.tsx` | Handle `comment_reply` and `resolution_comment` notification types to navigate to `/review/{audit_id}?showComments=true` |
-
+| File | Changes |
+|------|---------|
+| `src/pages/InterviewTracking.tsx` | Hide Mark Resolved for passed/ready interviews (mobile + desktop); add stat cards for assigned/paid/unpaid |
+| `src/pages/ReviewInterview.tsx` | Hide Mark Resolved for passed/ready interviews |
+| `src/pages/AdminReviewHistory.tsx` | Add bulk PDF download button with JSZip; verify failed count query |
+| `src/pages/PaymentTracking.tsx` | Add stat cards for assigned/paid/assigned-but-unpaid |
+| `src/components/tracking/ResolvedCommentsModal.tsx` | Fix ScrollArea to use a plain scrollable div with `overflow-y-auto max-h-[300px]` |
