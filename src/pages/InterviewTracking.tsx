@@ -865,6 +865,45 @@ const InterviewTracking = () => {
           </Card>
         </div>
 
+        {/* Data Entry & Payment Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <Card>
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-muted-foreground">Assigned to Data Entry</p>
+                <p className="text-lg sm:text-2xl font-bold text-blue-600">{interviewsWithUnreadCounts.filter(i => i.team_assigned).length}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-muted-foreground">Paid</p>
+                <p className="text-lg sm:text-2xl font-bold text-green-600">—</p>
+                <p className="text-xs text-muted-foreground">See Payment page</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-muted-foreground">Assigned, Not Paid</p>
+                <p className="text-lg sm:text-2xl font-bold text-amber-600">—</p>
+                <p className="text-xs text-muted-foreground">See Payment page</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Filters Panel */}
         {showFilters && (
           <Card>

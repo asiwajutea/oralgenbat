@@ -261,7 +261,7 @@ export function ResolvedCommentsModal({
               <p className="text-xs">Be the first to add a comment</p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[300px] pr-2">
+            <div className="overflow-y-auto max-h-[300px] pr-2">
               <div className="space-y-4">
                 {topLevelComments.map((comment) => (
                   <div key={comment.id} className="space-y-2">
@@ -359,7 +359,7 @@ export function ResolvedCommentsModal({
                 {/* Scroll anchor */}
                 <div ref={scrollRef} />
               </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
 
