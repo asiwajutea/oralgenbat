@@ -1291,8 +1291,9 @@ const InterviewTracking = () => {
                                 View
                               </Button>
                             )}
-                            {/* Mark as Resolved / Resolved button for all interviews */}
-                            {interview.artifact_correction_resolved_at ? (
+                            {/* Mark as Resolved / Resolved button - hide for passed and ready-for-review */}
+                            {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
+                              interview.artifact_correction_resolved_at ? (
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -1318,7 +1319,7 @@ const InterviewTracking = () => {
                                 <Flag className="h-3 w-3" />
                                 Mark Resolved
                               </Button>
-                            )}
+                            ))}
                             {/* View Issue Button - Desktop */}
                             {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
                               <Button
