@@ -989,6 +989,23 @@ const AdminReviewHistory = () => {
             <DropdownMenuItem onClick={exportToPDF}>Export as PDF</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        
+        {/* Bulk PDF Download Button - visible when filter is active */}
+        {statusFilter !== "all" && (
+          <Button 
+            variant="outline" 
+            onClick={downloadFilteredPDFs} 
+            disabled={isDownloadingPDFs}
+            className="gap-2"
+          >
+            {isDownloadingPDFs ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileArchive className="h-4 w-4" />
+            )}
+            {isDownloadingPDFs ? "Downloading..." : "Download PDFs"}
+          </Button>
+        )}
       </div>
 
       {/* Table */}
