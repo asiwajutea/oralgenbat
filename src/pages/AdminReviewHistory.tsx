@@ -99,6 +99,7 @@ const AdminReviewHistory = () => {
     return () => clearTimeout(timer);
   }, [searchInput]);
   const [isExporting, setIsExporting] = useState(false);
+  const [isDownloadingPDFs, setIsDownloadingPDFs] = useState(false);
 
   // Persist filters to localStorage
   useEffect(() => {
