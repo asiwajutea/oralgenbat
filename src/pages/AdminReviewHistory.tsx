@@ -767,6 +767,55 @@ const AdminReviewHistory = () => {
     }
   };
 
+  // Bulk PDF download for filtered results
+  const downloadFilteredPDFs = async () => {
+    setIsDownloadingPDFs(true);
+    try {
+      let query = supabase
+        .from("audits")
+        .select("file_name, file_url")
+        .not("reviewed_at", "is", null)
+        .not("file_url", "is", null);
+
+      if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
+      if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
+      if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+
+      const { data: audits, error } = await query;
+      if (error) throw error;
+      if (!audits?.length) return;
+
+      const zip = new JSZip();
+      let downloadedCount = 0;
+
+      for (const audit of audits) {
+        if (!audit.file_url) continue;
+        try {
+          const response = await fetch(audit.file_url);
+          if (response.ok) {
+            const blob = await response.blob();
+            zip.file(`${audit.file_name}.pdf`, blob);
+            downloadedCount++;
+          }
+        } catch {
+          console.warn(`Failed to download PDF for ${audit.file_name}`);
+        }
+      }
+
+      if (downloadedCount === 0) return;
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `pdfs-${statusFilter}-${format(new Date(), "yyyy-MM-dd")}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsDownloadingPDFs(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto p-6 space-y-6">
