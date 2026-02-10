@@ -222,6 +222,49 @@ const PaymentTracking = () => {
       {/* Budget Stats */}
       <BudgetStatsCard stats={budgetStats || null} isLoading={statsLoading} />
 
+      {/* Assignment & Payment Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Assigned to Clerks</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {records ? records.filter(r => r.assignment !== null).length : 0}
+                </p>
+              </div>
+              <Users className="h-6 w-6 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Total Paid</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {records ? records.filter(r => r.payment !== null).length : 0}
+                </p>
+              </div>
+              <FileText className="h-6 w-6 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Assigned, Not Paid</p>
+                <p className="text-2xl font-bold text-amber-600">
+                  {records ? records.filter(r => r.assignment !== null && r.payment === null).length : 0}
+                </p>
+              </div>
+              <Search className="h-6 w-6 text-amber-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Search and Filters */}
       <Card>
         <CardContent className="pt-6">

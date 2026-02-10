@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+// ScrollArea removed - using plain div with overflow-y-auto for reliable scrolling
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
@@ -261,7 +261,7 @@ export function ResolvedCommentsModal({
               <p className="text-xs">Be the first to add a comment</p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[300px] pr-2">
+            <div className="overflow-y-auto max-h-[300px] pr-2">
               <div className="space-y-4">
                 {topLevelComments.map((comment) => (
                   <div key={comment.id} className="space-y-2">
@@ -359,7 +359,7 @@ export function ResolvedCommentsModal({
                 {/* Scroll anchor */}
                 <div ref={scrollRef} />
               </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
 
