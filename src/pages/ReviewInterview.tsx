@@ -151,7 +151,7 @@ const ReviewInterview = () => {
       const {
         data,
         error
-      } = await supabase.from("interview_metadata").select("*").eq("audit_id", auditId).single();
+      } = await supabase.from("interview_metadata").select("*").eq("audit_id", auditId).maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -551,7 +551,7 @@ const ReviewInterview = () => {
           {/* Show review comments for failed interviews or re-audits */}
           <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} artifactCorrection={audit.artifact_correction} />
           
-          {/* Resolution status - hide for passed and ready-for-review */}
+          {/* Comment / Resolved button - hide for passed and ready-for-review */}
           {audit.status !== "Audit Passed" && !(audit.status === "Awaiting Review" && metadata) && (
             <div className="flex items-center gap-2">
               {audit.artifact_correction_resolved_at ? (
@@ -562,18 +562,18 @@ const ReviewInterview = () => {
                   className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
                 >
                   <CheckCircle className="h-3 w-3" />
-                  View Resolution Comments
+                  Resolved
                   <MessageCircle className="h-3 w-3 ml-1" />
                 </Button>
               ) : (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowMarkResolvedDialog(true)}
+                  onClick={() => setShowResolvedCommentsModal(true)}
                   className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
                 >
-                  <Flag className="h-3 w-3" />
-                  Mark as Resolved
+                  <MessageCircle className="h-3 w-3" />
+                  Comment
                 </Button>
               )}
             </div>

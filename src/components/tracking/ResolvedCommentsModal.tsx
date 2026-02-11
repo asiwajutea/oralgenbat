@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-// ScrollArea removed - using plain div with overflow-y-auto for reliable scrolling
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
@@ -20,7 +19,9 @@ import {
   CheckCircle, 
   MessageCircle, 
   Send,
-  User
+  User,
+  RotateCcw,
+  Flag
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -57,6 +58,8 @@ export function ResolvedCommentsModal({
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const isResolved = !!resolvedAt;
+
   // Fetch comments for this audit
   const { data: comments = [], isLoading } = useQuery({
     queryKey: ["artifact-comments", auditId],
@@ -92,16 +95,14 @@ export function ResolvedCommentsModal({
     enabled: open && !!auditId,
   });
 
-  // Mark comments as read using artifact_comment_reads table
+  // Mark comments as read
   useEffect(() => {
     const markAsRead = async () => {
       if (!open || !auditId || !user?.id || comments.length === 0) return;
       
-      // Get comments not created by this user
       const otherUserComments = comments.filter((c) => c.user_id !== user.id);
       if (otherUserComments.length === 0) return;
 
-      // Upsert read records for all other users' comments
       const reads = otherUserComments.map((c) => ({
         comment_id: c.id,
         user_id: user.id,
@@ -112,13 +113,12 @@ export function ResolvedCommentsModal({
         .from("artifact_comment_reads" as any)
         .upsert(reads, { onConflict: "comment_id,user_id" });
 
-      // Invalidate unread counts
       queryClient.invalidateQueries({ queryKey: ["unread-comment-counts"] });
     };
     markAsRead();
   }, [open, auditId, user?.id, comments]);
 
-  // Auto-scroll to bottom when comments change or modal opens
+  // Auto-scroll to bottom
   useEffect(() => {
     if (open && comments.length > 0) {
       setTimeout(() => {
@@ -168,16 +168,64 @@ export function ResolvedCommentsModal({
       setNewReply("");
       setReplyingToId(null);
       toast({
-        title: "Reply added",
-        description: "Your reply has been posted.",
+        title: "Comment added",
+        description: "Your comment has been posted.",
       });
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add reply",
+        description: error.message || "Failed to add comment",
         variant: "destructive",
       });
+    },
+  });
+
+  // Mark Resolved mutation
+  const markResolvedMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("audits")
+        .update({
+          artifact_correction_resolved_at: new Date().toISOString(),
+          artifact_correction_resolved_by: user?.id,
+        })
+        .eq("id", auditId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-review-history"] });
+      toast({ title: "Marked as Resolved", description: "This issue has been marked as resolved." });
+      onOpenChange(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to mark as resolved", variant: "destructive" });
+    },
+  });
+
+  // Re-open Issue mutation
+  const reopenIssueMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("audits")
+        .update({
+          artifact_correction_resolved_at: null,
+          artifact_correction_resolved_by: null,
+        })
+        .eq("id", auditId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-review-history"] });
+      toast({ title: "Issue Re-opened", description: "This issue has been re-opened for further discussion." });
+      onOpenChange(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to re-open issue", variant: "destructive" });
     },
   });
 
@@ -189,7 +237,7 @@ export function ResolvedCommentsModal({
     });
   };
 
-  // Group comments: top-level and their replies
+  // Group comments
   const topLevelComments = comments.filter((c) => !c.parent_comment_id);
   const repliesMap = new Map<string, Comment[]>();
   comments
@@ -213,8 +261,8 @@ export function ResolvedCommentsModal({
       <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            Resolution Details
+            <MessageCircle className="h-5 w-5 text-primary" />
+            Comments
           </DialogTitle>
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="outline" className="font-mono text-xs">
@@ -223,23 +271,42 @@ export function ResolvedCommentsModal({
           </div>
         </DialogHeader>
 
-        {/* Resolution Info */}
-        <div className="rounded-lg border bg-green-50 dark:bg-green-900/20 p-3 space-y-1">
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <span className="font-medium text-green-700 dark:text-green-400">
-              Marked as Resolved
-            </span>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            <span>By {resolverName || "Unknown"}</span>
-            {resolvedAt && (
-              <span> • {format(new Date(resolvedAt), "MMM d, yyyy 'at' h:mm a")}</span>
-            )}
-          </div>
-        </div>
-
-        <Separator />
+        {/* Resolution Info Banner - only when resolved */}
+        {isResolved && (
+          <>
+            <div className="rounded-lg border bg-green-50 dark:bg-green-900/20 p-3 space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <span className="font-medium text-green-700 dark:text-green-400">
+                    Marked as Resolved
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => reopenIssueMutation.mutate()}
+                  disabled={reopenIssueMutation.isPending}
+                  className="gap-1 text-xs h-7 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                >
+                  {reopenIssueMutation.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3 w-3" />
+                  )}
+                  Re-open Issue
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <span>By {resolverName || "Unknown"}</span>
+                {resolvedAt && (
+                  <span> • {format(new Date(resolvedAt), "MMM d, yyyy 'at' h:mm a")}</span>
+                )}
+              </div>
+            </div>
+            <Separator />
+          </>
+        )}
 
         {/* Comments Section */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
@@ -261,13 +328,16 @@ export function ResolvedCommentsModal({
               <p className="text-xs">Be the first to add a comment</p>
             </div>
           ) : (
-            <div className="overflow-y-auto max-h-[300px] pr-2">
+            <div 
+              className="overflow-y-auto pr-2" 
+              style={{ maxHeight: "300px" }}
+            >
               <div className="space-y-4">
                 {topLevelComments.map((comment) => (
                   <div key={comment.id} className="space-y-2">
                     {/* Main comment */}
                     <div className="flex gap-3">
-                      <Avatar className="h-8 w-8">
+                      <Avatar className="h-8 w-8 shrink-0">
                         <AvatarFallback className="text-xs bg-primary/10 text-primary">
                           {getInitials(comment.user_name || "U")}
                         </AvatarFallback>
@@ -284,21 +354,23 @@ export function ResolvedCommentsModal({
                         <p className="text-sm mt-1 whitespace-pre-wrap break-words">
                           {comment.comment}
                         </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground mt-1"
-                          onClick={() => setReplyingToId(comment.id)}
-                        >
-                          Reply
-                        </Button>
+                        {!isResolved && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground mt-1"
+                            onClick={() => setReplyingToId(comment.id)}
+                          >
+                            Reply
+                          </Button>
+                        )}
                       </div>
                     </div>
 
                     {/* Replies */}
                     {repliesMap.get(comment.id)?.map((reply) => (
                       <div key={reply.id} className="flex gap-3 ml-10">
-                        <Avatar className="h-6 w-6">
+                        <Avatar className="h-6 w-6 shrink-0">
                           <AvatarFallback className="text-[10px] bg-secondary text-secondary-foreground">
                             {getInitials(reply.user_name || "U")}
                           </AvatarFallback>
@@ -320,7 +392,7 @@ export function ResolvedCommentsModal({
                     ))}
 
                     {/* Reply input for this comment */}
-                    {replyingToId === comment.id && (
+                    {!isResolved && replyingToId === comment.id && (
                       <div className="flex gap-2 ml-10 mt-2">
                         <Textarea
                           placeholder="Write a reply..."
@@ -365,30 +437,52 @@ export function ResolvedCommentsModal({
 
         <Separator />
 
-        {/* New Comment Input */}
-        <div className="flex gap-2 pt-2">
-          <Textarea
-            placeholder="Add a comment..."
-            value={replyingToId ? "" : newReply}
-            onChange={(e) => {
-              if (!replyingToId) setNewReply(e.target.value);
-            }}
-            rows={2}
-            className="flex-1"
-            disabled={!!replyingToId}
-          />
-          <Button
-            onClick={() => handleSendReply(null)}
-            disabled={!newReply.trim() || !!replyingToId || addReplyMutation.isPending}
-            className="self-end"
-          >
-            {addReplyMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
+        {/* New Comment Input + Mark Resolved - only when NOT resolved */}
+        {!isResolved ? (
+          <div className="space-y-2 pt-2">
+            <div className="flex gap-2">
+              <Textarea
+                placeholder="Add a comment..."
+                value={replyingToId ? "" : newReply}
+                onChange={(e) => {
+                  if (!replyingToId) setNewReply(e.target.value);
+                }}
+                rows={2}
+                className="flex-1"
+                disabled={!!replyingToId}
+              />
+              <Button
+                onClick={() => handleSendReply(null)}
+                disabled={!newReply.trim() || !!replyingToId || addReplyMutation.isPending}
+                className="self-end"
+              >
+                {addReplyMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => markResolvedMutation.mutate()}
+              disabled={markResolvedMutation.isPending}
+              className="gap-1 w-full border-green-300 text-green-700 hover:bg-green-50 dark:border-green-600 dark:text-green-400 dark:hover:bg-green-900/20"
+            >
+              {markResolvedMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Flag className="h-3 w-3" />
+              )}
+              Mark as Resolved
+            </Button>
+          </div>
+        ) : (
+          <div className="text-center py-2 text-sm text-muted-foreground">
+            Comments are disabled for resolved issues.
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
