@@ -375,28 +375,52 @@ const InterviewTracking = () => {
     enabled: !!user?.id,
   });
 
-  // Fetch unread comment counts for all resolved interviews (not just failed)
-  const resolvedAuditIds = useMemo(() => 
-    interviews.filter(i => i.artifact_correction_resolved_at).map(i => i.id),
+  // Fetch payment stats
+  const { data: paymentStats = { paid: 0, assignedNotPaid: 0 } } = useQuery({
+    queryKey: ["payment-stats-tracking"],
+    queryFn: async () => {
+      // Count paid interviews (those with payment records)
+      const { count: paidCount } = await supabase
+        .from("payment_records")
+        .select("*", { count: "exact", head: true });
+      
+      // Count assigned interviews
+      const { count: assignedCount } = await supabase
+        .from("interview_assignments")
+        .select("*", { count: "exact", head: true });
+      
+      return {
+        paid: paidCount || 0,
+        assignedNotPaid: Math.max(0, (assignedCount || 0) - (paidCount || 0)),
+      };
+    },
+    enabled: !!user?.id,
+  });
+
+  // Fetch unread comment counts for all interviews with comments (not just resolved)
+  const auditIdsWithComments = useMemo(() => 
+    interviews.map(i => i.id),
     [interviews]
   );
 
   const { data: unreadCommentCounts = {} } = useQuery({
-    queryKey: ["unread-comment-counts", resolvedAuditIds, user?.id],
+    queryKey: ["unread-comment-counts", auditIdsWithComments, user?.id],
     queryFn: async () => {
-      if (resolvedAuditIds.length === 0 || !user?.id) return {};
+      if (auditIdsWithComments.length === 0 || !user?.id) return {};
       
-      // Fetch all comments for resolved audits (not by current user)
-      const { data: comments, error } = await supabase
-        .from("artifact_correction_comments")
-        .select("id, audit_id, user_id")
-        .in("audit_id", resolvedAuditIds)
-        .neq("user_id", user.id);
-      
-      if (error) {
-        console.error("Error fetching comment counts:", error);
-        return {};
+      // Fetch all comments for all interviews (not by current user) - batch to avoid URL issues
+      const batchSize = 200;
+      let allComments: any[] = [];
+      for (let i = 0; i < auditIdsWithComments.length; i += batchSize) {
+        const batch = auditIdsWithComments.slice(i, i + batchSize);
+        const { data: batchComments } = await supabase
+          .from("artifact_correction_comments")
+          .select("id, audit_id, user_id")
+          .in("audit_id", batch)
+          .neq("user_id", user.id);
+        if (batchComments) allComments.push(...batchComments);
       }
+      const comments = allComments;
       
       if (!comments || comments.length === 0) return {};
 
@@ -420,7 +444,7 @@ const InterviewTracking = () => {
       
       return counts;
     },
-    enabled: resolvedAuditIds.length > 0 && !!user?.id,
+    enabled: auditIdsWithComments.length > 0 && !!user?.id,
   });
 
   // Merge unread counts into interviews
@@ -594,13 +618,13 @@ const InterviewTracking = () => {
   // Check if user can resolve issues (field managers, admins, super admins, sub_contractors)
   const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin || isSubContractor;
 
-  // Handler to open Mark Resolved dialog
+  // Handler to open Comments modal (replaces Mark Resolved flow)
   const handleMarkResolved = (interview: TrackingInterview) => {
-    setMarkResolvedInterview(interview);
-    setShowMarkResolvedDialog(true);
+    setResolvedCommentsInterview(interview);
+    setShowResolvedCommentsModal(true);
   };
 
-  // Handler to open Resolved Comments modal
+  // Handler to open Comments modal for resolved interviews
   const handleViewResolutionComments = (interview: TrackingInterview) => {
     setResolvedCommentsInterview(interview);
     setShowResolvedCommentsModal(true);
@@ -885,8 +909,7 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Paid</p>
-                <p className="text-lg sm:text-2xl font-bold text-green-600">—</p>
-                <p className="text-xs text-muted-foreground">See Payment page</p>
+                <p className="text-lg sm:text-2xl font-bold text-green-600">{paymentStats.paid}</p>
               </div>
             </CardContent>
           </Card>
@@ -897,8 +920,7 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Assigned, Not Paid</p>
-                <p className="text-lg sm:text-2xl font-bold text-amber-600">—</p>
-                <p className="text-xs text-muted-foreground">See Payment page</p>
+                <p className="text-lg sm:text-2xl font-bold text-amber-600">{paymentStats.assignedNotPaid}</p>
               </div>
             </CardContent>
           </Card>
@@ -1129,7 +1151,7 @@ const InterviewTracking = () => {
                                 View Failed
                               </Button>
                             )}
-                            {/* Mark as Resolved / Resolved button - hide for passed and ready-for-review */}
+                            {/* Comment / Resolved button - hide for passed and ready-for-review */}
                             {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
                               interview.artifact_correction_resolved_at ? (
                               <Button
@@ -1151,11 +1173,16 @@ const InterviewTracking = () => {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleMarkResolved(interview)}
-                                className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                                onClick={() => handleViewResolutionComments(interview)}
+                                className="gap-1 relative"
                               >
-                                <Flag className="h-3 w-3" />
-                                Mark Resolved
+                                <MessageCircle className="h-3 w-3" />
+                                Comment
+                                {interview.unread_comment_count > 0 && (
+                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                                    {interview.unread_comment_count}
+                                  </span>
+                                )}
                               </Button>
                             ))}
                             {/* View Issue Button - Mobile */}
@@ -1330,7 +1357,7 @@ const InterviewTracking = () => {
                                 View
                               </Button>
                             )}
-                            {/* Mark as Resolved / Resolved button - hide for passed and ready-for-review */}
+                            {/* Comment / Resolved button - hide for passed and ready-for-review */}
                             {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
                               interview.artifact_correction_resolved_at ? (
                               <Button
@@ -1352,11 +1379,16 @@ const InterviewTracking = () => {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleMarkResolved(interview)}
-                                className="gap-1 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                                onClick={() => handleViewResolutionComments(interview)}
+                                className="gap-1 relative"
                               >
-                                <Flag className="h-3 w-3" />
-                                Mark Resolved
+                                <MessageCircle className="h-3 w-3" />
+                                Comment
+                                {interview.unread_comment_count > 0 && (
+                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                                    {interview.unread_comment_count}
+                                  </span>
+                                )}
                               </Button>
                             ))}
                             {/* View Issue Button - Desktop */}

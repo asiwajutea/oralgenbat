@@ -640,6 +640,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                   )}
                                 </>
                               )}
+                              {(userRole === 'admin' || userRole === 'super_admin') && (
                               <Button 
                                 variant="ghost" 
                                 size="icon"
@@ -651,6 +652,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                               >
                                 <Trash2 className="h-4 w-4 text-muted-foreground" />
                               </Button>
+                              )}
                             </div>
                           </div>
 

@@ -94,14 +94,32 @@ const Index = () => {
       setIsLoading(true);
       
       // For non-super-admin contractors/auditors, filter by contractor_id via interview_metadata
+      // For auditors, also include audits matching contractor prefix in file_name (without metadata)
       let contractorAuditIds: string[] | null = null;
       if (shouldFilterByContractor && effectiveContractorId) {
+        // Get audit IDs from metadata
         const { data: contractorAudits } = await supabase
           .from("interview_metadata")
           .select("audit_id")
           .eq("contractor_id", effectiveContractorId);
         
-        contractorAuditIds = contractorAudits?.map(a => a.audit_id).filter(Boolean) as string[] || [];
+        const metadataAuditIds = contractorAudits?.map(a => a.audit_id).filter(Boolean) as string[] || [];
+        
+        if (isAuditor) {
+          // Also get audits whose file_name starts with the contractor prefix (e.g., "NG71_")
+          // This catches interviews without metadata
+          const { data: fileNameAudits } = await supabase
+            .from("audits")
+            .select("id")
+            .ilike("file_name", `${effectiveContractorId}_%`);
+          
+          const fileNameAuditIds = fileNameAudits?.map(a => a.id) || [];
+          
+          // Combine both sets (deduplicate)
+          contractorAuditIds = [...new Set([...metadataAuditIds, ...fileNameAuditIds])];
+        } else {
+          contractorAuditIds = metadataAuditIds;
+        }
         
         if (contractorAuditIds.length === 0) {
           setAudits([]);
