@@ -1,72 +1,123 @@
 
 
-## Plan: Fix Mark Resolved Visibility, Failed Count Discrepancy, Bulk PDF Download, Stat Counters, and Scrolling
+## Plan: Fix Errors and Implement Comment Workflow Changes
 
-### 1. Hide "Mark Resolved" for Passed and Ready-for-Review Interviews
+This plan addresses 5 error fixes and 1 major feature change.
 
-Currently the Mark Resolved / Resolved button shows for ALL interviews unconditionally. We need to hide it when:
-- Status is "Audit Passed"
-- Status is "Awaiting Review" AND both PDF and metadata are uploaded
+---
 
-**Files to change:**
-- `src/pages/InterviewTracking.tsx` (both mobile ~line 1093 and desktop ~line 1293): Wrap the Mark Resolved / Resolved button block in a condition:
-  ```
-  const showMarkResolved = interview.status !== "Audit Passed" && 
-    !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata);
-  ```
-- `src/pages/ReviewInterview.tsx` (~line 554-578): Same condition applied using `audit.status` and `metadata` presence.
+### 1. Restrict Interview Deletion to Admin/Super Admin Only
 
-### 2. Fix Failed Interview Count Discrepancy (97 vs 104)
+**Problem:** Any approved user can delete interviews via the AuditTable component.
 
-The Interview Tracking page (97) applies role-based filtering -- it only shows interviews visible to the current user's role (e.g., scoped by contractor, field manager assignments). The Admin Review History page (104) shows ALL reviewed audits globally with no role filter.
+**Changes:**
+- `src/components/AuditTable.tsx`: Add role check around the delete button (lines 643-653) and the `handleDelete` function. Only show the delete button and allow deletion when `userRole === 'admin' || userRole === 'super_admin'`.
+- The `useAuth()` hook is already imported in this component, so we just need to check `userRole`.
 
-**Root cause:** This is expected behavior for non-super-admin roles. However, if the user is a super_admin, the counts should match. The Interview Tracking query uses `.limit(5000)` which could also truncate results.
+---
 
-**Fix:** Increase the limit or remove it for super_admin, and ensure the Interview Tracking stats card for "Failed" matches the same data scope. No database change needed -- this is a data scope difference. I will add a note in the stats section clarifying "showing interviews within your access scope" for non-super-admin roles and verify the limit is not truncating data.
+### 2. Fix Payment Stats on Interview Tracking Page
 
-### 3. Bulk PDF Download on Admin Review History
+**Problem:** The "Paid" and "Assigned, Not Paid" stat cards on the Interview Tracking page show placeholder text ("See Payment page" / em-dash) instead of actual numbers.
 
-Add a "Download PDFs" button that appears when a filter is active and the filtered results contain interviews with PDFs. When clicked, it fetches all `file_url` values for the filtered set and downloads them as a ZIP file using JSZip (already installed).
+**Changes:**
+- `src/pages/InterviewTracking.tsx` (lines 880-905): Add a query to fetch payment_records and count:
+  - Interviews with a payment record (paid count)
+  - Interviews assigned to a team but without a payment record (assigned not paid)
+- Replace the placeholder "---" and "See Payment page" text with actual computed values.
 
-**File to change:** `src/pages/AdminReviewHistory.tsx`
-- Add a `downloadFilteredPDFs` async function that:
-  1. Fetches all audit IDs matching the current filter (not just the current page)
-  2. Fetches their `file_url` values
-  3. Downloads each PDF file
-  4. Bundles them into a ZIP using JSZip
-  5. Triggers browser download
-- Add a "Download PDFs" button next to the Export dropdown, visible when `statusFilter !== "all"`.
-- Show a loading spinner during download.
+---
 
-### 4. Stat Counters on Interview Tracking and Payment Pages
+### 3. Fix "Can't Load Audit" for Ready for Review Interviews
 
-Add new stat cards showing:
-- **Total assigned to data entry team** (interviews with a team assignment)
-- **Total paid** (interviews with a payment record)
-- **Assigned but not paid** (interviews with assignment but no payment)
+**Problem:** When super admin clicks on "Ready for Review" interviews, they see "Audit Not Found". The metadata query at line 154 uses `.single()` which throws an error when no metadata exists, causing React Query to mark it as failed.
 
-**Files to change:**
-- `src/pages/InterviewTracking.tsx`: Add 2 new stat cards after the existing grid. Query `interview_assignments` count and cross-reference with `interview_payments`. Since we already have `team_assigned` on each interview, we can compute from existing data. For payment info, add a small query or use the payment tracking hook.
-- `src/pages/PaymentTracking.tsx`: Add stat cards above or alongside the existing `BudgetStatsCard`. Compute from the existing `records` data:
-  - `assignedRecords.length` (assigned to clerks)
-  - `records.filter(r => r.payment).length` (paid)
-  - `records.filter(r => r.assignment && !r.payment).length` (assigned but not paid)
+**Changes:**
+- `src/pages/ReviewInterview.tsx` (line 154): Change `.single()` to `.maybeSingle()` so that when no metadata row exists, it returns `null` instead of throwing an error.
 
-### 5. Fix ScrollArea Scrolling in ResolvedCommentsModal
+---
 
-The `ScrollArea` from Radix requires the viewport to have a constrained height. Currently `max-h-[300px]` on the `ScrollArea` root doesn't propagate to the viewport.
+### 4. Fix Auditors Cannot View NG71 Interviews
 
-**File to change:** `src/components/tracking/ResolvedCommentsModal.tsx`
-- Replace `<ScrollArea className="max-h-[300px] pr-2">` with a plain `div` that has `overflow-y-auto max-h-[300px]` styling, which reliably scrolls. The Radix ScrollArea component needs explicit height on the root, which conflicts with the flex layout.
-- Alternative: Add `h-[300px]` (fixed height) instead of `max-h-[300px]` to the ScrollArea, since Radix ScrollArea needs a fixed height container.
-- Keep the auto-scroll logic with `scrollRef`.
+**Problem:** Auditors are filtered by `effectiveContractorId` through `interview_metadata`. If an auditor's `contractor_id` or `active_contractor_id` doesn't match NG71, they won't see those interviews. Also, interviews without metadata are invisible to auditors because the Index page filters through `interview_metadata`.
+
+**Root Cause:** In `src/pages/Index.tsx` (line 79-81), for auditors, `effectiveContractorId` uses `active_contractor_id || contractor_id`. If the auditor's profile has a different contractor_id than NG71, they won't see NG71 interviews.
+
+**Changes:**
+- `src/pages/Index.tsx`: When filtering for auditors, also include audits without metadata (by file_name prefix matching the contractor ID). Currently, audits without metadata are excluded because the filter goes through `interview_metadata` table.
+  - Add a secondary query for audits matching the contractor prefix in `file_name` but lacking metadata.
+  - Combine both sets of audit IDs.
+
+---
+
+### 5. Refactor "Mark Resolved" to "Comment" Workflow
+
+**Problem:** The current workflow has "Mark Resolved" as the primary button. The user wants:
+1. Button renamed from "Mark Resolved" to "Comment"
+2. Anyone can start commenting without resolving
+3. "Mark Resolved" button moved INSIDE the comment box
+4. Once resolved, comments are disabled and button shows "Resolved"
+5. A "Re-open Issue" button to revert resolved status
+
+**Changes across multiple files:**
+
+#### a. `src/components/tracking/ResolvedCommentsModal.tsx` (Major Refactor)
+- Accept new props: `isResolved` (boolean), `onMarkResolved` callback, `onReopenIssue` callback
+- When NOT resolved:
+  - Show comment input normally (anyone can comment)
+  - Add a "Mark Resolved" button inside the comment input area
+- When resolved:
+  - Show the green "Marked as Resolved" banner
+  - Disable comment input
+  - Show "Re-open Issue" button
+- Remove the separate `MarkResolvedDialog` dependency - integrate marking resolved directly into this modal
+
+#### b. `src/components/tracking/MarkResolvedDialog.tsx`
+- This component becomes less important since "Mark Resolved" moves inside the comments modal. Keep it but it will be used less.
+
+#### c. `src/pages/InterviewTracking.tsx` (lines 1132-1160, 1334-1361)
+- Rename button labels:
+  - "Mark Resolved" becomes "Comment" (with MessageCircle icon)
+  - "Resolved" stays as "Resolved" (when already resolved)
+- Both buttons now open the `ResolvedCommentsModal` directly
+- Remove `MarkResolvedDialog` usage - the modal handles both commenting and resolving
+- Pass resolution/reopen callbacks to the modal
+- The unread counter logic stays the same but applies to ALL interviews (not just resolved ones)
+- Update the `resolvedAuditIds` query to also fetch comment counts for non-resolved interviews
+
+#### d. `src/pages/ReviewInterview.tsx` (lines 554-580)
+- Same rename: "Mark as Resolved" becomes "Comment", opens ResolvedCommentsModal
+- "View Resolution Comments" becomes "Resolved"
+- Pass resolution/reopen callbacks
+
+#### e. `src/pages/AdminReviewHistory.tsx`
+- Same rename pattern for any Mark Resolved / Resolved buttons in the admin table
+
+#### f. Unread Count Query Update
+- In `InterviewTracking.tsx`: Expand the unread comment count query to cover ALL interviews that have comments (not just resolved ones), since commenting is now allowed before resolution.
+
+---
+
+### 6. Fix Scrolling in ResolvedCommentsModal (Still Broken)
+
+**Problem:** The `overflow-y-auto max-h-[300px]` on the comments div is still not scrolling properly.
+
+**Changes:**
+- `src/components/tracking/ResolvedCommentsModal.tsx`: Ensure the parent `DialogContent` has proper flex layout. The comment area div needs both a fixed/max height AND `overflow-y-auto`. Also ensure the auto-scroll ref targets the correct element.
+
+---
 
 ### Technical Summary
 
 | File | Changes |
 |------|---------|
-| `src/pages/InterviewTracking.tsx` | Hide Mark Resolved for passed/ready interviews (mobile + desktop); add stat cards for assigned/paid/unpaid |
-| `src/pages/ReviewInterview.tsx` | Hide Mark Resolved for passed/ready interviews |
-| `src/pages/AdminReviewHistory.tsx` | Add bulk PDF download button with JSZip; verify failed count query |
-| `src/pages/PaymentTracking.tsx` | Add stat cards for assigned/paid/assigned-but-unpaid |
-| `src/components/tracking/ResolvedCommentsModal.tsx` | Fix ScrollArea to use a plain scrollable div with `overflow-y-auto max-h-[300px]` |
+| `src/components/AuditTable.tsx` | Role-gate the delete button to admin/super_admin only |
+| `src/pages/InterviewTracking.tsx` | Fix payment stats (query payment_records), rename "Mark Resolved" to "Comment", update unread count query for all interviews |
+| `src/pages/ReviewInterview.tsx` | Change `.single()` to `.maybeSingle()` for metadata query, rename buttons, pass callbacks to modal |
+| `src/pages/Index.tsx` | Include audits without metadata for auditor filtering by file_name prefix |
+| `src/components/tracking/ResolvedCommentsModal.tsx` | Major refactor: add Mark Resolved and Re-open Issue buttons inside modal, disable comments when resolved, fix scrolling |
+| `src/pages/AdminReviewHistory.tsx` | Rename Mark Resolved buttons to Comment/Resolved |
+
+### Database Changes
+- Add `artifact_correction_resolved_at` and `artifact_correction_resolved_by` columns to be nullable/clearable (they already are) so "Re-open Issue" can set them back to null. No migration needed.
+
