@@ -44,6 +44,7 @@ interface ZipFile {
   hasExistingMetadata: boolean;
   isReAudit: boolean;
   isReplacement: boolean;
+  statusLabel: string;
   status: "pending" | "uploading" | "processing" | "success" | "error" | "skipped";
   progress: number;
   errorMessage?: string;
@@ -60,6 +61,8 @@ export const BulkMetadataUploadDialog = ({
   const [isUploading, setIsUploading] = useState(false);
   const [zipFiles, setZipFiles] = useState<ZipFile[]>([]);
   const [visibleCount, setVisibleCount] = useState(5);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [startTime, setStartTime] = useState<number | null>(null);
 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
@@ -133,6 +136,7 @@ export const BulkMetadataUploadDialog = ({
         hasExistingMetadata: matchedAudit?.hasMetadata || false,
         isReAudit,
         isReplacement,
+        statusLabel: !matchedAudit ? "No matching PDF" : "",
         status,
         progress: 0,
         errorMessage,
@@ -141,6 +145,7 @@ export const BulkMetadataUploadDialog = ({
 
     setZipFiles(processedFiles);
     setVisibleCount(Math.min(MAX_VISIBLE_DEFAULT, processedFiles.length));
+    setCompletedCount(0);
   };
 
   const CONCURRENT_UPLOADS = 5;
@@ -152,7 +157,7 @@ export const BulkMetadataUploadDialog = ({
       // Update status to uploading
       setZipFiles(prev => prev.map(f => 
         f.fileName === zipFile.fileName 
-          ? { ...f, status: "uploading" as const }
+          ? { ...f, status: "uploading" as const, statusLabel: "Uploading..." }
           : f
       ));
 
@@ -220,7 +225,7 @@ export const BulkMetadataUploadDialog = ({
       // Update status to processing
       setZipFiles(prev => prev.map(f => 
         f.fileName === zipFile.fileName 
-          ? { ...f, status: "processing" as const, progress: 75 }
+          ? { ...f, status: "processing" as const, progress: 75, statusLabel: "Processing metadata..." }
           : f
       ));
 
@@ -231,15 +236,15 @@ export const BulkMetadataUploadDialog = ({
 
       if (processError) {
         console.error(`Processing failed for "${zipFile.fileName}.zip":`, processError);
-        // Don't throw - upload succeeded, processing might work later
       }
 
       // Success
       setZipFiles(prev => prev.map(f => 
         f.fileName === zipFile.fileName 
-          ? { ...f, status: "success" as const, progress: 100 }
+          ? { ...f, status: "success" as const, progress: 100, statusLabel: "Complete" }
           : f
       ));
+      setCompletedCount(c => c + 1);
       return true;
 
     } catch (error) {
@@ -249,10 +254,12 @@ export const BulkMetadataUploadDialog = ({
           ? { 
               ...f, 
               status: "error" as const, 
+              statusLabel: "Failed",
               errorMessage: error instanceof Error ? error.message : "Upload failed"
             }
           : f
       ));
+      setCompletedCount(c => c + 1);
       return false;
     }
   };
@@ -283,6 +290,8 @@ export const BulkMetadataUploadDialog = ({
     }
 
     setIsUploading(true);
+    setCompletedCount(0);
+    setStartTime(Date.now());
 
     let successCount = 0;
     let errorCount = 0;
@@ -309,6 +318,7 @@ export const BulkMetadataUploadDialog = ({
     }
 
     setIsUploading(false);
+    setStartTime(null);
 
     if (successCount > 0) {
       let message = `Successfully processed ${successCount} file(s)`;
@@ -374,6 +384,8 @@ export const BulkMetadataUploadDialog = ({
   const reAuditCount = zipFiles.filter(f => f.isReAudit && f.status === "pending").length;
   const replacementCount = zipFiles.filter(f => f.isReplacement && !f.isReAudit && f.status === "pending").length;
   const newUploadCount = matchedCount - reAuditCount - replacementCount;
+  const totalToUpload = zipFiles.filter(f => f.matchedAuditId).length;
+  const overallProgress = totalToUpload > 0 ? Math.round((completedCount / totalToUpload) * 100) : 0;
   const visibleFiles = zipFiles.slice(0, visibleCount);
   const hiddenCount = zipFiles.length - visibleCount;
 
@@ -383,6 +395,8 @@ export const BulkMetadataUploadDialog = ({
       setZipFiles([]);
       setVisibleCount(MAX_VISIBLE_DEFAULT);
       setShowConfirmDialog(false);
+      setCompletedCount(0);
+      setStartTime(null);
     }
     setIsOpen(open);
   };
@@ -421,6 +435,21 @@ export const BulkMetadataUploadDialog = ({
 
           {zipFiles.length > 0 && (
             <div className="space-y-3">
+              {/* Overall progress bar */}
+              {isUploading && (
+                <div className="space-y-1 p-3 bg-muted/30 rounded-lg">
+                  <div className="flex items-center justify-between text-sm font-medium">
+                    <span>Processing {completedCount} of {totalToUpload} files...</span>
+                    <span>{overallProgress}%</span>
+                  </div>
+                  <Progress value={overallProgress} className="h-2" />
+                  {startTime && (
+                    <p className="text-xs text-muted-foreground">
+                      Elapsed: {Math.round((Date.now() - startTime) / 1000)}s
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 {newUploadCount > 0 && (
                   <Badge variant="secondary">{newUploadCount} new</Badge>
