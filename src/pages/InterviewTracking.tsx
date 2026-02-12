@@ -49,6 +49,7 @@ import { Label } from "@/components/ui/label";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
 import { BulkMetadataUploadDialog } from "@/components/tracking/BulkMetadataUploadDialog";
+import { BulkPdfUploadDialog } from "@/components/tracking/BulkPdfUploadDialog";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
@@ -258,7 +259,7 @@ const InterviewTracking = () => {
             interview_date
           )
         `)
-        .limit(5000);
+        .limit(50000);
       
       if (auditsError) {
         console.error("Error fetching audits with metadata:", auditsError);
@@ -678,19 +679,43 @@ const InterviewTracking = () => {
     );
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "Audit Passed":
-        return <Badge className="bg-success text-success-foreground gap-1"><CheckCircle className="h-3 w-3" />Passed</Badge>;
-      case "Audit Failed":
-        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
-      case "Awaiting Review":
-        return <Badge variant="outline" className="text-warning border-warning gap-1">Pending</Badge>;
-      case "In Review":
-        return <Badge variant="secondary" className="gap-1">In Review</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+  const getStatusBadge = (status: string, artifactCorrection?: string[] | null) => {
+    const badge = (() => {
+      switch (status) {
+        case "Audit Passed":
+          return <Badge className="bg-success text-success-foreground gap-1"><CheckCircle className="h-3 w-3" />Passed</Badge>;
+        case "Audit Failed":
+          return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
+        case "Awaiting Review":
+          return <Badge variant="outline" className="text-warning border-warning gap-1">Pending</Badge>;
+        case "In Review":
+          return <Badge variant="secondary" className="gap-1">In Review</Badge>;
+        default:
+          return <Badge variant="outline">{status}</Badge>;
+      }
+    })();
+
+    // Show artifact correction indicators for failed audits
+    if (status === "Audit Failed" && artifactCorrection && artifactCorrection.length > 0) {
+      const hasPdf = artifactCorrection.includes("scanned_pdf");
+      const hasMeta = artifactCorrection.includes("metadata");
+      const correctionBadge = hasPdf && hasMeta ? (
+        <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>
+      ) : hasPdf ? (
+        <Badge className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 border-red-300">P</Badge>
+      ) : hasMeta ? (
+        <Badge className="h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-orange-300">M</Badge>
+      ) : null;
+
+      return (
+        <div className="flex items-center gap-1">
+          {badge}
+          {correctionBadge}
+        </div>
+      );
     }
+
+    return badge;
   };
 
   const handleViewFailed = (interview: TrackingInterview) => {
@@ -791,7 +816,16 @@ const InterviewTracking = () => {
               trigger={
                 <Button variant="outline" className="gap-2 text-xs sm:text-sm">
                   <FileArchive className="h-4 w-4" />
-                  <span className="hidden sm:inline">Bulk Upload</span>
+                  <span className="hidden sm:inline">Bulk Metadata</span>
+                </Button>
+              }
+            />
+            <BulkPdfUploadDialog
+              onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
+              trigger={
+                <Button variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <Upload className="h-4 w-4" />
+                  <span className="hidden sm:inline">Bulk PDF</span>
                 </Button>
               }
             />
@@ -1074,7 +1108,7 @@ const InterviewTracking = () => {
                                 {interview.team_name || "Assigned"}
                               </Badge>
                             )}
-                            {getStatusBadge(interview.status)}
+                            {getStatusBadge(interview.status, interview.artifact_correction)}
                           </div>
                         </div>
                       </AccordionTrigger>
@@ -1305,7 +1339,7 @@ const InterviewTracking = () => {
                           {interview.interviewee_name || "-"}
                         </TableCell>
                         <TableCell>{interview.interview_date || "-"}</TableCell>
-                        <TableCell>{getStatusBadge(interview.status)}</TableCell>
+                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction)}</TableCell>
                         <TableCell>
                           {getTeamBadge(interview)}
                         </TableCell>

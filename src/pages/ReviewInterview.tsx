@@ -136,7 +136,7 @@ const ReviewInterview = () => {
       const {
         data,
         error
-      } = await supabase.from("audits").select("*").eq("id", auditId).single();
+      } = await supabase.from("audits").select("*").eq("id", auditId).maybeSingle();
       if (error) throw error;
       return data;
     },

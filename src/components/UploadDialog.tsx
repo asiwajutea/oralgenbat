@@ -33,6 +33,7 @@ export const UploadDialog = ({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [visibleCount, setVisibleCount] = useState(5);
+  const [completedFileCount, setCompletedFileCount] = useState(0);
 
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setIsOpen = controlledOnOpenChange || setInternalOpen;
@@ -129,6 +130,7 @@ export const UploadDialog = ({
 
     setIsUploading(true);
     setUploadProgress({});
+    setCompletedFileCount(0);
 
     try {
       // Check for duplicates
@@ -147,6 +149,7 @@ export const UploadDialog = ({
       }
 
       // Upload only valid files
+      let completedFiles = 0;
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i];
         const fileName = file.name.replace(/\.pdf$/i, "");
@@ -164,6 +167,8 @@ export const UploadDialog = ({
         });
 
         if (dbError) throw dbError;
+        completedFiles++;
+        setCompletedFileCount(completedFiles);
       }
 
       if (validFiles.length > 0) {
@@ -219,9 +224,20 @@ export const UploadDialog = ({
 
           {selectedFiles.length > 0 && (
             <div className="space-y-3">
+              {/* Overall progress during upload */}
+              {isUploading && selectedFiles.length > 1 && (
+                <div className="space-y-1 p-3 bg-muted/30 rounded-lg">
+                  <div className="flex items-center justify-between text-sm font-medium">
+                    <span>Uploading {completedFileCount + 1} of {selectedFiles.length} file(s)...</span>
+                    <span>{Math.round((completedFileCount / selectedFiles.length) * 100)}%</span>
+                  </div>
+                  <Progress value={(completedFileCount / selectedFiles.length) * 100} className="h-2" />
+                </div>
+              )}
+
               <p className="text-sm font-medium">
                 {isUploading
-                  ? `Uploading ${Object.keys(uploadProgress).length} of ${selectedFiles.length} file(s)...`
+                  ? `Uploading ${completedFileCount + 1} of ${selectedFiles.length} file(s)...`
                   : `Selected ${selectedFiles.length} file(s):`}
               </p>
 
