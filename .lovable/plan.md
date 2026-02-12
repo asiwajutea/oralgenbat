@@ -1,109 +1,70 @@
 
 
-## Plan: Fix Errors and Implement Comment Workflow Changes
+## Plan: Fix Search/Loading Issues, Add Visual Indicators, Progress Trackers, and Bulk PDF Upload
 
-This plan addresses 5 error fixes and 1 major feature change.
+### 1. Fix "Can't Load Audit" for Ready for Review (Super Admin)
 
----
+**Problem:** `ReviewInterview.tsx` line 139 uses `.single()` to fetch the audit record. If the RLS policy fails to return the row (or an unexpected condition occurs), `.single()` throws an error, causing the query to fail and showing "Audit Not Found".
 
-### 1. Restrict Interview Deletion to Admin/Super Admin Only
+**Fix:**
+- `src/pages/ReviewInterview.tsx` line 139: Change `.single()` to `.maybeSingle()` on the audit query itself. This prevents the query from throwing when no row is returned and instead shows the "Audit Not Found" message gracefully.
+- Additionally, check that the `is_user_approved` function correctly evaluates for the super admin user. If the profile's `is_approved` field is `false`, no audits will be visible. Verify via a database query.
 
-**Problem:** Any approved user can delete interviews via the AuditTable component.
+### 2. Fix Interviews Not Found on Tracking Page
 
-**Changes:**
-- `src/components/AuditTable.tsx`: Add role check around the delete button (lines 643-653) and the `handleDelete` function. Only show the delete button and allow deletion when `userRole === 'admin' || userRole === 'super_admin'`.
-- The `useAuth()` hook is already imported in this component, so we just need to check `userRole`.
+**Problem:** The Interview Tracking page fetches audits with `.limit(5000)` and then applies client-side role-based filtering. Interviews like `NG71_704_20260120_1210` are found on the Interviews page but not on the Tracking page because:
+- The `.limit(5000)` may truncate results if the total exceeds 5000
+- For non-super-admin roles, the filtering by `teamAssignments` interviewer codes may exclude interviews whose interviewer code (e.g., "704") is not in the user's team assignments
 
----
+**Fix:**
+- `src/pages/InterviewTracking.tsx` line 261: Remove the `.limit(5000)` or increase it significantly (e.g., 50000) for super_admin users
+- For super_admin, skip role-based filtering entirely (lines 356-370 already have this, but the limit is applied before filtering)
+- Add a search input that's independent of client-side filtering -- move the search field outside the "Filters" panel so it's always visible (currently the search is inside the collapsible filter panel)
 
-### 2. Fix Payment Stats on Interview Tracking Page
+### 3. Speed Up Bulk Metadata Upload and Improve Progress Bar
 
-**Problem:** The "Paid" and "Assigned, Not Paid" stat cards on the Interview Tracking page show placeholder text ("See Payment page" / em-dash) instead of actual numbers.
+**Problem:** The bulk metadata upload processes files in concurrent batches of 5, but the progress indicator only updates in 3 discrete jumps (0% -> 50% -> 75% -> 100%) per file, making it feel stuck. The processing step (calling `process-mobile-zip` edge function) is the slowest part.
 
-**Changes:**
-- `src/pages/InterviewTracking.tsx` (lines 880-905): Add a query to fetch payment_records and count:
-  - Interviews with a payment record (paid count)
-  - Interviews assigned to a team but without a payment record (assigned not paid)
-- Replace the placeholder "---" and "See Payment page" text with actual computed values.
+**Fix:**
+- `src/components/tracking/BulkMetadataUploadDialog.tsx`:
+  - Add an overall progress bar showing "X of Y files completed" at the top of the file list
+  - Show more granular per-file status text: "Uploading..." -> "Processing metadata..." -> "Complete"
+  - Add a file counter label like "Processing file 3 of 15..." above the file list during upload
+  - Show elapsed time during upload
 
----
+### 4. Add Artifact Correction Visual Indicator on Tracking Page
 
-### 3. Fix "Can't Load Audit" for Ready for Review Interviews
+**Problem:** The Review History page shows P (PDF), M (Metadata), or B (Both) badges next to "Failed" status to indicate which artifacts need correction. The Tracking page doesn't have this.
 
-**Problem:** When super admin clicks on "Ready for Review" interviews, they see "Audit Not Found". The metadata query at line 154 uses `.single()` which throws an error when no metadata exists, causing React Query to mark it as failed.
+**Fix:**
+- `src/pages/InterviewTracking.tsx`: In the Status column (both mobile and desktop views), when an interview has `status === "Audit Failed"` and `artifact_correction` is set, show small colored badges:
+  - "P" badge if `artifact_correction` includes "scanned_pdf" 
+  - "M" badge if `artifact_correction` includes "metadata"  
+  - "B" badge if both are present
+- Match the styling from `AdminReviewHistory.tsx` (small rounded badges next to the Failed badge)
 
-**Changes:**
-- `src/pages/ReviewInterview.tsx` (line 154): Change `.single()` to `.maybeSingle()` so that when no metadata row exists, it returns `null` instead of throwing an error.
+### 5. Add Visual Upload Progress for PDF Upload on Interviews Page
 
----
+**Problem:** The `UploadDialog.tsx` component already has per-file progress bars using XHR `upload.progress` events, but there's no overall progress indicator showing how many files have been uploaded out of the total.
 
-### 4. Fix Auditors Cannot View NG71 Interviews
+**Fix:**
+- `src/components/UploadDialog.tsx`: Add an overall progress bar at the top during upload showing "Uploading X of Y files" with a computed overall percentage
+- The per-file progress already exists, so this is a small addition
 
-**Problem:** Auditors are filtered by `effectiveContractorId` through `interview_metadata`. If an auditor's `contractor_id` or `active_contractor_id` doesn't match NG71, they won't see those interviews. Also, interviews without metadata are invisible to auditors because the Index page filters through `interview_metadata`.
+### 6. Add Bulk PDF Upload on Tracking Page
 
-**Root Cause:** In `src/pages/Index.tsx` (line 79-81), for auditors, `effectiveContractorId` uses `active_contractor_id || contractor_id`. If the auditor's profile has a different contractor_id than NG71, they won't see NG71 interviews.
+**Problem:** The tracking page only has bulk metadata (ZIP) upload. The user wants bulk PDF upload following the same matching rules.
 
-**Changes:**
-- `src/pages/Index.tsx`: When filtering for auditors, also include audits without metadata (by file_name prefix matching the contractor ID). Currently, audits without metadata are excluded because the filter goes through `interview_metadata` table.
-  - Add a secondary query for audits matching the contractor prefix in `file_name` but lacking metadata.
-  - Combine both sets of audit IDs.
-
----
-
-### 5. Refactor "Mark Resolved" to "Comment" Workflow
-
-**Problem:** The current workflow has "Mark Resolved" as the primary button. The user wants:
-1. Button renamed from "Mark Resolved" to "Comment"
-2. Anyone can start commenting without resolving
-3. "Mark Resolved" button moved INSIDE the comment box
-4. Once resolved, comments are disabled and button shows "Resolved"
-5. A "Re-open Issue" button to revert resolved status
-
-**Changes across multiple files:**
-
-#### a. `src/components/tracking/ResolvedCommentsModal.tsx` (Major Refactor)
-- Accept new props: `isResolved` (boolean), `onMarkResolved` callback, `onReopenIssue` callback
-- When NOT resolved:
-  - Show comment input normally (anyone can comment)
-  - Add a "Mark Resolved" button inside the comment input area
-- When resolved:
-  - Show the green "Marked as Resolved" banner
-  - Disable comment input
-  - Show "Re-open Issue" button
-- Remove the separate `MarkResolvedDialog` dependency - integrate marking resolved directly into this modal
-
-#### b. `src/components/tracking/MarkResolvedDialog.tsx`
-- This component becomes less important since "Mark Resolved" moves inside the comments modal. Keep it but it will be used less.
-
-#### c. `src/pages/InterviewTracking.tsx` (lines 1132-1160, 1334-1361)
-- Rename button labels:
-  - "Mark Resolved" becomes "Comment" (with MessageCircle icon)
-  - "Resolved" stays as "Resolved" (when already resolved)
-- Both buttons now open the `ResolvedCommentsModal` directly
-- Remove `MarkResolvedDialog` usage - the modal handles both commenting and resolving
-- Pass resolution/reopen callbacks to the modal
-- The unread counter logic stays the same but applies to ALL interviews (not just resolved ones)
-- Update the `resolvedAuditIds` query to also fetch comment counts for non-resolved interviews
-
-#### d. `src/pages/ReviewInterview.tsx` (lines 554-580)
-- Same rename: "Mark as Resolved" becomes "Comment", opens ResolvedCommentsModal
-- "View Resolution Comments" becomes "Resolved"
-- Pass resolution/reopen callbacks
-
-#### e. `src/pages/AdminReviewHistory.tsx`
-- Same rename pattern for any Mark Resolved / Resolved buttons in the admin table
-
-#### f. Unread Count Query Update
-- In `InterviewTracking.tsx`: Expand the unread comment count query to cover ALL interviews that have comments (not just resolved ones), since commenting is now allowed before resolution.
-
----
-
-### 6. Fix Scrolling in ResolvedCommentsModal (Still Broken)
-
-**Problem:** The `overflow-y-auto max-h-[300px]` on the comments div is still not scrolling properly.
-
-**Changes:**
-- `src/components/tracking/ResolvedCommentsModal.tsx`: Ensure the parent `DialogContent` has proper flex layout. The comment area div needs both a fixed/max height AND `overflow-y-auto`. Also ensure the auto-scroll ref targets the correct element.
+**Fix:**
+- Create a new component `src/components/tracking/BulkPdfUploadDialog.tsx` modeled on `BulkMetadataUploadDialog.tsx`:
+  - Accept multiple PDF files
+  - Match each PDF filename to an existing audit by `file_name`
+  - For matched files: upload the PDF to `audit-pdfs` storage bucket and update `audits.file_url`
+  - For failed interviews: trigger re-audit via `mark_audit_for_reaudit` RPC (same as metadata upload)
+  - Show the same matching summary (new/replace/re-audit/unmatched badges)
+  - Show per-file progress and overall progress
+  - Process in concurrent batches of 5
+- `src/pages/InterviewTracking.tsx`: Add a "Bulk PDF Upload" button next to the existing "Bulk Upload" button in the header area, or combine them into a dropdown menu
 
 ---
 
@@ -111,13 +72,9 @@ This plan addresses 5 error fixes and 1 major feature change.
 
 | File | Changes |
 |------|---------|
-| `src/components/AuditTable.tsx` | Role-gate the delete button to admin/super_admin only |
-| `src/pages/InterviewTracking.tsx` | Fix payment stats (query payment_records), rename "Mark Resolved" to "Comment", update unread count query for all interviews |
-| `src/pages/ReviewInterview.tsx` | Change `.single()` to `.maybeSingle()` for metadata query, rename buttons, pass callbacks to modal |
-| `src/pages/Index.tsx` | Include audits without metadata for auditor filtering by file_name prefix |
-| `src/components/tracking/ResolvedCommentsModal.tsx` | Major refactor: add Mark Resolved and Re-open Issue buttons inside modal, disable comments when resolved, fix scrolling |
-| `src/pages/AdminReviewHistory.tsx` | Rename Mark Resolved buttons to Comment/Resolved |
-
-### Database Changes
-- Add `artifact_correction_resolved_at` and `artifact_correction_resolved_by` columns to be nullable/clearable (they already are) so "Re-open Issue" can set them back to null. No migration needed.
+| `src/pages/ReviewInterview.tsx` | Change `.single()` to `.maybeSingle()` on audit query (line 139) |
+| `src/pages/InterviewTracking.tsx` | Remove/increase `.limit(5000)`, add artifact correction badges (P/M/B) in status column, add Bulk PDF Upload button |
+| `src/components/tracking/BulkMetadataUploadDialog.tsx` | Add overall progress counter, better status labels, elapsed time |
+| `src/components/UploadDialog.tsx` | Add overall upload progress bar showing "X of Y files" |
+| `src/components/tracking/BulkPdfUploadDialog.tsx` | **New file** -- Bulk PDF upload dialog following same pattern as BulkMetadataUploadDialog |
 
