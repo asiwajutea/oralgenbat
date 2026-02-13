@@ -27,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { isValidInterviewName } from "@/lib/utils";
 
 interface BulkPdfUploadDialogProps {
   onUploadComplete: () => void;
@@ -76,9 +77,16 @@ export const BulkPdfUploadDialog = ({
     if (pdfOnly.length !== files.length) {
       toast.error("Only PDF files are allowed");
     }
-    if (pdfOnly.length === 0) return;
 
-    const fileNames = pdfOnly.map((f) => f.name.replace(/\.pdf$/i, ""));
+    // Validate interview naming format
+    const invalidFiles = pdfOnly.filter(f => !isValidInterviewName(f.name.replace(/\.pdf$/i, "")));
+    if (invalidFiles.length > 0) {
+      toast.error(`Invalid filename(s): ${invalidFiles.map(f => f.name).slice(0, 3).join(", ")}${invalidFiles.length > 3 ? ` and ${invalidFiles.length - 3} more` : ""}. Expected format: NGXX_XXX_XXXXXXXX_XXXX (e.g. NG71_650_20250702_1233)`);
+    }
+    const validPdfs = pdfOnly.filter(f => isValidInterviewName(f.name.replace(/\.pdf$/i, "")));
+    if (validPdfs.length === 0) return;
+
+    const fileNames = validPdfs.map((f) => f.name.replace(/\.pdf$/i, ""));
 
     const { data: matchingAudits, error } = await supabase
       .from("audits")
@@ -97,7 +105,7 @@ export const BulkPdfUploadDialog = ({
       ]) || []
     );
 
-    const processed: PdfFile[] = pdfOnly.map((file) => {
+    const processed: PdfFile[] = validPdfs.map((file) => {
       const fileName = file.name.replace(/\.pdf$/i, "");
       const matched = auditMap.get(fileName);
 

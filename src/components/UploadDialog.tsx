@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isValidInterviewName } from "@/lib/utils";
 import { Upload } from "lucide-react";
 import {
   Dialog,
@@ -47,10 +48,16 @@ export const UploadDialog = ({
     if (pdfFiles.length !== files.length) {
       toast.error("Only PDF files are allowed");
     }
+
+    // Validate interview naming format
+    const invalidFiles = pdfFiles.filter(f => !isValidInterviewName(f.name.replace(/\.pdf$/i, "")));
+    if (invalidFiles.length > 0) {
+      toast.error(`Invalid filename(s): ${invalidFiles.map(f => f.name).slice(0, 3).join(", ")}${invalidFiles.length > 3 ? ` and ${invalidFiles.length - 3} more` : ""}. Expected format: NGXX_XXX_XXXXXXXX_XXXX (e.g. NG71_650_20250702_1233)`);
+    }
+    const validFiles = pdfFiles.filter(f => isValidInterviewName(f.name.replace(/\.pdf$/i, "")));
     
-    setSelectedFiles(pdfFiles);
-    // Reset visible count when new files are selected
-    setVisibleCount(Math.min(MAX_VISIBLE_DEFAULT, pdfFiles.length));
+    setSelectedFiles(validFiles);
+    setVisibleCount(Math.min(MAX_VISIBLE_DEFAULT, validFiles.length));
   };
 
   const uploadFileWithProgress = async (

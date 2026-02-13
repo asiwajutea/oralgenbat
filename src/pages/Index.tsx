@@ -193,16 +193,16 @@ const Index = () => {
           
           if (hasReAudit) {
             if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
-              conditions.push(`and(is_re_audit.eq.true,status.eq.Awaiting Review,reviewed_by.eq.${profile.full_name})`);
+              conditions.push(`and(is_re_audit.eq.true,status.eq."Awaiting Review",reviewed_by.eq.${profile.full_name})`);
             } else {
-              conditions.push(`and(is_re_audit.eq.true,status.eq.Awaiting Review)`);
+              conditions.push(`and(is_re_audit.eq.true,status.eq."Awaiting Review")`);
             }
           }
           
           if (hasReadyForReview) {
             // Ready for Review is complex - need to filter for audits with both artifacts
             // For now, just filter by status and let client-side handle metadata check
-            conditions.push(`and(status.in.(Pending,Awaiting Review),file_url.not.is.null,mobile_zip_url.not.is.null)`);
+            conditions.push(`and(status.in.("Pending","Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null)`);
           }
           
           if (otherStatuses.length > 0) {
