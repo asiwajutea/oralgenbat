@@ -200,13 +200,12 @@ const Index = () => {
           }
           
           if (hasReadyForReview) {
-            // Ready for Review is complex - need to filter for audits with both artifacts
-            // For now, just filter by status and let client-side handle metadata check
-            conditions.push(`and(status.in.("Pending","Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null)`);
+            // Ready for Review: audits with both PDF and metadata, in Pending or Awaiting Review status
+            conditions.push(`and(or(status.eq.Pending,status.eq."Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null)`);
           }
           
           if (otherStatuses.length > 0) {
-            conditions.push(`status.in.(${otherStatuses.join(",")})`);
+            conditions.push(`status.in.(${otherStatuses.map(s => `"${s}"`).join(",")})`);
           }
           
           query = query.or(conditions.join(","));
