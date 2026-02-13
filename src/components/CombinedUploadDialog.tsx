@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { isValidInterviewName } from "@/lib/utils";
 
 interface CombinedUploadDialogProps {
   onUploadComplete: () => void;
@@ -95,8 +96,15 @@ export const CombinedUploadDialog = ({
       toast.error("Only PDF files are allowed in this section");
     }
 
-    setPdfFiles(pdfFilesOnly);
-    updateFilePairs(pdfFilesOnly, zipFiles);
+    // Validate interview naming format
+    const invalidFiles = pdfFilesOnly.filter(f => !isValidInterviewName(f.name.replace(/\.pdf$/i, "")));
+    if (invalidFiles.length > 0) {
+      toast.error(`Invalid filename(s): ${invalidFiles.map(f => f.name).slice(0, 3).join(", ")}${invalidFiles.length > 3 ? ` and ${invalidFiles.length - 3} more` : ""}. Expected format: NGXX_XXX_XXXXXXXX_XXXX (e.g. NG71_650_20250702_1233)`);
+    }
+    const validPdfs = pdfFilesOnly.filter(f => isValidInterviewName(f.name.replace(/\.pdf$/i, "")));
+
+    setPdfFiles(validPdfs);
+    updateFilePairs(validPdfs, zipFiles);
   };
 
   const handleZipSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,8 +117,15 @@ export const CombinedUploadDialog = ({
       toast.error("Only ZIP files are allowed in this section");
     }
 
-    setZipFiles(zipFilesOnly);
-    updateFilePairs(pdfFiles, zipFilesOnly);
+    // Validate interview naming format
+    const invalidFiles = zipFilesOnly.filter(f => !isValidInterviewName(f.name.replace(/\.zip$/i, "")));
+    if (invalidFiles.length > 0) {
+      toast.error(`Invalid filename(s): ${invalidFiles.map(f => f.name).slice(0, 3).join(", ")}${invalidFiles.length > 3 ? ` and ${invalidFiles.length - 3} more` : ""}. Expected format: NGXX_XXX_XXXXXXXX_XXXX (e.g. NG71_650_20250702_1233)`);
+    }
+    const validZips = zipFilesOnly.filter(f => isValidInterviewName(f.name.replace(/\.zip$/i, "")));
+
+    setZipFiles(validZips);
+    updateFilePairs(pdfFiles, validZips);
   };
 
   const checkForDuplicates = async (fileNames: string[]) => {
