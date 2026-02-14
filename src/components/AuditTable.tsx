@@ -479,6 +479,61 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
     input.click();
   };
 
+  const handleDeleteMetadata = async (auditId: string, fileName: string) => {
+    if (!confirm(`Are you sure you want to delete all metadata for "${fileName}"? This will remove the ZIP file, photos, and metadata. This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      // 1. Delete interview_photos
+      await supabase.from('interview_photos').delete().eq('audit_id', auditId);
+      
+      // 2. Delete interview_metadata
+      await supabase.from('interview_metadata').delete().eq('audit_id', auditId);
+      
+      // 3. Delete storage files from mobile-zips bucket
+      const { data: zipFiles } = await supabase.storage
+        .from('mobile-zips')
+        .list(auditId);
+      
+      if (zipFiles && zipFiles.length > 0) {
+        await supabase.storage
+          .from('mobile-zips')
+          .remove(zipFiles.map(f => `${auditId}/${f.name}`));
+      }
+
+      // 4. Delete photos from interview-photos bucket
+      const { data: photoFiles } = await supabase.storage
+        .from('interview-photos')
+        .list(auditId);
+      
+      if (photoFiles && photoFiles.length > 0) {
+        await supabase.storage
+          .from('interview-photos')
+          .remove(photoFiles.map(f => `${auditId}/${f.name}`));
+      }
+      
+      // 5. Nullify mobile_zip fields on audits table
+      await supabase
+        .from('audits')
+        .update({ mobile_zip_url: null, mobile_zip_uploaded_at: null })
+        .eq('id', auditId);
+
+      onRefresh?.();
+      toast({
+        title: "Metadata Deleted",
+        description: `All metadata for "${fileName}" has been removed.`,
+      });
+    } catch (error) {
+      console.error("Delete metadata error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete metadata",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleDelete = async (auditId: string) => {
     if (!confirm("Are you sure you want to delete this interview? This action cannot be undone.")) {
       return;
@@ -700,17 +755,32 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
                                     <CheckCircle2 className="h-4 w-4 text-green-600" />
                                     <span className="text-sm">Uploaded</span>
                                   </div>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-8 w-8"
-                                    onClick={(e) => e.stopPropagation()}
-                                    asChild
-                                  >
-                                    <a href={audit.mobile_zip_url} target="_blank" rel="noopener noreferrer">
-                                      <Eye className="h-4 w-4" />
-                                    </a>
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="h-8 w-8"
+                                      onClick={(e) => e.stopPropagation()}
+                                      asChild
+                                    >
+                                      <a href={audit.mobile_zip_url} target="_blank" rel="noopener noreferrer">
+                                        <Eye className="h-4 w-4" />
+                                      </a>
+                                    </Button>
+                                    {(userRole === 'admin' || userRole === 'super_admin') && metadataMap?.has(audit.id) && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-destructive hover:text-destructive"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteMetadata(audit.id, audit.file_name);
+                                        }}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
                                 </>
                               ) : (
                                 <>

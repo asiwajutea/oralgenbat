@@ -149,27 +149,11 @@ const Index = () => {
         const otherStatuses = filters.statuses.filter(s => s !== "In Progress" && s !== "Re-Audit" && s !== "Ready for Review");
 
         if (hasReadyForReview && !hasReAudit && !hasInProgress && otherStatuses.length === 0) {
-          // Only Ready for Review filter - get audits that have both artifacts
-          // First get audit IDs with metadata
-          const { data: metadataAudits } = await supabase
-            .from("interview_metadata")
-            .select("audit_id");
-          
-          const auditIdsWithMetadata = metadataAudits?.map(m => m.audit_id).filter(Boolean) as string[] || [];
-          
-          if (auditIdsWithMetadata.length > 0) {
-            query = query
-              .in("status", ["Pending", "Awaiting Review"])
-              .not("file_url", "is", null)
-              .not("mobile_zip_url", "is", null)
-              .in("id", auditIdsWithMetadata);
-          } else {
-            // No metadata found, return empty result
-            setAudits([]);
-            setTotalCount(0);
-            setIsLoading(false);
-            return;
-          }
+          // Only Ready for Review filter - use mobile_zip_url as proxy for metadata presence
+          query = query
+            .in("status", ["Pending", "Awaiting Review"])
+            .not("file_url", "is", null)
+            .not("mobile_zip_url", "is", null);
         } else if (hasReAudit && !hasInProgress && !hasReadyForReview && otherStatuses.length === 0) {
           // Only Re-Audit filter
           query = query.eq("is_re_audit", true).eq("status", "Awaiting Review");
@@ -256,6 +240,15 @@ const Index = () => {
             return audit.reviewed_by === profile.full_name;
           }
           return true;
+        });
+      }
+      
+      // Sort: when "Awaiting Review" filter is active, show complete artifacts first
+      if (filters.statuses.includes("Awaiting Review")) {
+        filteredData.sort((a, b) => {
+          const aReady = a.file_url && a.mobile_zip_url ? 1 : 0;
+          const bReady = b.file_url && b.mobile_zip_url ? 1 : 0;
+          return bReady - aReady;
         });
       }
       
