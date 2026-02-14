@@ -1,53 +1,64 @@
 
 
-## Plan: Fix "Ready for Review" Loading and Add Interview Naming Validation
+## Plan: Fix "Ready for Review" Filter and Add Sorting + Delete Metadata Button
 
-### 1. Fix 400 Bad Request When Loading "Ready for Review" Interviews
+### 1. Fix "Ready for Review" Filter (Root Cause: URL Too Long)
 
-**Root Cause:** In `src/pages/Index.tsx` line 205, the `.or()` filter string contains:
-```
-and(status.in.(Pending,Awaiting Review),file_url.not.is.null,mobile_zip_url.not.is.null)
-```
-The space in `Awaiting Review` breaks PostgREST's query parser, causing a 400 Bad Request. PostgREST `.or()` string filters require spaces to be quoted.
+**Root Cause:** The "Ready for Review" filter (lines 151-172 in `Index.tsx`) fetches ALL 1,135+ `audit_id` values from `interview_metadata` and passes them into a `.in("id", auditIdsWithMetadata)` query parameter. PostgREST sends filters as URL query parameters, and 1,135 UUIDs exceed the maximum URL length, causing a silent failure that triggers "Failed to load audits".
 
-**Fix:** In `src/pages/Index.tsx` line 205, wrap the status values with double quotes:
-```
-and(status.in.("Pending","Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null)
-```
+**Fix:** Remove the client-side metadata ID fetch entirely. Instead, since `mobile_zip_url` is set when a ZIP (containing metadata) is uploaded, use `mobile_zip_url IS NOT NULL` as a reliable proxy for "has metadata". The query already checks `file_url IS NOT NULL` and `mobile_zip_url IS NOT NULL`, which together mean "has both PDF and metadata". No need to cross-reference the `interview_metadata` table at all.
 
-Similarly, check line 196 which has `status.eq.Awaiting Review` -- this also needs quoting:
-```
-and(is_re_audit.eq.true,status.eq."Awaiting Review",reviewed_by.eq.${profile.full_name})
-```
-And line 198:
-```
-and(is_re_audit.eq.true,status.eq."Awaiting Review")
-```
+**Changes in `src/pages/Index.tsx`:**
+- Lines 151-172 (standalone "Ready for Review" filter): Replace the metadata fetch + `.in()` approach with a simple query:
+  ```
+  query = query
+    .in("status", ["Pending", "Awaiting Review"])
+    .not("file_url", "is", null)
+    .not("mobile_zip_url", "is", null);
+  ```
+- Lines 202-205 (combined filter with "Ready for Review"): Already uses the correct approach with `.or()` string -- no change needed here.
+
+This eliminates the metadata fetch entirely and keeps the query URL short.
 
 ---
 
-### 2. Add Interview Naming Format Validation
+### 2. Sort "Awaiting Review" -- Complete Artifacts First
 
-**Requirement:** Every uploaded PDF or metadata file must match the pattern `NG\d{2}_\d{3,4}_\d{8}_\d{4}` (e.g., `NG71_650_20250702_1233`). No hyphens allowed, only underscores.
+**Requirement:** When "Awaiting Review" filter is selected, interviews with both PDF and metadata (green check) should appear at the top.
 
-**Approach:** Create a shared validation utility function and apply it in all upload entry points.
+**Fix in `src/pages/Index.tsx`:** After fetching the audits data (line 244), when the "Awaiting Review" filter is active, sort the results client-side so that audits with both `file_url` and `mobile_zip_url` (and metadata in `metadataMap`) appear first:
 
-#### a. Create validation utility
-Add to `src/lib/utils.ts`:
+- After `setAudits(filteredData)`, check if "Awaiting Review" is in the active filters
+- Sort: audits with both `file_url` AND `mobile_zip_url` non-null go to the top
+- To also check for actual metadata presence, fetch metadata IDs only for the current page of audits (max 10-50 IDs, not 1000+) and use that for sorting
+
+Actually, since we already know `mobile_zip_url` being set means metadata was uploaded, we can sort purely client-side:
 ```typescript
-export function isValidInterviewName(name: string): boolean {
-  return /^NG\d{2}_\d{3,4}_\d{8}_\d{4}$/.test(name);
-}
+filteredData.sort((a, b) => {
+  const aReady = a.file_url && a.mobile_zip_url ? 1 : 0;
+  const bReady = b.file_url && b.mobile_zip_url ? 1 : 0;
+  return bReady - aReady; // Ready ones first
+});
 ```
 
-#### b. Apply validation in these upload components:
-- **`src/components/UploadDialog.tsx`** (single/multi PDF upload on Interviews page): Validate each filename (minus `.pdf` extension) before upload. Reject invalid filenames with a toast error showing which files are invalid.
-- **`src/components/BulkZipUploadDialog.tsx`** (bulk ZIP upload on Interviews page): Validate each filename (minus `.zip` extension) before upload.
-- **`src/components/tracking/BulkMetadataUploadDialog.tsx`** (bulk metadata upload on Tracking page): Validate each ZIP filename before matching.
-- **`src/components/tracking/BulkPdfUploadDialog.tsx`** (bulk PDF upload on Tracking page): Validate each PDF filename before matching.
-- **`src/components/CombinedUploadDialog.tsx`** (combined upload): Validate the PDF filename before upload.
+This sorting applies when "Awaiting Review" is among the selected status filters.
 
-In each case, files with invalid names will be flagged in the file list with an error badge and excluded from upload. A toast will inform the user which files have invalid names and the expected format.
+---
+
+### 3. Add "Delete Metadata" Button (Admin/Super Admin Only)
+
+**Requirement:** For interviews that have metadata uploaded, show a delete metadata button. Only admin and super_admin can use it.
+
+**Changes in `src/components/AuditTable.tsx`:**
+- Add a new function `handleDeleteMetadata(auditId)` that:
+  1. Confirms with the user
+  2. Deletes the row from `interview_metadata` where `audit_id = auditId`
+  3. Deletes associated `interview_photos` where `audit_id = auditId`
+  4. Deletes storage files from `mobile-zips` bucket for the audit
+  5. Updates `audits` table: sets `mobile_zip_url = null` and `mobile_zip_uploaded_at = null`
+  6. Calls `onRefresh()` to reload
+- In the expanded row details section (around line 662), when `metadataMap?.has(audit.id)` is true AND the user is admin/super_admin, show a "Delete Metadata" button with a Trash2 icon next to the Mobile Zip File row
+- The button shows a confirmation dialog before proceeding
 
 ---
 
@@ -55,10 +66,6 @@ In each case, files with invalid names will be flagged in the file list with an 
 
 | File | Changes |
 |------|---------|
-| `src/pages/Index.tsx` | Quote "Awaiting Review" in `.or()` filter strings (lines 196, 198, 205) to fix 400 Bad Request |
-| `src/lib/utils.ts` | Add `isValidInterviewName()` validation function |
-| `src/components/UploadDialog.tsx` | Validate filenames before upload, reject invalid ones |
-| `src/components/BulkZipUploadDialog.tsx` | Validate filenames before upload |
-| `src/components/tracking/BulkMetadataUploadDialog.tsx` | Validate filenames before upload |
-| `src/components/tracking/BulkPdfUploadDialog.tsx` | Validate filenames before upload |
-| `src/components/CombinedUploadDialog.tsx` | Validate filenames before upload |
+| `src/pages/Index.tsx` | Remove metadata ID fetch for "Ready for Review" filter (use `mobile_zip_url` check instead); add client-side sorting for "Awaiting Review" filter |
+| `src/components/AuditTable.tsx` | Add `handleDeleteMetadata` function and "Delete Metadata" button for admin/super_admin when metadata exists |
+
