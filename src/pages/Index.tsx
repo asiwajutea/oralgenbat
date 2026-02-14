@@ -218,8 +218,16 @@ const Index = () => {
       const from = (currentPage - 1) * itemsPerPage;
       const to = from + itemsPerPage - 1;
       
+      // When "Awaiting Review" filter is active, order by complete artifacts first (server-side)
+      if (filters.statuses.includes("Awaiting Review") || filters.statuses.includes("Ready for Review")) {
+        query = query
+          .order("mobile_zip_url", { ascending: false, nullsFirst: false })
+          .order("uploaded_at", { ascending: false });
+      } else {
+        query = query.order("uploaded_at", { ascending: false });
+      }
+      
       const { data, error, count } = await query
-        .order("uploaded_at", { ascending: false })
         .range(from, to);
 
       if (error) throw error;
