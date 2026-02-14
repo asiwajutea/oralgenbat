@@ -218,8 +218,14 @@ const Index = () => {
       const from = (currentPage - 1) * itemsPerPage;
       const to = from + itemsPerPage - 1;
       
-      // When "Awaiting Review" filter is active, order by complete artifacts first (server-side)
-      if (filters.statuses.includes("Awaiting Review") || filters.statuses.includes("Ready for Review")) {
+      // When "Awaiting Review", "Pending", or "Ready for Review" filter is active, 
+      // order by complete artifacts first (interviews with both PDF + metadata appear on first pages)
+      const shouldSortByArtifacts = filters.statuses.includes("Awaiting Review") 
+        || filters.statuses.includes("Ready for Review")
+        || filters.statuses.includes("Pending")
+        || (filters.statuses.length === 0); // Also sort when no filter is applied
+      
+      if (shouldSortByArtifacts) {
         query = query
           .order("mobile_zip_url", { ascending: false, nullsFirst: false })
           .order("uploaded_at", { ascending: false });
