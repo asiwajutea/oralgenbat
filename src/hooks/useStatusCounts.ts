@@ -95,9 +95,9 @@ export const useStatusCounts = () => {
           return;
         }
         
-        // Complete artifacts = has PDF AND has successfully extracted metadata (not just ZIP URL)
-        // This excludes corrupted ZIPs where the ZIP was uploaded but processing failed
-        const hasCompleteArtifacts = !!audit.file_url && hasMetadata;
+        // Complete artifacts = has PDF AND has mobile_zip_url (proxy for metadata presence)
+        // Uses mobile_zip_url as proxy to match the Interviews page query behavior
+        const hasCompleteArtifacts = !!audit.file_url && !!audit.mobile_zip_url;
         
         // Count as "In Progress" if locked and within 1 hour
         if (audit.locked_by && audit.locked_at && audit.locked_at > oneHourAgo) {

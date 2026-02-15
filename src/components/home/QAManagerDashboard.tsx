@@ -21,6 +21,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
+import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
 const QAManagerDashboard = () => {
   const navigate = useNavigate();
@@ -159,6 +160,9 @@ const QAManagerDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Stats */}
+      <PaymentStatsCards />
 
       {/* Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

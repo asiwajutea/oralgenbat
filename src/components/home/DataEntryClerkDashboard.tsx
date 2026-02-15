@@ -23,6 +23,7 @@ import {
 import { format, startOfDay, startOfWeek, startOfMonth } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
+import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
 const DataEntryClerkDashboard = () => {
   const navigate = useNavigate();
@@ -272,6 +273,9 @@ const DataEntryClerkDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Stats */}
+      <PaymentStatsCards />
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

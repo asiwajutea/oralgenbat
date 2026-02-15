@@ -38,6 +38,7 @@ import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { format } from "date-fns";
 import { useState } from "react";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
+import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
 const ContractorDashboard = () => {
   const navigate = useNavigate();
@@ -302,6 +303,9 @@ const ContractorDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Stats */}
+      <PaymentStatsCards />
 
       {/* Team Overview & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
