@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
+import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
 const SubContractorDashboard = () => {
   const navigate = useNavigate();
@@ -228,6 +229,9 @@ const SubContractorDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Stats */}
+      <PaymentStatsCards />
 
       {/* Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -16,6 +16,7 @@ import {
 import { format, subHours } from "date-fns";
 import { AuditorStatsCard } from "@/components/AuditorStatsCard";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
+import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
 const AuditorDashboard = () => {
   const navigate = useNavigate();
@@ -134,6 +135,9 @@ const AuditorDashboard = () => {
 
       {/* Stats Card */}
       <AuditorStatsCard />
+
+      {/* Payment Stats */}
+      <PaymentStatsCards />
 
       {/* Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

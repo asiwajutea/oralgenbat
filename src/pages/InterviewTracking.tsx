@@ -76,6 +76,7 @@ interface TrackingInterview {
   total_names: number | null;
   interviewee_name: string | null;
   interview_date: string | null;
+  last_modified: string | null;
   has_metadata: boolean;
   has_pdf: boolean;
   team_assigned: boolean;
@@ -102,7 +103,7 @@ const InterviewTracking = () => {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortField, setSortField] = useState<string>("reviewed_at");
+  const [sortField, setSortField] = useState<string>("last_modified");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -235,36 +236,56 @@ const InterviewTracking = () => {
   const { data: interviews = [], isLoading } = useQuery({
     queryKey: ["tracking-interviews", userRole, effectiveContractorId, teamAssignments],
     queryFn: async () => {
-      // Single query with LEFT JOIN to get audits with their metadata
-      const { data: auditsWithMeta, error: auditsError } = await supabase
-        .from("audits")
-        .select(`
-          id,
-          file_name,
-          file_url,
-          status,
-          reviewed_at,
-          review_comment,
-          action_plan,
-          artifact_correction,
-          artifact_correction_resolved_at,
-          artifact_correction_resolved_by,
-          interview_metadata (
-            audit_id,
-            contractor_id,
-            interviewer_code,
-            field_manager,
-            total_names,
-            interviewee_name,
-            interview_date
-          )
-        `)
-        .limit(50000);
+      // Paginated fetch to bypass 1000 row default limit
+      const fetchAllAudits = async () => {
+        const batchSize = 1000;
+        let allAudits: any[] = [];
+        let from = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data: batch, error } = await supabase
+            .from("audits")
+            .select(`
+              id,
+              file_name,
+              file_url,
+              status,
+              reviewed_at,
+              review_comment,
+              action_plan,
+              artifact_correction,
+              artifact_correction_resolved_at,
+              artifact_correction_resolved_by,
+              last_modified,
+              uploaded_at,
+              interview_metadata (
+                audit_id,
+                contractor_id,
+                interviewer_code,
+                field_manager,
+                total_names,
+                interviewee_name,
+                interview_date
+              )
+            `)
+            .range(from, from + batchSize - 1);
+          
+          if (error) throw error;
+          if (!batch || batch.length === 0) {
+            hasMore = false;
+          } else {
+            allAudits.push(...batch);
+            if (batch.length < batchSize) {
+              hasMore = false;
+            }
+            from += batchSize;
+          }
+        }
+        return allAudits;
+      };
       
-      if (auditsError) {
-        console.error("Error fetching audits with metadata:", auditsError);
-        throw auditsError;
-      }
+      const auditsWithMeta = await fetchAllAudits();
       
       if (!auditsWithMeta || auditsWithMeta.length === 0) return [];
       
@@ -328,6 +349,7 @@ const InterviewTracking = () => {
           total_names: meta?.total_names || null,
           interviewee_name: meta?.interviewee_name || null,
           interview_date: meta?.interview_date || null,
+          last_modified: audit.last_modified || audit.uploaded_at || null,
           has_metadata: !!meta,
           has_pdf: !!audit.file_url,
           team_assigned: !!assignment,
@@ -376,27 +398,6 @@ const InterviewTracking = () => {
     enabled: !!user?.id,
   });
 
-  // Fetch payment stats
-  const { data: paymentStats = { paid: 0, assignedNotPaid: 0 } } = useQuery({
-    queryKey: ["payment-stats-tracking"],
-    queryFn: async () => {
-      // Count paid interviews (those with payment records)
-      const { count: paidCount } = await supabase
-        .from("payment_records")
-        .select("*", { count: "exact", head: true });
-      
-      // Count assigned interviews
-      const { count: assignedCount } = await supabase
-        .from("interview_assignments")
-        .select("*", { count: "exact", head: true });
-      
-      return {
-        paid: paidCount || 0,
-        assignedNotPaid: Math.max(0, (assignedCount || 0) - (paidCount || 0)),
-      };
-    },
-    enabled: !!user?.id,
-  });
 
   // Fetch unread comment counts for all interviews with comments (not just resolved)
   const auditIdsWithComments = useMemo(() => 
@@ -698,7 +699,7 @@ const InterviewTracking = () => {
     // Show artifact correction indicators for failed audits
     if (status === "Audit Failed" && artifactCorrection && artifactCorrection.length > 0) {
       const hasPdf = artifactCorrection.includes("scanned_pdf");
-      const hasMeta = artifactCorrection.includes("metadata");
+      const hasMeta = artifactCorrection.includes("mobile_metadata");
       const correctionBadge = hasPdf && hasMeta ? (
         <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>
       ) : hasPdf ? (
@@ -923,42 +924,6 @@ const InterviewTracking = () => {
           </Card>
         </div>
 
-        {/* Data Entry & Payment Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Assigned to Data Entry</p>
-                <p className="text-lg sm:text-2xl font-bold text-blue-600">{interviewsWithUnreadCounts.filter(i => i.team_assigned).length}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Paid</p>
-                <p className="text-lg sm:text-2xl font-bold text-green-600">{paymentStats.paid}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Assigned, Not Paid</p>
-                <p className="text-lg sm:text-2xl font-bold text-amber-600">{paymentStats.assignedNotPaid}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         {/* Filters Panel */}
         {showFilters && (
@@ -1129,8 +1094,8 @@ const InterviewTracking = () => {
                               <p className="font-medium truncate">{interview.interviewee_name || "-"}</p>
                             </div>
                             <div>
-                              <p className="text-muted-foreground text-xs">Date</p>
-                              <p className="font-medium">{interview.interview_date || "-"}</p>
+                              <p className="text-muted-foreground text-xs">Last Modified</p>
+                              <p className="font-medium">{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</p>
                             </div>
                           </div>
                           
@@ -1305,9 +1270,9 @@ const InterviewTracking = () => {
                         </div>
                       </TableHead>
                       <TableHead>Interviewee</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("interview_date")}>
+                      <TableHead className="cursor-pointer" onClick={() => handleSort("last_modified")}>
                         <div className="flex items-center gap-1">
-                          Date
+                          Last Modified
                           <ArrowUpDown className="h-3 w-3" />
                         </div>
                       </TableHead>
@@ -1338,7 +1303,7 @@ const InterviewTracking = () => {
                         <TableCell className="max-w-[150px] truncate">
                           {interview.interviewee_name || "-"}
                         </TableCell>
-                        <TableCell>{interview.interview_date || "-"}</TableCell>
+                        <TableCell>{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</TableCell>
                         <TableCell>{getStatusBadge(interview.status, interview.artifact_correction)}</TableCell>
                         <TableCell>
                           {getTeamBadge(interview)}

@@ -54,8 +54,9 @@ export function FailedInterviewModal({
   const [comment, setComment] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
-  const needsPdf = interview?.artifact_correction?.includes("PDF");
-  const needsMetadata = interview?.artifact_correction?.includes("Metadata") || 
+  const needsPdf = interview?.artifact_correction?.includes("scanned_pdf") || interview?.artifact_correction?.includes("PDF");
+  const needsMetadata = interview?.artifact_correction?.includes("mobile_metadata") || 
+                         interview?.artifact_correction?.includes("Metadata") || 
                          interview?.artifact_correction?.includes("ZIP") ||
                          interview?.artifact_correction?.includes("Photos");
 

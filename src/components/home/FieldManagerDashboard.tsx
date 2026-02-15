@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
+import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
 const FieldManagerDashboard = () => {
   const navigate = useNavigate();
@@ -187,6 +188,9 @@ const FieldManagerDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Stats */}
+      <PaymentStatsCards />
 
       {/* Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

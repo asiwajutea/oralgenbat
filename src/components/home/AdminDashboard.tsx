@@ -25,7 +25,7 @@ import { toast } from "sonner";
 import { AdminStatsCard } from "@/components/AdminStatsCard";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
-
+import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
@@ -210,6 +210,9 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Stats */}
+      <PaymentStatsCards />
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
