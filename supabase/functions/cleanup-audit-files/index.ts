@@ -95,20 +95,8 @@ Deno.serve(async (req) => {
           (Date.now() - new Date(audit.reviewed_at).getTime()) / (1000 * 60 * 60 * 24)
         );
 
-        if (daysSinceReview < 30) {
-          errors.push(`Audit ${audit.file_name}: Only ${daysSinceReview} days old`);
-          continue;
-        }
-
-        // Verify metadata exists
-        const { data: metadata } = await supabase
-          .from('interview_metadata')
-          .select('id')
-          .eq('audit_id', auditId)
-          .single();
-
-        if (!metadata) {
-          errors.push(`Audit ${audit.file_name}: No metadata found (not processed)`);
+        if (daysSinceReview < 1) {
+          errors.push(`Audit ${audit.file_name}: Less than 24 hours old`);
           continue;
         }
 
