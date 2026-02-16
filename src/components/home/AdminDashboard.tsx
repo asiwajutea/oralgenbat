@@ -36,13 +36,8 @@ const AdminDashboard = () => {
   const { data: stats } = useQuery({
     queryKey: ["admin-system-stats"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("audits")
-        .select("id, status, is_re_audit");
-      
-      if (error) throw error;
-      
-      const audits = data || [];
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
+      const audits = await fetchAllRows("audits", "id, status, is_re_audit");
       return {
         total: audits.length,
         passed: audits.filter(a => a.status === "Audit Passed").length,

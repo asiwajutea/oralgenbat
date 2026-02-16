@@ -78,9 +78,8 @@ const SubContractorDashboard = () => {
       }
       
       // Fetch ALL audits with metadata for this contractor, including total_names
-      const { data: auditsWithMeta } = await supabase
-        .from("audits")
-        .select(`
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
+      const auditsWithMeta = await fetchAllRows("audits", `
           id,
           file_name,
           status,

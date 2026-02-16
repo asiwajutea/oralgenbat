@@ -51,13 +51,10 @@ const FieldManagerDashboard = () => {
     queryFn: async () => {
       if (teamCodes.length === 0) return { passed: 0, failed: 0, pending: 0, reAudit: 0 };
       
-      const { data, error } = await supabase
-        .from("audits")
-        .select("id, file_name, status, is_re_audit");
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
+      const allAudits = await fetchAllRows("audits", "id, file_name, status, is_re_audit");
       
-      if (error) throw error;
-      
-      const teamAudits = (data || []).filter(audit => {
+      const teamAudits = allAudits.filter((audit: any) => {
         const parts = audit.file_name.split('_');
         return parts.length >= 2 && teamCodes.includes(parts[1]);
       });
