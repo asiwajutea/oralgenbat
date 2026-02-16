@@ -118,12 +118,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          // Keep loading true while we fetch the profile
-          // This prevents race condition where isApproved is checked before profile loads
-          setLoading(true);
+          // Only show loading spinner for initial sign-in, not token refreshes.
+          // TOKEN_REFRESHED fires when returning from mobile file picker (app was backgrounded),
+          // and setting loading=true would unmount the page, destroying open modals/uploads.
+          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+            setLoading(true);
+          }
           // CRITICAL: Defer Supabase calls to prevent auth deadlock
-          // Making async Supabase calls inside onAuthStateChange can cause
-          // infinite token refresh loops leading to 429 rate limit errors
           setTimeout(() => {
             fetchProfileAndRole(session.user.id);
           }, 0);
