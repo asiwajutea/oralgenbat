@@ -1,45 +1,66 @@
 
 
-## Plan: Add PDF Compression to All Upload Dialogs
+## Plan: Mobile-Friendly Upload Progress for Tracking Page
 
 ### Problem
-PDF compression was only added to `UploadDialog.tsx`. Two other components that upload PDFs are missing compression:
-
-1. **`BulkPdfUploadDialog.tsx`** (used on the Tracking page) -- uploads PDFs directly without compression
-2. **`CombinedUploadDialog.tsx`** (used on the Interviews page for PDF+ZIP uploads) -- uploads PDFs without compression
+When uploading a file from a mobile phone on the Tracking page using the per-row "Upload Metadata" button, the only feedback is a small spinner icon on the button. After selecting a file from the phone's folder, there is:
+- No file name shown
+- No upload progress bar
+- No file size indicator
+- No status updates (uploading, processing, complete)
+- The user can scroll away from the row and lose sight of even the spinner
 
 ### Solution
-Integrate the existing `compressPdf` utility into both components, matching the pattern already used in `UploadDialog.tsx`.
-
----
+Add a **sticky floating upload progress panel** at the bottom of the screen that appears whenever an inline upload is in progress. This panel will show the file name, size, progress bar, and current status -- visible regardless of scrolling.
 
 ### Technical Details
 
-**File: `src/components/tracking/BulkPdfUploadDialog.tsx`**
+**File: `src/pages/InterviewTracking.tsx`**
 
-- Import `compressPdf`, `shouldCompressPdf`, `formatFileSize` from `@/utils/compressPdf`
-- In `processPdfFile()` (around line 147), before the XHR upload, add compression logic:
-  - Check `shouldCompressPdf(pdfFile.file)` (file > 1.2 MB)
-  - If true, compress using `compressPdf()` and use the compressed file for upload
-  - Show a toast with original and compressed sizes
-  - Update the status text to show "Compressing..." during compression
-- This requires making `pdfFile.file` mutable (use a local `let fileToUpload = pdfFile.file`)
+1. **Expand upload state** (around line 159-160):
+   - Change `uploadingId` from `string | null` to a richer state object:
+     ```typescript
+     interface UploadProgress {
+       interviewId: string;
+       fileName: string;
+       interviewName: string;
+       fileSize: number;
+       progress: number; // 0-100
+       status: "uploading" | "processing" | "success" | "error";
+       errorMessage?: string;
+     }
+     const [activeUpload, setActiveUpload] = useState<UploadProgress | null>(null);
+     ```
 
-**File: `src/components/CombinedUploadDialog.tsx`**
+2. **Update `handleMetadataUpload`** (lines 728-794):
+   - Set `activeUpload` with file details immediately after file selection
+   - Use XHR with `createSignedUploadUrl` instead of direct `supabase.storage.upload` so we can track upload progress via `xhr.upload.onprogress`
+   - Update progress: 0-80% for upload, 80-90% for DB update, 90-100% for edge function processing
+   - Set status to "success" or "error" on completion
+   - Auto-dismiss the panel after 3 seconds on success
 
-- Import `compressPdf`, `shouldCompressPdf`, `formatFileSize` from `@/utils/compressPdf`
-- In `processFilePair()` (around line 155), before the PDF upload at line 166, add compression:
-  - Check `shouldCompressPdf(pair.pdfFile)` (file > 1.2 MB)
-  - If true, compress using `compressPdf()` and upload the compressed version
-  - Show a toast with size reduction info
-  - Update status to indicate compression is happening
+3. **Add floating progress panel** (before the closing `</div>` of the page):
+   - A sticky bottom panel (`fixed bottom-4 left-4 right-4 z-50`) that shows:
+     - Interview name (e.g., "NG71_650_20250702_1233")
+     - File name and size (e.g., "metadata.zip - 2.3 MB")
+     - Progress bar with percentage
+     - Status label ("Uploading...", "Processing metadata...", "Complete!", "Failed")
+     - A dismiss/close button
+   - Styled with `Card` component, with green accent on success, red on error
+   - On mobile, full-width with rounded corners and shadow
+
+4. **Keep backward compatibility**:
+   - Maintain `uploadingId` derived from `activeUpload?.interviewId` so the button spinner still works
+   - The per-row button still shows the spinner, but now the floating panel provides the detailed feedback
 
 ### Summary
 
-| File | Change |
+| Area | Change |
 |------|--------|
-| `src/components/tracking/BulkPdfUploadDialog.tsx` | Add PDF compression before upload in `processPdfFile()` |
-| `src/components/CombinedUploadDialog.tsx` | Add PDF compression before upload in `processFilePair()` |
+| Upload state | Replace simple `uploadingId` string with rich `UploadProgress` object |
+| `handleMetadataUpload` | Use XHR for progress tracking, update `activeUpload` state throughout |
+| New UI element | Sticky bottom floating panel showing file name, size, progress bar, status |
+| Mobile UX | Panel is always visible regardless of scroll position |
 
-No new dependencies or database changes needed -- just reusing the existing `compressPdf` utility.
+Only one file is modified: `src/pages/InterviewTracking.tsx`. No new dependencies or database changes needed.
 
