@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Upload, FileText, FileArchive, Check, X, AlertCircle, Link2 } from "lucide-react";
+import { compressPdf, shouldCompressPdf, formatFileSize } from "@/utils/compressPdf";
 import {
   Dialog,
   DialogContent,
@@ -153,6 +154,26 @@ export const CombinedUploadDialog = ({
     if (!pair.pdfFile) return { success: false, skipped: false };
 
     try {
+      let pdfFileToUpload: File = pair.pdfFile;
+
+      // Compress large PDFs before upload
+      if (shouldCompressPdf(pair.pdfFile)) {
+        const originalSize = formatFileSize(pair.pdfFile.size);
+        setFilePairs(prev => prev.map(p => 
+          p.fileName === pair.fileName 
+            ? { ...p, status: "uploading-pdf" as const, progress: 5 }
+            : p
+        ));
+        try {
+          pdfFileToUpload = await compressPdf(pair.pdfFile);
+          const compressedSize = formatFileSize(pdfFileToUpload.size);
+          toast.info(`${pair.fileName}: ${originalSize} → ${compressedSize}`);
+        } catch (err) {
+          console.error("Compression failed, uploading original:", err);
+          toast.error(`Compression failed for ${pair.fileName}, uploading original`);
+        }
+      }
+
       // Upload PDF
       setFilePairs(prev => prev.map(p => 
         p.fileName === pair.fileName 
@@ -165,7 +186,7 @@ export const CombinedUploadDialog = ({
 
       const { error: pdfUploadError } = await supabase.storage
         .from("audit-pdfs")
-        .upload(pdfStoragePath, pair.pdfFile);
+        .upload(pdfStoragePath, pdfFileToUpload);
 
       if (pdfUploadError) throw pdfUploadError;
 
