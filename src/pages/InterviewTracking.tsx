@@ -3,10 +3,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { formatFileSize } from "@/utils/compressPdf";
 import { 
   Search, 
   Download,
@@ -155,9 +158,20 @@ const InterviewTracking = () => {
   const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
   const [resolvedCommentsInterview, setResolvedCommentsInterview] = useState<TrackingInterview | null>(null);
 
-  // File upload refs
+  // File upload refs and progress tracking
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  
+  interface UploadProgress {
+    interviewId: string;
+    fileName: string;
+    interviewName: string;
+    fileSize: number;
+    progress: number;
+    status: "uploading" | "processing" | "success" | "error";
+    errorMessage?: string;
+  }
+  const [activeUpload, setActiveUpload] = useState<UploadProgress | null>(null);
+  const uploadingId = activeUpload?.interviewId ?? null;
 
   const isAdmin = userRole === 'admin';
   const isSuperAdmin = userRole === 'super_admin';
@@ -735,22 +749,51 @@ const InterviewTracking = () => {
       return;
     }
 
-    setUploadingId(interviewId);
+    setActiveUpload({
+      interviewId,
+      fileName: file.name,
+      interviewName: fileName,
+      fileSize: file.size,
+      progress: 0,
+      status: "uploading",
+    });
     
     try {
-      // Upload the ZIP file
       const zipPath = `mobile-zips/${interviewId}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
+
+      // Use createSignedUploadUrl + XHR for progress tracking
+      const { data: signedData, error: signError } = await supabase.storage
         .from("mobile-zips")
-        .upload(zipPath, file);
-      
-      if (uploadError) throw uploadError;
+        .createSignedUploadUrl(zipPath);
+
+      if (signError || !signedData) throw signError || new Error("Failed to create upload URL");
+
+      // XHR upload with progress
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 80);
+            setActiveUpload(prev => prev ? { ...prev, progress: pct } : prev);
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else reject(new Error(`Upload failed with status ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.open("PUT", signedData.signedUrl);
+        xhr.setRequestHeader("Content-Type", file.type || "application/zip");
+        xhr.send(file);
+      });
+
+      // DB update phase
+      setActiveUpload(prev => prev ? { ...prev, progress: 82, status: "processing" } : prev);
 
       const { data: urlData } = supabase.storage
         .from("mobile-zips")
         .getPublicUrl(zipPath);
 
-      // Update the audit with the mobile zip URL
       const { error: updateError } = await supabase
         .from("audits")
         .update({
@@ -761,35 +804,34 @@ const InterviewTracking = () => {
 
       if (updateError) throw updateError;
 
-      // Invoke the process-mobile-zip edge function to extract metadata
+      // Edge function processing phase
+      setActiveUpload(prev => prev ? { ...prev, progress: 90 } : prev);
+
       const { error: processError } = await supabase.functions.invoke("process-mobile-zip", {
-        body: { 
-          auditId: interviewId, 
-          zipUrl: urlData.publicUrl 
-        },
+        body: { auditId: interviewId, zipUrl: urlData.publicUrl },
       });
 
       if (processError) {
         console.error("Process error:", processError);
-        // Don't throw - the upload succeeded, processing might work later
       }
+
+      setActiveUpload(prev => prev ? { ...prev, progress: 100, status: "success" } : prev);
 
       toast({
         title: "Metadata uploaded successfully",
-        description: "The metadata ZIP has been uploaded and processed. Refresh the page to see updates.",
+        description: "The metadata ZIP has been uploaded and processed.",
       });
 
-      // Don't invalidate queries immediately - let user stay on current view
-      // They can manually refresh or navigate away and back
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => setActiveUpload(null), 3000);
     } catch (error: any) {
       console.error("Upload error:", error);
+      setActiveUpload(prev => prev ? { ...prev, status: "error", errorMessage: error.message || "Upload failed" } : prev);
       toast({
         title: "Upload failed",
         description: error.message || "Failed to upload metadata",
         variant: "destructive",
       });
-    } finally {
-      setUploadingId(null);
     }
   };
 
@@ -1496,6 +1538,54 @@ const InterviewTracking = () => {
           resolvedAt={resolvedCommentsInterview.artifact_correction_resolved_at}
           resolvedBy={resolvedCommentsInterview.artifact_correction_resolved_by}
         />
+      )}
+
+      {/* Floating Upload Progress Panel */}
+      {activeUpload && (
+        <div className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto">
+          <Card className={cn(
+            "shadow-lg border-2",
+            activeUpload.status === "success" && "border-green-500",
+            activeUpload.status === "error" && "border-destructive",
+            activeUpload.status !== "success" && activeUpload.status !== "error" && "border-primary"
+          )}>
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{activeUpload.interviewName}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {activeUpload.fileName} — {formatFileSize(activeUpload.fileSize)}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0"
+                  onClick={() => setActiveUpload(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <Progress
+                value={activeUpload.progress}
+                className="h-2 mb-1"
+                indicatorClassName={cn(
+                  activeUpload.status === "success" && "bg-green-500",
+                  activeUpload.status === "error" && "bg-destructive"
+                )}
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {activeUpload.status === "uploading" && "Uploading..."}
+                  {activeUpload.status === "processing" && "Processing metadata..."}
+                  {activeUpload.status === "success" && "Complete!"}
+                  {activeUpload.status === "error" && (activeUpload.errorMessage || "Failed")}
+                </p>
+                <p className="text-xs font-medium">{activeUpload.progress}%</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );
