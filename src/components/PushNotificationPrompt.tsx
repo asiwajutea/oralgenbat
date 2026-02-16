@@ -12,6 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
 
 const PROMPT_DISMISSED_KEY = "push_notification_prompt_dismissed";
+const SESSION_DISMISSED_KEY = "push_notification_session_dismissed";
 
 export function PushNotificationPrompt() {
   const { user } = useAuth();
@@ -19,20 +20,15 @@ export function PushNotificationPrompt() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    // Only show prompt if:
-    // 1. User is logged in
-    // 2. Browser supports notifications
-    // 3. User hasn't dismissed the prompt before
-    // 4. Notification permission is not already granted or denied
     if (!user) return;
-    
-    const isDismissed = localStorage.getItem(PROMPT_DISMISSED_KEY);
-    if (isDismissed) return;
-
     if (!("Notification" in window)) return;
+    // Don't show if already granted or denied
     if (Notification.permission !== "default") return;
+    // Don't show if permanently dismissed
+    if (localStorage.getItem(PROMPT_DISMISSED_KEY)) return;
+    // Don't show if dismissed this session
+    if (sessionStorage.getItem(SESSION_DISMISSED_KEY)) return;
 
-    // Show prompt after a short delay
     const timer = setTimeout(() => {
       setOpen(true);
     }, 2000);
@@ -49,6 +45,7 @@ export function PushNotificationPrompt() {
   };
 
   const handleDismiss = () => {
+    sessionStorage.setItem(SESSION_DISMISSED_KEY, "true");
     setOpen(false);
   };
 
