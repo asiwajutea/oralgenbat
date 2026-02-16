@@ -1,50 +1,44 @@
-## Plan: Show Filtered Total Names on Stat Cards
 
-### What This Does
 
-When any filter is active (e.g., contractor NG71), each stat card (Total, Passed, Failed, Unresolved Issues, No Metadata, Filtered) will show the filtered total names count and interviews count in brackets below the overall stat -- so users can see at a glance how many names belong to the filtered subset.
+## Plan: Fix Analytics Page Issues
 
-### Changes
+### 1. Fix Cleanup Dialog - Ambiguous Column Bug
 
-**File: `src/pages/InterviewTracking.tsx**`
+**Problem**: The `get_cleanable_audit_files` RPC function has an ambiguous `audit_id` column reference. The subquery for `interview_photos` uses `audit_id` in the JOIN condition `p.audit_id = a.id`, but the return table also defines `audit_id` as an output column, creating ambiguity.
 
-1. **Expand `nameStats` memo** (lines 553-568) to also compute filtered counts per category:
-  - `filteredTotal` - sum of total_names from `filteredInterviews`
-  - `filteredPassed` - sum from filtered interviews with status "Audit Passed"
-  - `filteredFailed` - sum from filtered interviews with status "Audit Failed"
-  - `filteredUnresolved` - sum from filtered interviews flagged with unresolved issues
-  - `filteredNoMetadata` - sum from filtered interviews without metadata
-2. **Update each stat card** (lines 893-971) to show filtered names in brackets when any filter is active:
-  - **Total card**: Below "X names", show `(Y names)` where Y = filtered total names
-  - **Passed card**: Below "X names", show `(Y names)`
-  - **Failed card**: Below "X names", show `(Y names)`
-  - **Unresolved Issues card**: Add the filtered names count (currently has no names line)
-  - **No Metadata card**: Add the filtered names count (currently has no names line)
-  - **Filtered card**: Already shows filtered names, no change needed
-   The bracketed count only appears when `hasActiveFilters` is true and the filtered count differs from the overall count.
+**Fix**: Recreate the RPC function with fully qualified column references (e.g., `p.audit_id` in the subquery join).
 
-### Visual Result
+### 2. Add Shorter Minimum Age Options to Cleanup Dialog
 
-Before (no filter):
+**Problem**: Currently only 30/60/90/180 day options exist. User wants 24 hours, 5 days, and 15 days added.
 
-```
-Total         Passed        Failed
-1372          989           182
-144,849 names 109,584 names 19,939 names
-```
+**Changes**:
+- **`src/components/analytics/StorageCleanupDialog.tsx`**: Add `SelectItem` entries for 1 day, 5 days, and 15 days. Set default to 1 day.
+- **Database function**: Update the RPC to also remove the `m.id IS NOT NULL` requirement (so files without metadata can also be cleaned) and lower the minimum enforced age.
+- **Edge function** (`cleanup-audit-files/index.ts`): Lower the safety check from 30 days to allow cleaning files as young as 1 day old.
 
-After (with NG71 filter active):
+### 3. Add "Audited Today" Count to Auditors Tab
 
-```
-Total         Passed        Failed        Unresolved Issues  No Metadata
-1372 (782)    989 (700)     182 (82)      28 (8)             65 (15)
-144,849 names 109,584 names 19,939 names
-(52,311 names)(38,200 names)(8,100 names) (1,200 names)      (3,500 names)
-```
+**Problem**: The Auditors tab table doesn't show how many interviews each auditor reviewed today.
 
-### Technical Details
+**Changes**:
+- **`src/hooks/useAnalytics.ts`**: Add `reviews_today` to the `AuditorPerformance` interface and compute it by filtering reviews where `reviewed_at >= startOfDay(now)`.
+- **`src/components/analytics/AuditorPerformanceTable.tsx`**: Add a "Today" column displaying the count.
 
-- No new queries needed -- all data is already in memory via `interviewsWithUnreadCounts` and `filteredInterviews`
-- The filtered name counts are computed in the existing `nameStats` useMemo by adding filter-aware calculations
-- Bracketed text uses a smaller font size and muted color to distinguish from the main stat
-- The bracket line is conditionally rendered only when `hasActiveFilters` is truthy
+### 4. Fix Field Managers Tab
+
+**Problem**: The Field Managers tab data relies on joining `team_assignments` with `profiles` via a foreign key on `field_manager_id`. The query uses `profiles!inner(full_name)` which requires the foreign key relationship to work. If the query hits the 1,000-row default limit, some field managers may be missing.
+
+**Changes**:
+- **`src/hooks/useAnalytics.ts`**: The `useFieldManagerPerformance` hook fetches `team_assignments` and `interview_metadata` separately. Both queries may hit the 1,000-row limit. Use paginated fetching (the existing `fetchAllRows` utility) for both queries to ensure all data is retrieved.
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| Database migration (new) | Fix `get_cleanable_audit_files` RPC - qualify ambiguous column references, remove metadata requirement, allow lower min age |
+| `src/components/analytics/StorageCleanupDialog.tsx` | Add 1-day, 5-day, 15-day options; update default; update description text |
+| `src/hooks/useAnalytics.ts` | Add `reviews_today` to AuditorPerformance; use paginated fetch for FM queries |
+| `src/components/analytics/AuditorPerformanceTable.tsx` | Add "Today" column |
+| `supabase/functions/cleanup-audit-files/index.ts` | Lower minimum age safety check from 30 days to 1 day |
+
