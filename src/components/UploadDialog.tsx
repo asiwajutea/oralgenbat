@@ -22,13 +22,15 @@ interface UploadDialogProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onUploadProgress?: (progress: import("@/components/FloatingUploadProgress").UploadProgressData | null) => void;
 }
 
 export const UploadDialog = ({ 
   onUploadComplete, 
   trigger,
   open: controlledOpen,
-  onOpenChange: controlledOnOpenChange
+  onOpenChange: controlledOnOpenChange,
+  onUploadProgress,
 }: UploadDialogProps) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -159,11 +161,22 @@ export const UploadDialog = ({
 
       // Upload only valid files
       let completedFiles = 0;
+      const totalSize = validFiles.reduce((s, f) => s + f.size, 0);
+      
       for (let i = 0; i < validFiles.length; i++) {
         let file = validFiles[i];
         const fileName = file.name.replace(/\.pdf$/i, "");
         const timestamp = Date.now();
         const storagePath = `${fileName}_${timestamp}.pdf`;
+
+        // Update floating progress
+        onUploadProgress?.({
+          fileName: `${i + 1}/${validFiles.length} files`,
+          interviewName: "PDF Upload",
+          fileSize: totalSize,
+          progress: Math.round((i / validFiles.length) * 100),
+          status: "uploading",
+        });
 
         // Compress large PDFs before upload
         if (shouldCompressPdf(file)) {
@@ -197,6 +210,13 @@ export const UploadDialog = ({
 
       if (validFiles.length > 0) {
         toast.success(`Successfully uploaded ${validFiles.length} file(s)`);
+        onUploadProgress?.({
+          fileName: `${validFiles.length} files`,
+          interviewName: "PDF Upload",
+          fileSize: totalSize,
+          progress: 100,
+          status: "success",
+        });
       }
       
       setSelectedFiles([]);
@@ -207,6 +227,14 @@ export const UploadDialog = ({
     } catch (error) {
       console.error("Upload error:", error);
       toast.error("Failed to upload files");
+      onUploadProgress?.({
+        fileName: "Upload failed",
+        interviewName: "PDF Upload",
+        fileSize: 0,
+        progress: 0,
+        status: "error",
+        errorMessage: "Failed to upload files",
+      });
     } finally {
       setIsUploading(false);
     }

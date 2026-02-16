@@ -24,6 +24,7 @@ interface CombinedUploadDialogProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onUploadProgress?: (progress: import("@/components/FloatingUploadProgress").UploadProgressData | null) => void;
 }
 
 interface FilePair {
@@ -39,7 +40,8 @@ export const CombinedUploadDialog = ({
   onUploadComplete, 
   trigger,
   open: controlledOpen,
-  onOpenChange: controlledOnOpenChange
+  onOpenChange: controlledOnOpenChange,
+  onUploadProgress,
 }: CombinedUploadDialogProps) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -286,7 +288,7 @@ export const CombinedUploadDialog = ({
   };
 
   const handleUpload = async () => {
-    const pairsToUpload = filePairs.filter(p => p.pdfFile); // Must have PDF at minimum
+    const pairsToUpload = filePairs.filter(p => p.pdfFile);
     
     if (pairsToUpload.length === 0) {
       toast.error("Please select at least one PDF file");
@@ -294,9 +296,9 @@ export const CombinedUploadDialog = ({
     }
 
     setIsUploading(true);
+    const totalSize = pairsToUpload.reduce((s, p) => s + (p.pdfFile?.size || 0) + (p.zipFile?.size || 0), 0);
 
     try {
-      // Check for duplicates
       const fileNames = pairsToUpload.map(p => p.fileName);
       const existingNames = await checkForDuplicates(fileNames);
 
@@ -304,7 +306,6 @@ export const CombinedUploadDialog = ({
       let errorCount = 0;
       let skippedCount = 0;
 
-      // Process in batches of CONCURRENT_UPLOADS
       for (let i = 0; i < pairsToUpload.length; i += CONCURRENT_UPLOADS) {
         const batch = pairsToUpload.slice(i, i + CONCURRENT_UPLOADS);
         
@@ -314,36 +315,60 @@ export const CombinedUploadDialog = ({
 
         results.forEach(result => {
           if (result.status === "fulfilled") {
-            if (result.value.success) {
-              successCount++;
-            } else if (result.value.skipped) {
-              skippedCount++;
-            } else {
-              errorCount++;
-            }
+            if (result.value.success) successCount++;
+            else if (result.value.skipped) skippedCount++;
+            else errorCount++;
           } else {
             errorCount++;
           }
         });
+
+        const done = Math.min(i + batch.length, pairsToUpload.length);
+        const pct = Math.round((done / pairsToUpload.length) * 100);
+        onUploadProgress?.({
+          fileName: `${done}/${pairsToUpload.length} pairs`,
+          interviewName: "Combined Upload",
+          fileSize: totalSize,
+          progress: pct,
+          status: pct >= 100 ? "success" : "uploading",
+        });
       }
 
-      if (successCount > 0) {
-        toast.success(`Successfully uploaded ${successCount} interview(s)`);
-      }
-      if (skippedCount > 0) {
-        toast.warning(`Skipped ${skippedCount} existing interview(s)`);
-      }
-      if (errorCount > 0) {
-        toast.error(`Failed to upload ${errorCount} interview(s)`);
-      }
+      if (successCount > 0) toast.success(`Successfully uploaded ${successCount} interview(s)`);
+      if (skippedCount > 0) toast.warning(`Skipped ${skippedCount} existing interview(s)`);
+      if (errorCount > 0) toast.error(`Failed to upload ${errorCount} interview(s)`);
 
       if (successCount > 0) {
+        onUploadProgress?.({
+          fileName: `${successCount} interviews`,
+          interviewName: "Combined Upload",
+          fileSize: totalSize,
+          progress: 100,
+          status: "success",
+        });
         onUploadComplete();
+      } else if (errorCount > 0) {
+        onUploadProgress?.({
+          fileName: `${errorCount} failed`,
+          interviewName: "Combined Upload",
+          fileSize: totalSize,
+          progress: 0,
+          status: "error",
+          errorMessage: `${errorCount} interview(s) failed`,
+        });
       }
 
     } catch (error) {
       console.error("Upload error:", error);
       toast.error("Failed to upload files");
+      onUploadProgress?.({
+        fileName: "Upload failed",
+        interviewName: "Combined Upload",
+        fileSize: totalSize,
+        progress: 0,
+        status: "error",
+        errorMessage: "Failed to upload files",
+      });
     } finally {
       setIsUploading(false);
     }

@@ -3,6 +3,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
+import { formatFileSize } from "@/utils/compressPdf";
+import type { UploadProgressData } from "@/components/FloatingUploadProgress";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import { 
   AlertTriangle, 
   FileText, 
@@ -40,12 +43,14 @@ interface FailedInterviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   interview: FailedInterviewData | null;
+  onUploadProgress?: (progress: UploadProgressData | null) => void;
 }
 
 export function FailedInterviewModal({ 
   open, 
   onOpenChange, 
-  interview 
+  interview,
+  onUploadProgress,
 }: FailedInterviewModalProps) {
   const { session, userRole } = useAuth();
   const queryClient = useQueryClient();
@@ -53,6 +58,7 @@ export function FailedInterviewModal({
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [comment, setComment] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<{ label: string; progress: number } | null>(null);
 
   const needsPdf = interview?.artifact_correction?.includes("scanned_pdf") || interview?.artifact_correction?.includes("PDF");
   const needsMetadata = interview?.artifact_correction?.includes("mobile_metadata") || 
@@ -75,15 +81,32 @@ export function FailedInterviewModal({
     return true;
   };
 
+  const uploadWithXHR = (file: File, signedUrl: string, onProgress: (pct: number) => void): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Upload failed with status ${xhr.status}`));
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.open("PUT", signedUrl);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.send(file);
+    });
+  };
+
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!interview) throw new Error("No interview selected");
       
-      // Validate session and user ID
       const userId = session?.user?.id;
       if (!userId) throw new Error("You must be logged in to submit");
       
-      // Validate UUID format
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(userId)) {
         throw new Error("Invalid session. Please log out and log back in.");
@@ -93,17 +116,39 @@ export function FailedInterviewModal({
       
       setIsUploading(true);
       
+      const totalFiles = (pdfFile ? 1 : 0) + (zipFile ? 1 : 0);
+      const totalSize = (pdfFile?.size || 0) + (zipFile?.size || 0);
+      let currentFileNum = 0;
+      
+      const updateFloating = (label: string, progress: number, status: UploadProgressData["status"] = "uploading") => {
+        setUploadStatus({ label, progress });
+        onUploadProgress?.({
+          fileName: pdfFile?.name || zipFile?.name || "files",
+          interviewName: interview.file_name,
+          fileSize: totalSize,
+          progress,
+          status,
+        });
+      };
+
       let newPdfUrl: string | null = null;
       let newZipUrl: string | null = null;
 
       // Upload new PDF if provided
       if (pdfFile) {
+        currentFileNum++;
         const pdfPath = `audits/${interview.id}/resubmit_${Date.now()}.pdf`;
-        const { error: pdfError } = await supabase.storage
+        updateFloating(`Uploading PDF (${currentFileNum}/${totalFiles})...`, 0);
+
+        const { data: signedData, error: signError } = await supabase.storage
           .from("audit-pdfs")
-          .upload(pdfPath, pdfFile);
-        
-        if (pdfError) throw new Error("Failed to upload PDF: " + pdfError.message);
+          .createSignedUploadUrl(pdfPath);
+        if (signError || !signedData) throw signError || new Error("Failed to create upload URL");
+
+        await uploadWithXHR(pdfFile, signedData.signedUrl, (pct) => {
+          const overallPct = Math.round((pct / totalFiles) * (currentFileNum === 1 ? 1 : 0.5));
+          updateFloating(`Uploading PDF (${currentFileNum}/${totalFiles})...`, Math.min(overallPct, 70));
+        });
         
         const { data: pdfUrlData } = supabase.storage
           .from("audit-pdfs")
@@ -113,31 +158,40 @@ export function FailedInterviewModal({
 
       // Upload new ZIP if provided
       if (zipFile) {
+        currentFileNum++;
         const zipPath = `audits/${interview.id}/resubmit_${Date.now()}.zip`;
-        const { error: zipError } = await supabase.storage
+        const baseProgress = pdfFile ? 50 : 0;
+        updateFloating(`Uploading ZIP (${currentFileNum}/${totalFiles})...`, baseProgress);
+
+        const { data: signedData, error: signError } = await supabase.storage
           .from("mobile-zips")
-          .upload(zipPath, zipFile);
-        
-        if (zipError) throw new Error("Failed to upload ZIP: " + zipError.message);
+          .createSignedUploadUrl(zipPath);
+        if (signError || !signedData) throw signError || new Error("Failed to create upload URL");
+
+        await uploadWithXHR(zipFile, signedData.signedUrl, (pct) => {
+          const overallPct = baseProgress + Math.round((pct / totalFiles) * 50);
+          updateFloating(`Uploading ZIP (${currentFileNum}/${totalFiles})...`, Math.min(overallPct, 80));
+        });
         
         const { data: zipUrlData } = supabase.storage
           .from("mobile-zips")
           .getPublicUrl(zipPath);
         newZipUrl = zipUrlData.publicUrl;
         
-        // Trigger metadata re-parsing for the new ZIP
-        console.log("Triggering metadata re-parse for re-audit ZIP...");
+        // Trigger metadata re-parsing
+        updateFloating("Processing metadata...", 85, "processing");
         const { error: processError } = await supabase.functions.invoke('process-mobile-zip', {
           body: { auditId: interview.id, mobileZipUrl: newZipUrl }
         });
         
         if (processError) {
           console.error("ZIP processing error:", processError);
-          // Don't throw - upload succeeded, processing might work later
         }
       }
 
       // Create re-audit submission record
+      updateFloating("Saving submission...", 90, "processing");
+      
       const { error: submissionError } = await supabase
         .from("re_audit_submissions")
         .insert([{
@@ -153,8 +207,6 @@ export function FailedInterviewModal({
 
       if (submissionError) throw submissionError;
 
-      // Update audit status and file URLs if new files were uploaded
-      // CRITICAL: Use "Awaiting Review" status so auditors can see and process re-audits
       const updateData: Record<string, any> = {
         status: "Awaiting Review",
         is_re_audit: true,
@@ -163,7 +215,6 @@ export function FailedInterviewModal({
       if (newPdfUrl) updateData.file_url = newPdfUrl;
       if (newZipUrl) updateData.mobile_zip_url = newZipUrl;
 
-      // First get current re_audit_count, then increment
       const { data: currentAudit } = await supabase
         .from("audits")
         .select("re_audit_count")
@@ -179,11 +230,12 @@ export function FailedInterviewModal({
 
       if (auditError) throw auditError;
 
-      // Delete previous checklist progress so next auditor starts fresh
       await supabase
         .from("audit_checklist_progress")
         .delete()
         .eq("audit_id", interview.id);
+
+      updateFloating("Complete!", 100, "success");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
@@ -195,6 +247,14 @@ export function FailedInterviewModal({
       resetForm();
     },
     onError: (error: any) => {
+      onUploadProgress?.({
+        fileName: pdfFile?.name || zipFile?.name || "files",
+        interviewName: interview?.file_name || "",
+        fileSize: (pdfFile?.size || 0) + (zipFile?.size || 0),
+        progress: 0,
+        status: "error",
+        errorMessage: error.message || "Upload failed",
+      });
       toast({
         title: "Submission Failed",
         description: error.message || "Failed to submit for re-audit.",
@@ -203,6 +263,7 @@ export function FailedInterviewModal({
     },
     onSettled: () => {
       setIsUploading(false);
+      setUploadStatus(null);
     },
   });
 
@@ -210,6 +271,7 @@ export function FailedInterviewModal({
     setPdfFile(null);
     setZipFile(null);
     setComment("");
+    setUploadStatus(null);
   };
 
   const handleSubmit = () => {
@@ -339,8 +401,8 @@ export function FailedInterviewModal({
               </p>
               {pdfFile && (
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3 text-success" />
-                  {pdfFile.name}
+                  <CheckCircle className="h-3 w-3 text-green-600" />
+                  {pdfFile.name} — {formatFileSize(pdfFile.size)}
                 </p>
               )}
             </div>
@@ -369,11 +431,22 @@ export function FailedInterviewModal({
               </p>
               {zipFile && (
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3 text-success" />
-                  {zipFile.name}
+                  <CheckCircle className="h-3 w-3 text-green-600" />
+                  {zipFile.name} — {formatFileSize(zipFile.size)}
                 </p>
               )}
             </div>
+
+            {/* Upload Progress inside modal */}
+            {uploadStatus && (
+              <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                <div className="flex items-center justify-between text-sm font-medium">
+                  <span>{uploadStatus.label}</span>
+                  <span>{uploadStatus.progress}%</span>
+                </div>
+                <Progress value={uploadStatus.progress} className="h-2" />
+              </div>
+            )}
 
             {/* Comment */}
             <div className="space-y-2">
