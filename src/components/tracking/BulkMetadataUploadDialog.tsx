@@ -45,6 +45,7 @@ interface ZipFile {
   hasExistingMetadata: boolean;
   isReAudit: boolean;
   isReplacement: boolean;
+  isPartialFix: boolean;
   statusLabel: string;
   status: "pending" | "uploading" | "processing" | "success" | "error" | "skipped";
   progress: number;
@@ -97,7 +98,7 @@ export const BulkMetadataUploadDialog = ({
     // Fetch matching audits from database with status info
     const { data: matchingAudits, error } = await supabase
       .from("audits")
-      .select("id, file_name, mobile_zip_url, status")
+      .select("id, file_name, mobile_zip_url, status, artifact_correction")
       .in("file_name", fileNames);
 
     if (error) {
@@ -109,7 +110,8 @@ export const BulkMetadataUploadDialog = ({
       id: a.id, 
       file_name: a.file_name, 
       hasMetadata: !!a.mobile_zip_url,
-      status: a.status 
+      status: a.status,
+      artifact_correction: a.artifact_correction as string[] | null
     }]) || []);
 
     const processedFiles: ZipFile[] = validZips.map(file => {
@@ -122,13 +124,22 @@ export const BulkMetadataUploadDialog = ({
       let isReAudit = false;
       let isReplacement = false;
       
+      let isPartialFix = false;
       if (!matchedAudit) {
         status = "skipped";
         errorMessage = "No matching PDF found";
       } else if (matchedAudit.status === "Audit Failed") {
-        // Failed audits get re-audited when new metadata is uploaded
-        isReAudit = true;
-        isReplacement = matchedAudit.hasMetadata;
+        const corrections = matchedAudit.artifact_correction || [];
+        const hasBoth = corrections.includes('scanned_pdf') && corrections.includes('mobile_metadata');
+        if (hasBoth) {
+          // Both artifacts need fixing - just replace metadata, don't re-audit
+          isPartialFix = true;
+          isReplacement = true;
+        } else {
+          // Only metadata needs fixing - send for re-audit
+          isReAudit = true;
+          isReplacement = matchedAudit.hasMetadata;
+        }
       } else if (matchedAudit.hasMetadata) {
         // Already has metadata and not failed - treat as replacement
         isReplacement = true;
@@ -144,6 +155,7 @@ export const BulkMetadataUploadDialog = ({
         hasExistingMetadata: matchedAudit?.hasMetadata || false,
         isReAudit,
         isReplacement,
+        isPartialFix,
         statusLabel: !matchedAudit ? "No matching PDF" : "",
         status,
         progress: 0,
@@ -194,9 +206,19 @@ export const BulkMetadataUploadDialog = ({
         .from("mobile-zips")
         .getPublicUrl(filePath);
 
-      // Handle re-audit for failed interviews
-      if (zipFile.isReAudit && user?.id) {
-        // Use the mark_audit_for_reaudit function for proper re-audit handling
+      // Handle partial fix (both artifacts failed, only replacing metadata)
+      if (zipFile.isPartialFix) {
+        await supabase
+          .from('audits')
+          .update({
+            mobile_zip_url: publicUrl,
+            mobile_zip_uploaded_at: new Date().toISOString(),
+            artifact_correction: ['scanned_pdf'],
+            last_modified: new Date().toISOString(),
+          })
+          .eq('id', zipFile.matchedAuditId);
+      } else if (zipFile.isReAudit && user?.id) {
+        // Handle re-audit for failed interviews (only metadata correction needed)
         const { error: reAuditError } = await supabase.rpc('mark_audit_for_reaudit', {
           _audit_id: zipFile.matchedAuditId,
           _submitted_by: user.id,
@@ -207,7 +229,6 @@ export const BulkMetadataUploadDialog = ({
 
         if (reAuditError) {
           console.error("Re-audit error:", reAuditError);
-          // Fall back to regular update if RPC fails
           await supabase
             .from('audits')
             .update({
@@ -215,7 +236,7 @@ export const BulkMetadataUploadDialog = ({
               mobile_zip_uploaded_at: new Date().toISOString(),
               status: 'Awaiting Review',
               is_re_audit: true,
-              re_audit_count: 1, // This will be incremented properly by RPC, but fallback
+              re_audit_count: 1,
             })
             .eq('id', zipFile.matchedAuditId);
         }

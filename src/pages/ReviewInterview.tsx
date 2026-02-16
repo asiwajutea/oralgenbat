@@ -458,9 +458,47 @@ const ReviewInterview = () => {
       </div>;
   }
 
+  // Auto-load countdown for next interview
+  const [countdown, setCountdown] = useState(5);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Start countdown when completion result is set and next audit is available
+  useEffect(() => {
+    if (completionResult && nextAudit?.id) {
+      setCountdown(5);
+      countdownRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            if (countdownRef.current) clearInterval(countdownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [completionResult, nextAudit?.id]);
+
+  // Auto-navigate when countdown reaches 0
+  useEffect(() => {
+    if (completionResult && nextAudit?.id && countdown === 0) {
+      navigate(`/review/${nextAudit.id}`);
+    }
+  }, [countdown, completionResult, nextAudit?.id, navigate]);
+
+  const cancelCountdown = () => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+  };
+
   // Show completion page after pass/fail
   if (completionResult) {
     const isPassed = completionResult === "passed";
+    const hasNextInterview = !!nextAudit?.id;
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-md p-8">
@@ -476,15 +514,37 @@ const ReviewInterview = () => {
             Your review has been submitted successfully.
           </p>
           {awaitingCount !== undefined && (
-            <p className="text-sm font-medium text-foreground mt-4 mb-6">
+            <p className="text-sm font-medium text-foreground mt-4">
               {awaitingCount} {awaitingCount === 1 ? "interview" : "interviews"} awaiting review
             </p>
           )}
-          <div className="flex gap-3 justify-center mt-6">
-            <Button onClick={() => navigate("/interviews")}>
+          {hasNextInterview ? (
+            <div className="mt-4 mb-6">
+              <p className="text-sm text-muted-foreground">
+                Next interview: <span className="font-mono font-medium text-foreground">{nextAudit.id.slice(0, 8)}...</span>
+              </p>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <Clock className="h-4 w-4 text-primary animate-pulse" />
+                <span className="text-sm font-medium text-primary">
+                  Auto-loading in {countdown}s...
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-4 mb-6">
+              No more interviews to review.
+            </p>
+          )}
+          <div className="flex gap-3 justify-center mt-2">
+            {hasNextInterview && (
+              <Button onClick={() => { cancelCountdown(); navigate(`/review/${nextAudit.id}`); }}>
+                Go to Next Interview
+              </Button>
+            )}
+            <Button variant={hasNextInterview ? "outline" : "default"} onClick={() => { cancelCountdown(); navigate("/interviews"); }}>
               Go to Interviews
             </Button>
-            <Button variant="outline" onClick={() => navigate("/")}>
+            <Button variant="outline" onClick={() => { cancelCountdown(); navigate("/"); }}>
               Return to Dashboard
             </Button>
           </div>
