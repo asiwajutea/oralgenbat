@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, Clock, Trash2, Bell, X, Circle, History, Building2 } from "lucide-react";
+import { Loader2, CheckCircle, Clock, Trash2, Bell, X, Circle, History, Building2, ShieldBan, ShieldX, ShieldCheck } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SessionHistoryDialog } from "@/components/SessionHistoryDialog";
@@ -30,6 +30,7 @@ interface UserProfile {
   created_at: string;
   role?: string;
   approved_by_name?: string;
+  account_status?: string;
 }
 
 interface UserPresence {
@@ -48,6 +49,8 @@ const AdminDashboard = () => {
   const [filter, setFilter] = useState<"all" | "pending" | "approved">("all");
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
+  const [showSuspendDialog, setShowSuspendDialog] = useState(false);
+  const [showTerminateDialog, setShowTerminateDialog] = useState(false);
   const [showClearStorageDialog, setShowClearStorageDialog] = useState(false);
   const [clearingStorage, setClearingStorage] = useState(false);
   const [sessionHistoryUser, setSessionHistoryUser] = useState<UserProfile | null>(null);
@@ -286,6 +289,58 @@ const AdminDashboard = () => {
     }
   };
 
+  const suspendUser = async () => {
+    if (!selectedUser) return;
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ account_status: 'suspended' })
+        .eq("id", selectedUser.id);
+      if (error) throw error;
+      toast({ title: "Account Suspended", description: `${selectedUser.full_name}'s account has been suspended` });
+      setShowSuspendDialog(false);
+      setSelectedUser(null);
+      fetchUsers();
+    } catch (error) {
+      console.error("Error suspending user:", error);
+      toast({ title: "Error", description: "Failed to suspend user", variant: "destructive" });
+    }
+  };
+
+  const terminateUser = async () => {
+    if (!selectedUser) return;
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ account_status: 'terminated', is_approved: false })
+        .eq("id", selectedUser.id);
+      if (error) throw error;
+      toast({ title: "Account Terminated", description: `${selectedUser.full_name}'s account has been terminated` });
+      setShowTerminateDialog(false);
+      setSelectedUser(null);
+      fetchUsers();
+    } catch (error) {
+      console.error("Error terminating user:", error);
+      toast({ title: "Error", description: "Failed to terminate user", variant: "destructive" });
+    }
+  };
+
+  const reactivateUser = async (targetUser: UserProfile) => {
+    if (!canModifyUser(targetUser.id)) return;
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ account_status: 'active', is_approved: true, approved_by: currentUser?.id, approved_at: new Date().toISOString() })
+        .eq("id", targetUser.id);
+      if (error) throw error;
+      toast({ title: "Account Reactivated", description: `${targetUser.full_name}'s account has been reactivated` });
+      fetchUsers();
+    } catch (error) {
+      console.error("Error reactivating user:", error);
+      toast({ title: "Error", description: "Failed to reactivate user", variant: "destructive" });
+    }
+  };
+
   const clearAllStorage = async () => {
     setClearingStorage(true);
     try {
@@ -492,7 +547,17 @@ const AdminDashboard = () => {
                               )}
                             </TableCell>
                             <TableCell>
-                              {user.is_approved ? (
+                              {user.account_status === 'suspended' ? (
+                                <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+                                  <ShieldBan className="mr-1 h-3 w-3" />
+                                  Suspended
+                                </Badge>
+                              ) : user.account_status === 'terminated' ? (
+                                <Badge variant="destructive">
+                                  <ShieldX className="mr-1 h-3 w-3" />
+                                  Terminated
+                                </Badge>
+                              ) : user.is_approved ? (
                                 <div className="space-y-1">
                                   <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                                     <CheckCircle className="mr-1 h-3 w-3" />
@@ -578,7 +643,20 @@ const AdminDashboard = () => {
                                     </Button>
                                   </>
                                 )}
-                                {!user.is_approved ? (
+                                {(user.account_status === 'suspended' || user.account_status === 'terminated') ? (
+                                  userRole === 'super_admin' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => reactivateUser(user)}
+                                      className="h-8 px-2 sm:px-3 text-xs sm:text-sm"
+                                      title="Reactivate Account"
+                                    >
+                                      <ShieldCheck className="h-4 w-4 sm:mr-1" />
+                                      <span className="hidden sm:inline">Reactivate</span>
+                                    </Button>
+                                  )
+                                ) : !user.is_approved ? (
                                   <Button
                                     size="sm"
                                     onClick={() => approveUser(user.id)}
@@ -589,15 +667,36 @@ const AdminDashboard = () => {
                                   </Button>
                                 ) : (
                                   userRole === 'super_admin' && (
-                                    <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      onClick={() => confirmRevokeAccess(user)}
-                                      className="h-8 px-2 sm:px-3 text-xs sm:text-sm"
-                                    >
-                                      <span className="hidden sm:inline">Revoke</span>
-                                      <Trash2 className="h-4 w-4 sm:hidden" />
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          if (!canModifyUser(user.id)) return;
+                                          setSelectedUser(user);
+                                          setShowSuspendDialog(true);
+                                        }}
+                                        className="h-8 px-2 text-xs"
+                                        title="Suspend Account"
+                                      >
+                                        <ShieldBan className="h-4 w-4 sm:mr-1" />
+                                        <span className="hidden lg:inline">Suspend</span>
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => {
+                                          if (!canModifyUser(user.id)) return;
+                                          setSelectedUser(user);
+                                          setShowTerminateDialog(true);
+                                        }}
+                                        className="h-8 px-2 text-xs"
+                                        title="Terminate Account"
+                                      >
+                                        <ShieldX className="h-4 w-4 sm:mr-1" />
+                                        <span className="hidden lg:inline">Terminate</span>
+                                      </Button>
+                                    </>
                                   )
                                 )}
                               </div>
@@ -627,6 +726,44 @@ const AdminDashboard = () => {
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={revokeUserAccess} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 Revoke Access
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showSuspendDialog} onOpenChange={setShowSuspendDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Suspend Account?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will suspend <strong>{selectedUser?.full_name}</strong>'s account.
+                They will be able to log in but will see a suspension notice and cannot access any features.
+                You can reactivate their account at any time.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={suspendUser} className="bg-orange-600 text-white hover:bg-orange-700">
+                Suspend Account
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showTerminateDialog} onOpenChange={setShowTerminateDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Terminate Account?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently terminate <strong>{selectedUser?.full_name}</strong>'s account.
+                Their access will be revoked and they will be unable to log in.
+                You can reactivate their account later if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={terminateUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Terminate Account
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

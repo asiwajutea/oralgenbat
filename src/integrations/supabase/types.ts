@@ -869,6 +869,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          account_status: string
           active_contractor_id: string | null
           approved_at: string | null
           approved_by: string | null
@@ -882,6 +883,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          account_status?: string
           active_contractor_id?: string | null
           approved_at?: string | null
           approved_by?: string | null
@@ -895,6 +897,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          account_status?: string
           active_contractor_id?: string | null
           approved_at?: string | null
           approved_by?: string | null

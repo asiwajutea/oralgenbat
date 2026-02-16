@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, profile, isApproved, loading } = useAuth();
+  const { user, profile, isApproved, accountStatus, loading } = useAuth();
 
   if (loading) {
     return (
@@ -18,13 +18,22 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   // Wait for profile to be loaded before checking approval status
-  // This prevents race condition where isApproved is false before profile loads
   if (!profile) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
+
+  // Terminated users are forced out
+  if (accountStatus === 'terminated') {
+    return <Navigate to="/auth" replace />;
+  }
+
+  // Suspended users see the suspended page
+  if (accountStatus === 'suspended') {
+    return <Navigate to="/account-suspended" replace />;
   }
 
   if (!isApproved) {

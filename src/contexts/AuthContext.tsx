@@ -11,6 +11,7 @@ interface Profile {
   contractor_id: string;
   active_contractor_id: string | null;
   is_approved: boolean;
+  account_status: string;
 }
 
 interface AuthContextType {
@@ -19,6 +20,7 @@ interface AuthContextType {
   profile: Profile | null;
   userRole: string | null;
   isApproved: boolean;
+  accountStatus: string;
   loading: boolean;
   signOut: (reason?: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -32,6 +34,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState(false);
+  const [accountStatus, setAccountStatus] = useState('active');
   const [loading, setLoading] = useState(true);
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
   const navigate = useNavigate();
@@ -67,6 +70,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setProfile(null);
           setUserRole(null);
           setIsApproved(false);
+          setAccountStatus('active');
           setLoading(false);
           setIsFetchingProfile(false);
           return;
@@ -76,6 +80,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       setProfile(profileData);
       setIsApproved(profileData?.is_approved || false);
+      setAccountStatus(profileData?.account_status || 'active');
 
       // Fetch role - use maybeSingle to handle 0 or 1 roles gracefully
       const { data: roleData, error: roleError } = await supabase
@@ -97,6 +102,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setProfile(null);
       setUserRole(null);
       setIsApproved(false);
+      setAccountStatus('active');
     } finally {
       setLoading(false);
       setIsFetchingProfile(false);
@@ -125,6 +131,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setProfile(null);
           setUserRole(null);
           setIsApproved(false);
+          setAccountStatus('active');
           setLoading(false);
         }
       }
@@ -205,6 +212,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setProfile(null);
     setUserRole(null);
     setIsApproved(false);
+    setAccountStatus('active');
     navigate("/auth");
   };
 
@@ -222,6 +230,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         profile,
         userRole,
         isApproved,
+        accountStatus,
         loading,
         signOut,
         refreshProfile,
