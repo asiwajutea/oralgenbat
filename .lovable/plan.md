@@ -1,82 +1,67 @@
 
 
-## Plan: Mobile-First Fraud Analytics + Homepage Critical Alerts
+## Payment Page Improvements
 
-### Part 1: Mobile Optimization for Fraud Analytics Dashboard
+### 1. Allow Saving Unmatched Folder Names in Manual Invoice Entry
 
-**File: `src/pages/FraudAnalyticsDashboard.tsx`**
-- Make the TabsList horizontally scrollable on mobile instead of cramming 5 tabs into a tiny grid
-- Change `grid grid-cols-5` to a horizontal scroll container with `overflow-x-auto` and `flex` layout on mobile
-- Add proper mobile padding/spacing
+**File: `src/components/payment/ManualInvoiceEntryDialog.tsx`**
 
-**File: `src/components/fraud-dashboard/LeaderboardTab.tsx`**
-- On mobile, replace the wide table with an accordion/card-based layout (following the existing mobile accordion pattern used on Team Management, Payment Tracking pages)
-- Each agent becomes a compact card showing: rank, agent code, grade badge, fraud score in the header
-- Expandable content reveals: contractor, interviews, pass rate, avg names, avg audio
-- Keep the search input full-width on mobile
-- Keep the table for desktop (use `useIsMobile()` hook to toggle)
+Currently, the save function filters out folder names not found in the database (`previewRecords.filter(r => r.found)`), making it impossible to save them. Changes:
 
-**File: `src/components/fraud-dashboard/FraudBreakdownTab.tsx`**
-- Same accordion pattern on mobile: show agent code + grade + overall score in header
-- Expanded view shows the 5 indicator scores and detail breakdown
-- Keep desktop table as-is
+- Remove the `r.found` filter from `handleSave` -- save ALL entered folder names, whether found in the database or not
+- For not-found records, save with `audit_id: null` and use the edited names count (or 0 if not edited)
+- Allow editing the names count on not-found rows (currently disabled with `disabled={!record.found}`)
+- Update the save button text to show total records count instead of only found count
+- Change the warning message from "will be skipped" to an informational note that unmatched records will be saved without a linked interview
 
-**File: `src/components/fraud-dashboard/AuditReportTab.tsx`**
-- Summary cards: keep `grid-cols-2` on mobile (already works)
-- Per-agent table: convert to accordion cards on mobile with agent code + pass rate in header, expanded details for all counts
+### 2. Budget Stats Use Payment Record's `names_count` Directly
 
-**File: `src/components/fraud-dashboard/TrendsTab.tsx`**
-- Charts already use `ResponsiveContainer` so they resize well
-- Make agent badge selection area scrollable with better touch targets (larger badges, more padding)
-- Reduce chart height on mobile from 300 to 220px
+**File: `src/hooks/usePaymentTracking.ts`**
 
-**File: `src/components/fraud-dashboard/OverviewTab.tsx`**
-- Summary cards already use `grid-cols-2` on smallest screens -- good
-- No major changes needed
+The `useBudgetStats` hook already sums `names_count` from `payment_records` table directly. This is correct behavior. However, the stat cards ("Total Names Paid") currently show this sum correctly. The key fix is ensuring:
 
-**File: `src/components/fraud-dashboard/FraudHeatmap.tsx`**
-- Reduce grid columns on mobile from `grid-cols-6` to `grid-cols-5` for better touch targets
-- Legend: wrap to 2 rows on mobile using `flex-wrap`
+- When a manual invoice entry saves with an edited total names override, the `names_count` stored in the payment record reflects that override
+- Currently the dialog saves each folder as a separate payment record with its individual `names_count`. When the user edits the "Total Names" override, that override is not actually used during save -- each record saves its own count. We need to distribute the total override across records OR save a single aggregated record per invoice
 
-**File: `src/components/fraud-dashboard/AgentComparisonChart.tsx`**
-- Reduce chart height on mobile
+**Approach**: When `totalNamesOverride` is set, save a single payment record per invoice with the overridden total as `names_count` and a combined folder name. This way the stat cards (which sum `names_count`) will show the correct edited total.
 
-### Part 2: Critical Fraud Alerts on Homepages
+Actually, simpler approach: save all records individually, but if `totalNamesOverride` is set, proportionally distribute the override across records. If there's only unmatched records with 0 names each, just assign the full override to the first record.
 
-**File: `src/components/analytics/CriticalAgentsCard.tsx`**
-- Make it mobile-friendly: on mobile, stack agent info vertically instead of horizontal flex
-- Grade badge, score, and "View Report" button stack vertically on small screens
+### 3. Invoice History Tab
 
-**File: `src/components/home/AdminDashboard.tsx`**
-- Import and add `CriticalAgentsCard` component after the stats grid and before Quick Actions
-- This shows C/D grade agents requiring immediate attention
+**File: `src/pages/PaymentTracking.tsx`**
 
-**File: `src/components/home/ContractorDashboard.tsx`**
-- Import and add `CriticalAgentsCard` after stats grid
-- The existing `useCriticalAgentsFraud` hook already scopes by role
+Add a third tab "Invoice History" alongside "Assigned to Clerks" and "Not Assigned":
 
-**File: `src/components/home/SubContractorDashboard.tsx`**
-- Import and add `CriticalAgentsCard` after stats grid
+- Shows all invoices grouped by `invoice_number`
+- Each row displays: invoice number, date created, payment category, number of folder names, total names count, contractor name
+- Expandable rows showing individual folder entries within each invoice
+- Edit button to modify the `names_count` or `payment_type` of each record
+- Delete option for individual records or entire invoices
+- Mobile-friendly accordion layout
 
-**File: `src/components/home/FieldManagerDashboard.tsx`**
-- Import and add `CriticalAgentsCard` after stats grid
+**New file: `src/components/payment/InvoiceHistoryTab.tsx`**
+
+A new component that:
+- Queries `payment_records` grouped by `invoice_number`
+- Displays invoices in a table/accordion layout
+- Allows inline editing of `names_count` per record
+- Allows editing the payment type
+- Has delete functionality for records
+- Uses existing mutations from `usePaymentTracking.ts`
+
+**File: `src/hooks/usePaymentTracking.ts`**
+
+Add new mutations:
+- `useUpdatePaymentRecord` -- update `names_count`, `payment_type` on a payment record
+- `useDeletePaymentRecord` -- delete a payment record by ID
 
 ### Technical Summary
 
 | File | Change |
 |------|--------|
-| `src/pages/FraudAnalyticsDashboard.tsx` | Scrollable tabs on mobile |
-| `src/components/fraud-dashboard/LeaderboardTab.tsx` | Accordion cards on mobile, table on desktop |
-| `src/components/fraud-dashboard/FraudBreakdownTab.tsx` | Accordion cards on mobile |
-| `src/components/fraud-dashboard/AuditReportTab.tsx` | Accordion cards on mobile |
-| `src/components/fraud-dashboard/TrendsTab.tsx` | Better touch targets, smaller chart height on mobile |
-| `src/components/fraud-dashboard/FraudHeatmap.tsx` | Fewer columns on mobile |
-| `src/components/fraud-dashboard/AgentComparisonChart.tsx` | Responsive chart height |
-| `src/components/analytics/CriticalAgentsCard.tsx` | Mobile-friendly layout (vertical stacking) |
-| `src/components/home/AdminDashboard.tsx` | Add CriticalAgentsCard |
-| `src/components/home/ContractorDashboard.tsx` | Add CriticalAgentsCard |
-| `src/components/home/SubContractorDashboard.tsx` | Add CriticalAgentsCard |
-| `src/components/home/FieldManagerDashboard.tsx` | Add CriticalAgentsCard |
-
-All changes use the existing `useIsMobile()` hook and follow the established accordion-on-mobile pattern already used across the app (Team Management, Payment Tracking pages).
+| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Allow saving not-found folder names, enable names editing on all rows, distribute total override |
+| `src/hooks/usePaymentTracking.ts` | Add `useUpdatePaymentRecord` and `useDeletePaymentRecord` mutations |
+| `src/components/payment/InvoiceHistoryTab.tsx` | New component: invoice history with edit/delete |
+| `src/pages/PaymentTracking.tsx` | Add "Invoice History" tab |
 
