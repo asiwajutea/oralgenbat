@@ -874,6 +874,7 @@ const InterviewTracking = () => {
               trigger={
                 <Button variant="outline" className="gap-2 text-xs sm:text-sm">
                   <FileArchive className="h-4 w-4" />
+                  <span className="sm:hidden text-[10px]">ZIP</span>
                   <span className="hidden sm:inline">Bulk Metadata</span>
                 </Button>
               }
@@ -888,6 +889,7 @@ const InterviewTracking = () => {
               trigger={
                 <Button variant="outline" className="gap-2 text-xs sm:text-sm">
                   <Upload className="h-4 w-4" />
+                  <span className="sm:hidden text-[10px]">PDF</span>
                   <span className="hidden sm:inline">Bulk PDF</span>
                 </Button>
               }

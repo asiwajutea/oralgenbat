@@ -47,6 +47,7 @@ interface PdfFile {
   hasExistingPdf: boolean;
   isReAudit: boolean;
   isReplacement: boolean;
+  isPartialFix: boolean;
   status: "pending" | "uploading" | "success" | "error" | "skipped";
   progress: number;
   errorMessage?: string;
@@ -93,7 +94,7 @@ export const BulkPdfUploadDialog = ({
 
     const { data: matchingAudits, error } = await supabase
       .from("audits")
-      .select("id, file_name, file_url, status")
+      .select("id, file_name, file_url, status, artifact_correction")
       .in("file_name", fileNames);
 
     if (error) {
@@ -104,7 +105,7 @@ export const BulkPdfUploadDialog = ({
     const auditMap = new Map(
       matchingAudits?.map((a) => [
         a.file_name,
-        { id: a.id, file_name: a.file_name, hasExistingPdf: !!a.file_url, status: a.status },
+        { id: a.id, file_name: a.file_name, hasExistingPdf: !!a.file_url, status: a.status, artifact_correction: a.artifact_correction as string[] | null },
       ]) || []
     );
 
@@ -117,12 +118,22 @@ export const BulkPdfUploadDialog = ({
       let isReAudit = false;
       let isReplacement = false;
 
+      let isPartialFix = false;
       if (!matched) {
         status = "skipped";
         errorMessage = "No matching interview found";
       } else if (matched.status === "Audit Failed") {
-        isReAudit = true;
-        isReplacement = matched.hasExistingPdf;
+        const corrections = matched.artifact_correction || [];
+        const hasBoth = corrections.includes('scanned_pdf') && corrections.includes('mobile_metadata');
+        if (hasBoth) {
+          // Both artifacts need fixing - just replace PDF, don't re-audit
+          isPartialFix = true;
+          isReplacement = true;
+        } else {
+          // Only PDF needs fixing - send for re-audit
+          isReAudit = true;
+          isReplacement = matched.hasExistingPdf;
+        }
       } else if (matched.hasExistingPdf) {
         isReplacement = true;
       }
@@ -136,6 +147,7 @@ export const BulkPdfUploadDialog = ({
         hasExistingPdf: matched?.hasExistingPdf || false,
         isReAudit,
         isReplacement,
+        isPartialFix,
         status,
         progress: 0,
         errorMessage,
@@ -213,8 +225,18 @@ export const BulkPdfUploadDialog = ({
         prev.map((f) => (f.fileName === pdfFile.fileName ? { ...f, progress: 90 } : f))
       );
 
-      // Handle re-audit for failed interviews
-      if (pdfFile.isReAudit && user?.id) {
+      // Handle partial fix (both artifacts failed, only replacing PDF)
+      if (pdfFile.isPartialFix) {
+        await supabase
+          .from("audits")
+          .update({
+            file_url: publicUrl,
+            artifact_correction: ['mobile_metadata'],
+            last_modified: new Date().toISOString(),
+          })
+          .eq("id", pdfFile.matchedAuditId);
+      } else if (pdfFile.isReAudit && user?.id) {
+        // Handle re-audit for failed interviews (only PDF correction needed)
         const { error: reAuditError } = await supabase.rpc("mark_audit_for_reaudit", {
           _audit_id: pdfFile.matchedAuditId,
           _submitted_by: user.id,
