@@ -27,5 +27,8 @@ verify_jwt = false
 [functions.notify-pending-audits]
 verify_jwt = false
 
+[functions.check-field-audit]
+verify_jwt = false
+
 [functions.parse-invoice-pdf]
 verify_jwt = false
