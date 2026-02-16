@@ -38,6 +38,7 @@ export interface AuditorPerformance {
   failed: number;
   pass_rate: number;
   avg_review_hours: number;
+  reviews_today: number;
   reviews_this_week: number;
   reviews_this_month: number;
   efficiency_rating: string;
@@ -316,6 +317,9 @@ export const useAuditorPerformance = (filters: AnalyticsFilters) => {
 
       if (!audits || audits.length === 0) return [];
 
+      const now = new Date();
+      const todayStart = startOfDay(now);
+
       // Group by auditor
       const grouped = audits.reduce((acc, audit) => {
         const key = audit.reviewed_by!;
@@ -323,6 +327,7 @@ export const useAuditorPerformance = (filters: AnalyticsFilters) => {
           acc[key] = {
             auditor_name: key,
             audits: [],
+            today: 0,
             this_week: 0,
             this_month: 0,
           };
@@ -330,7 +335,7 @@ export const useAuditorPerformance = (filters: AnalyticsFilters) => {
         acc[key].audits.push(audit);
         
         const reviewDate = new Date(audit.reviewed_at!);
-        const now = new Date();
+        if (reviewDate >= todayStart) acc[key].today++;
         if (reviewDate >= startOfWeek(now)) acc[key].this_week++;
         if (reviewDate >= startOfMonth(now)) acc[key].this_month++;
         
@@ -357,6 +362,7 @@ export const useAuditorPerformance = (filters: AnalyticsFilters) => {
           failed,
           pass_rate: passRate,
           avg_review_hours: avgReviewHours,
+          reviews_today: auditor.today,
           reviews_this_week: auditor.this_week,
           reviews_this_month: auditor.this_month,
           efficiency_rating: efficiencyRating,
@@ -448,35 +454,49 @@ export const useFieldManagerPerformance = (filters: AnalyticsFilters) => {
       const weekStart = startOfWeek(now);
       const monthStart = startOfMonth(now);
 
-      // Fetch approved team assignments
-      const { data: assignments } = await supabase
-        .from('team_assignments')
-        .select('field_manager_id, interviewer_code, contractor_id, profiles!inner(full_name)')
-        .eq('status', 'approved');
+      // Fetch approved team assignments with paginated fetch to bypass 1000-row limit
+      const { fetchAllRows } = await import('@/utils/paginatedFetch');
+      
+      const assignments = await fetchAllRows(
+        'team_assignments',
+        'field_manager_id, interviewer_code, contractor_id',
+        (q: any) => q.eq('status', 'approved')
+      );
 
       if (!assignments || assignments.length === 0) return [];
 
-      // Fetch interview metadata with audits
-      let query = supabase
-        .from('interview_metadata')
-        .select('*, audits!inner(*)')
-        .gte('audits.uploaded_at', start.toISOString())
-        .lte('audits.uploaded_at', end.toISOString());
+      // Get unique FM IDs and fetch their names separately
+      const uniqueFmIds = [...new Set(assignments.map((a: any) => a.field_manager_id))];
+      const { data: fmProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', uniqueFmIds);
 
-      if (filters.contractors.length > 0) {
-        query = query.in('contractor_id', filters.contractors);
-      }
+      const fmNameMap = new Map<string, string>();
+      fmProfiles?.forEach((p: any) => fmNameMap.set(p.id, p.full_name));
 
-      const { data: interviews } = await query;
+      // Fetch interview metadata with audits using paginated fetch
+      const interviews = await fetchAllRows(
+        'interview_metadata',
+        '*, audits!inner(*)',
+        (q: any) => {
+          q = q.gte('audits.uploaded_at', start.toISOString())
+               .lte('audits.uploaded_at', end.toISOString());
+          if (filters.contractors.length > 0) {
+            q = q.in('contractor_id', filters.contractors);
+          }
+          return q;
+        }
+      );
 
       if (!interviews) return [];
 
       // Create a map of interviewer_code to field_manager
       const interviewerToFM = new Map<string, { fm_id: string; fm_name: string; contractor_id: string }>();
-      assignments.forEach(assignment => {
+      assignments.forEach((assignment: any) => {
         interviewerToFM.set(assignment.interviewer_code, {
           fm_id: assignment.field_manager_id,
-          fm_name: (assignment.profiles as any).full_name,
+          fm_name: fmNameMap.get(assignment.field_manager_id) || 'Unknown',
           contractor_id: assignment.contractor_id
         });
       });
@@ -521,12 +541,12 @@ export const useFieldManagerPerformance = (filters: AnalyticsFilters) => {
       }, {} as any);
 
       // Calculate team size for all field managers (including those without interviews)
-      assignments.forEach(assignment => {
+      assignments.forEach((assignment: any) => {
         const key = assignment.field_manager_id;
         if (!grouped[key]) {
           grouped[key] = {
             field_manager_id: assignment.field_manager_id,
-            field_manager_name: (assignment.profiles as any).full_name,
+            field_manager_name: fmNameMap.get(assignment.field_manager_id) || 'Unknown',
             contractor_id: assignment.contractor_id,
             team_members: new Set<string>([assignment.interviewer_code]),
             active_members: new Set<string>(),

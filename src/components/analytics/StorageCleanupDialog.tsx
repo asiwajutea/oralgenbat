@@ -19,7 +19,7 @@ interface StorageCleanupDialogProps {
 }
 
 export const StorageCleanupDialog = ({ open, onOpenChange, currentUsageMb }: StorageCleanupDialogProps) => {
-  const [minAgeDays, setMinAgeDays] = useState(30);
+  const [minAgeDays, setMinAgeDays] = useState(1);
   const [contractorFilter, setContractorFilter] = useState("");
   const [selectedAudits, setSelectedAudits] = useState<Set<string>>(new Set());
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -175,7 +175,7 @@ export const StorageCleanupDialog = ({ open, onOpenChange, currentUsageMb }: Sto
         <DialogHeader>
           <DialogTitle>Cleanup Old Audit Files</DialogTitle>
           <DialogDescription>
-            Delete mobile ZIPs and photos from passed audits older than 30 days. Audit records and PDF reports will be preserved.
+            Delete mobile ZIPs and photos from passed audits older than the selected minimum age. Audit records and PDF reports will be preserved.
           </DialogDescription>
         </DialogHeader>
 
@@ -189,6 +189,9 @@ export const StorageCleanupDialog = ({ open, onOpenChange, currentUsageMb }: Sto
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="1">24 hours</SelectItem>
+                  <SelectItem value="5">5 days</SelectItem>
+                  <SelectItem value="15">15 days</SelectItem>
                   <SelectItem value="30">30 days</SelectItem>
                   <SelectItem value="60">60 days</SelectItem>
                   <SelectItem value="90">90 days</SelectItem>

@@ -40,6 +40,7 @@ export const AuditorPerformanceTable = ({ data }: AuditorPerformanceTableProps) 
                 <TableHead className="text-right">Total Reviews</TableHead>
                 <TableHead className="text-right">Pass Rate</TableHead>
                 <TableHead className="text-right">Avg Review Time</TableHead>
+                <TableHead className="text-right">Today</TableHead>
                 <TableHead className="text-right">This Week</TableHead>
                 <TableHead className="text-right">This Month</TableHead>
                 <TableHead className="text-center">Efficiency</TableHead>
@@ -57,6 +58,7 @@ export const AuditorPerformanceTable = ({ data }: AuditorPerformanceTableProps) 
                     </span>
                   </TableCell>
                   <TableCell className="text-right">{auditor.avg_review_hours.toFixed(1)} hrs</TableCell>
+                  <TableCell className="text-right font-semibold">{auditor.reviews_today}</TableCell>
                   <TableCell className="text-right">{auditor.reviews_this_week}</TableCell>
                   <TableCell className="text-right">{auditor.reviews_this_month}</TableCell>
                   <TableCell className="text-center">
@@ -66,7 +68,7 @@ export const AuditorPerformanceTable = ({ data }: AuditorPerformanceTableProps) 
               ))}
               {data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No auditor data available
                   </TableCell>
                 </TableRow>
