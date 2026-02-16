@@ -154,28 +154,46 @@ export const ManualInvoiceEntryDialog = ({
   const handleSave = async () => {
     if (previewRecords.length === 0) return;
 
-    const recordsToSave = previewRecords.filter(r => r.found);
-    if (recordsToSave.length === 0) {
-      toast.error("No valid interviews to save");
-      return;
-    }
-
     setIsSaving(true);
 
     try {
       const finalInvoiceNumber = invoiceNumber.trim() || `MANUAL-${Date.now()}`;
 
-      await bulkCreate.mutateAsync({
-        entries: recordsToSave.map(r => ({
-          folder_name: r.folder_name,
-          audit_id: r.audit_id,
-          names_count: r.names_override ?? r.names_count,
-          payment_type: paymentType,
-          invoice_number: finalInvoiceNumber,
-        })),
-      });
+      // Build entries - include ALL records (found and not found)
+      let entries = previewRecords.map(r => ({
+        folder_name: r.folder_name,
+        audit_id: r.audit_id,
+        names_count: r.names_override ?? r.names_count,
+        payment_type: paymentType,
+        invoice_number: finalInvoiceNumber,
+      }));
 
-      toast.success(`Saved ${recordsToSave.length} payment record(s)`);
+      // If totalNamesOverride is set, distribute it across records
+      if (totalNamesOverride !== null && entries.length > 0) {
+        const currentTotal = entries.reduce((sum, e) => sum + e.names_count, 0);
+        if (currentTotal > 0) {
+          // Proportional distribution
+          let distributed = 0;
+          entries = entries.map((e, i) => {
+            if (i === entries.length - 1) {
+              return { ...e, names_count: totalNamesOverride - distributed };
+            }
+            const proportion = Math.round((e.names_count / currentTotal) * totalNamesOverride);
+            distributed += proportion;
+            return { ...e, names_count: proportion };
+          });
+        } else {
+          // All zeros - assign full override to first record
+          entries = entries.map((e, i) => ({
+            ...e,
+            names_count: i === 0 ? totalNamesOverride : 0,
+          }));
+        }
+      }
+
+      await bulkCreate.mutateAsync({ entries });
+
+      toast.success(`Saved ${entries.length} payment record(s)`);
       onComplete();
       handleClose();
     } catch (error) {
@@ -344,12 +362,11 @@ export const ManualInvoiceEntryDialog = ({
                               />
                             ) : (
                               <button
-                                onClick={() => record.found && setEditingIndex(index)}
+                                onClick={() => setEditingIndex(index)}
                                 className="inline-flex items-center gap-1 hover:text-primary"
-                                disabled={!record.found}
                               >
                                 {record.names_override ?? record.names_count}
-                                {record.found && <Edit2 className="h-3 w-3 opacity-50" />}
+                                <Edit2 className="h-3 w-3 opacity-50" />
                               </button>
                             )}
                           </td>
@@ -371,7 +388,7 @@ export const ManualInvoiceEntryDialog = ({
                 <div className="flex items-start gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-sm">
                   <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                   <span>
-                    {stats.notFound} folder name(s) were not found in the system and will be skipped.
+                    {stats.notFound} folder name(s) were not found in the system. They will be saved without a linked interview.
                   </span>
                 </div>
               )}
@@ -385,10 +402,10 @@ export const ManualInvoiceEntryDialog = ({
           </Button>
           <Button 
             onClick={handleSave} 
-            disabled={stats.found === 0 || isSaving}
+            disabled={previewRecords.length === 0 || isSaving}
           >
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Save {stats.found} Record{stats.found !== 1 ? 's' : ''}
+            Save {previewRecords.length} Record{previewRecords.length !== 1 ? 's' : ''}
           </Button>
         </DialogFooter>
       </DialogContent>
