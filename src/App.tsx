@@ -46,6 +46,7 @@ import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
 import SmsLogs from "./pages/SmsLogs";
 import PaymentTracking from "./pages/PaymentTracking";
 import NoticeBoard from "./pages/NoticeBoard";
+import AccountSuspended from "./pages/AccountSuspended";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -75,6 +76,7 @@ const App = () => (
             <Routes>
               <Route path="/auth" element={<Auth />} />
             <Route path="/pending-approval" element={<PendingApproval />} />
+            <Route path="/account-suspended" element={<AccountSuspended />} />
             <Route
               path="/"
               element={

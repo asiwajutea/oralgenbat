@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isValidInterviewName } from "@/lib/utils";
+import { compressPdf, shouldCompressPdf, formatFileSize } from "@/utils/compressPdf";
 import { Upload } from "lucide-react";
 import {
   Dialog,
@@ -35,6 +36,7 @@ export const UploadDialog = ({
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [visibleCount, setVisibleCount] = useState(5);
   const [completedFileCount, setCompletedFileCount] = useState(0);
+  const [compressionStatus, setCompressionStatus] = useState<string>("");
 
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setIsOpen = controlledOnOpenChange || setInternalOpen;
@@ -158,10 +160,25 @@ export const UploadDialog = ({
       // Upload only valid files
       let completedFiles = 0;
       for (let i = 0; i < validFiles.length; i++) {
-        const file = validFiles[i];
+        let file = validFiles[i];
         const fileName = file.name.replace(/\.pdf$/i, "");
         const timestamp = Date.now();
         const storagePath = `${fileName}_${timestamp}.pdf`;
+
+        // Compress large PDFs before upload
+        if (shouldCompressPdf(file)) {
+          const originalSize = formatFileSize(file.size);
+          setCompressionStatus(`Compressing ${i + 1}/${validFiles.length}...`);
+          try {
+            file = await compressPdf(file, (msg) => setCompressionStatus(msg));
+            const compressedSize = formatFileSize(file.size);
+            toast.info(`${fileName}: ${originalSize} → ${compressedSize}`);
+          } catch (err) {
+            console.error("Compression failed, uploading original:", err);
+            toast.error(`Compression failed for ${fileName}, uploading original`);
+          }
+          setCompressionStatus("");
+        }
 
         // Upload with progress tracking
         const publicUrl = await uploadFileWithProgress(file, storagePath);
@@ -244,7 +261,7 @@ export const UploadDialog = ({
 
               <p className="text-sm font-medium">
                 {isUploading
-                  ? `Uploading ${completedFileCount + 1} of ${selectedFiles.length} file(s)...`
+                  ? compressionStatus || `Uploading ${completedFileCount + 1} of ${selectedFiles.length} file(s)...`
                   : `Selected ${selectedFiles.length} file(s):`}
               </p>
 
