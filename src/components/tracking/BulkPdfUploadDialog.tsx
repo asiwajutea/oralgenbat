@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Upload, FileText, Check, X, AlertCircle, RefreshCw } from "lucide-react";
+import { compressPdf, shouldCompressPdf, formatFileSize } from "@/utils/compressPdf";
 import {
   Dialog,
   DialogContent,
@@ -148,6 +149,28 @@ export const BulkPdfUploadDialog = ({
     if (!pdfFile.matchedAuditId) return false;
 
     try {
+      let fileToUpload: File = pdfFile.file;
+
+      // Compress large PDFs before upload
+      if (shouldCompressPdf(pdfFile.file)) {
+        const originalSize = formatFileSize(pdfFile.file.size);
+        setPdfFiles((prev) =>
+          prev.map((f) => (f.fileName === pdfFile.fileName ? { ...f, status: "uploading" as const, progress: 5 } : f))
+        );
+        try {
+          fileToUpload = await compressPdf(pdfFile.file, (msg) => {
+            setPdfFiles((prev) =>
+              prev.map((f) => (f.fileName === pdfFile.fileName ? { ...f, progress: 10 } : f))
+            );
+          });
+          const compressedSize = formatFileSize(fileToUpload.size);
+          toast.info(`${pdfFile.fileName}: ${originalSize} → ${compressedSize}`);
+        } catch (err) {
+          console.error("Compression failed, uploading original:", err);
+          toast.error(`Compression failed for ${pdfFile.fileName}, uploading original`);
+        }
+      }
+
       setPdfFiles((prev) =>
         prev.map((f) => (f.fileName === pdfFile.fileName ? { ...f, status: "uploading" as const, progress: 30 } : f))
       );
@@ -177,7 +200,7 @@ export const BulkPdfUploadDialog = ({
         xhr.addEventListener("error", () => reject(new Error("Upload failed")));
         xhr.open("PUT", uploadData.signedUrl);
         xhr.setRequestHeader("Content-Type", "application/pdf");
-        xhr.send(pdfFile.file);
+        xhr.send(fileToUpload);
       });
 
       const {
