@@ -33,13 +33,8 @@ const QAManagerDashboard = () => {
   const { data: stats } = useQuery({
     queryKey: ["qa-manager-stats"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("audits")
-        .select("id, status, is_re_audit, re_audit_count");
-      
-      if (error) throw error;
-      
-      const audits = data || [];
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
+      const audits = await fetchAllRows("audits", "id, status, is_re_audit, re_audit_count");
       const reviewed = audits.filter(a => a.status === "Audit Passed" || a.status === "Audit Failed");
       
       return {

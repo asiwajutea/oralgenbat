@@ -56,14 +56,10 @@ const ContractorDashboard = () => {
     queryFn: async () => {
       if (!contractorId) return { total: 0, passed: 0, failed: 0, pending: 0, reAudit: 0 };
       
-      const { data, error } = await supabase
-        .from("audits")
-        .select("id, status, is_re_audit")
-        .ilike("file_name", `${contractorId}%`);
-      
-      if (error) throw error;
-      
-      const audits = data || [];
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
+      const audits = await fetchAllRows("audits", "id, status, is_re_audit", (q: any) =>
+        q.ilike("file_name", `${contractorId}%`)
+      );
       return {
         total: audits.length,
         passed: audits.filter(a => a.status === "Audit Passed").length,
@@ -95,12 +91,10 @@ const ContractorDashboard = () => {
       if (teamsError) throw teamsError;
       
       // Get all audits for this contractor
-      const { data: audits, error: auditsError } = await supabase
-        .from("audits")
-        .select("file_name, status")
-        .ilike("file_name", `${contractorId}%`);
-      
-      if (auditsError) throw auditsError;
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
+      const audits = await fetchAllRows("audits", "file_name, status", (q: any) =>
+        q.ilike("file_name", `${contractorId}%`)
+      );
       
       // Group by field manager
       const fmMap = new Map<string, { name: string; codes: Set<string>; passed: number; failed: number; total: number }>();
