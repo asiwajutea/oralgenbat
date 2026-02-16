@@ -395,6 +395,64 @@ export const useBulkCreatePayments = () => {
   });
 };
 
+export const useUpdatePaymentRecord = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      recordId, 
+      updates 
+    }: { 
+      recordId: string; 
+      updates: { names_count?: number; payment_type?: string };
+    }) => {
+      const { error } = await supabase
+        .from("payment_records")
+        .update(updates)
+        .eq("id", recordId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["payment-records"] });
+      queryClient.invalidateQueries({ queryKey: ["all-interviews-payment"] });
+      queryClient.invalidateQueries({ queryKey: ["budget-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Payment record updated");
+    },
+    onError: (error) => {
+      console.error("Update payment record error:", error);
+      toast.error("Failed to update payment record");
+    },
+  });
+};
+
+export const useDeletePaymentRecord = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (recordId: string) => {
+      const { error } = await supabase
+        .from("payment_records")
+        .delete()
+        .eq("id", recordId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["payment-records"] });
+      queryClient.invalidateQueries({ queryKey: ["all-interviews-payment"] });
+      queryClient.invalidateQueries({ queryKey: ["budget-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Payment record deleted");
+    },
+    onError: (error) => {
+      console.error("Delete payment record error:", error);
+      toast.error("Failed to delete payment record");
+    },
+  });
+};
+
 export const useInvoices = () => {
   return useQuery({
     queryKey: ["invoices"],
