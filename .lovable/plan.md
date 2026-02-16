@@ -1,64 +1,51 @@
 
 
-## Plan: Add Per-File Cancel/Remove Buttons to All Upload Dialogs
+## Plan: Fix Mobile File Picker Causing Page Remount
 
-### Problem
-After selecting files for upload across all batch upload dialogs, there is no way to remove individual unwanted files from the list before uploading. Users must re-select all files from scratch if they accidentally included one they don't want.
+### Root Cause
 
-### Solution
-Add a small "X" (remove) button next to each file in the selected file list, visible only before the upload starts (not during or after upload). Clicking it removes that specific file from the batch.
+When a mobile user taps a file input, the phone's file picker opens and the browser tab goes to the background. Upon returning, the authentication system fires a token refresh event. The current code treats ALL auth events the same way -- it sets a "loading" state that causes the entire page to unmount and remount. This destroys the open modal and any selected file.
 
----
+The inactivity logout timer (15 minutes) is not the issue here since the file picker round-trip is fast, but it could also contribute on slower interactions.
 
-### Files to Modify
+### Fix
 
-#### 1. `src/components/UploadDialog.tsx` (Interviews page - PDF upload)
-- Add an `X` button next to each file in the `<li>` element (line 315-328)
-- On click, filter that file out of `selectedFiles` state
-- Hide the button while `isUploading` is true
-- Update the file input to allow re-selection (reset input value)
+**File: `src/contexts/AuthContext.tsx`** (the core fix)
 
-#### 2. `src/components/CombinedUploadDialog.tsx` (Interviews page - PDF + ZIP upload)
-- Add an `X` button next to each file pair in the visible pairs list
-- On click, remove the pair and also remove the corresponding file from `pdfFiles` and/or `zipFiles` arrays, then recalculate `filePairs`
-- Hide while uploading
+In the `onAuthStateChange` handler (around line 112-138), only set `loading = true` for the initial sign-in, not for token refreshes:
 
-#### 3. `src/components/BulkZipUploadDialog.tsx` (Interviews page - Bulk ZIP upload)
-- Add an `X` button next to each ZIP file in the list (line 356-368)
-- On click, filter that file out of `zipFiles` state
-- Hide while uploading
+- Check the `event` parameter: only set `loading = true` when event is `SIGNED_IN` or `INITIAL_SESSION`
+- For `TOKEN_REFRESHED` events, silently refresh the profile in the background without setting `loading = true` -- this prevents route guards from unmounting the page
+- The user/session state still gets updated, but since `loading` stays `false`, the route guards won't replace the page with a spinner
 
-#### 4. `src/components/tracking/BulkPdfUploadDialog.tsx` (Tracking page - Bulk PDF upload)
-- Add an `X` button next to each PDF file in the list (line 456-470 area)
-- On click, filter that file out of `pdfFiles` state
-- Hide while uploading
+**File: `src/contexts/AuthContext.tsx`** (secondary safety)
 
-#### 5. `src/components/tracking/BulkMetadataUploadDialog.tsx` (Tracking page - Bulk Metadata upload)
-- Add an `X` button next to each ZIP file in the list (line 494-510 area)
-- On click, filter that file out of `zipFiles` state
-- Hide while uploading
+Similarly, in the `getSession` call (around line 141-163), only set `loading = true` on the very first load (which it effectively already does since it runs once on mount).
 
----
+### What This Changes
 
-### UI Pattern (same across all dialogs)
+| Before | After |
+|--------|-------|
+| Any auth event sets `loading = true` | Only `SIGNED_IN` / `INITIAL_SESSION` sets `loading = true` |
+| Route guards unmount page on token refresh | Route guards stay stable on token refresh |
+| Mobile file picker return kills the modal | Modal and upload state survive |
 
-Each file row will get a small ghost-variant X button on the right side, only visible when:
-- The file status is `"pending"` (not yet uploading, not completed, not errored)
-- `isUploading` is false
+### What Stays the Same
 
-```
-[StatusIcon] filename.pdf        [Badge] [X]
-```
-
-The X button will use the existing `X` icon from lucide-react (already imported in most files) with `variant="ghost"` and `size="icon"` styling, sized small (`h-6 w-6`) to fit inline.
+- Initial page load still shows a loading spinner until auth is confirmed
+- Sign-in and sign-out flows work exactly as before
+- Profile and role data still refresh on token changes (just silently)
+- Inactivity logout timer unchanged
 
 ### Technical Details
 
-- **UploadDialog**: `removeFile(index)` filters `selectedFiles` by index
-- **CombinedUploadDialog**: `removePair(fileName)` filters `filePairs` by fileName, and also removes from `pdfFiles`/`zipFiles` source arrays
-- **BulkZipUploadDialog**: `removeFile(fileName)` filters `zipFiles` by fileName
-- **BulkPdfUploadDialog**: `removeFile(fileName)` filters `pdfFiles` by fileName
-- **BulkMetadataUploadDialog**: `removeFile(fileName)` filters `zipFiles` by fileName
+The change is approximately 5 lines in `AuthContext.tsx`. The `onAuthStateChange` callback receives an `event` string as its first argument (already destructured). We add a condition:
 
-No database changes or new dependencies needed.
+```
+if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+  setLoading(true);
+}
+```
+
+For `TOKEN_REFRESHED`, we still call `fetchProfileAndRole` but skip `setLoading(true)`, so the UI is unaffected.
 
