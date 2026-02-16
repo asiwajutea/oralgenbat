@@ -40,22 +40,33 @@ export const useStatusCounts = () => {
   return useQuery({
     queryKey: ["status-counts", userRole, profile?.full_name, effectiveContractorId],
     queryFn: async (): Promise<{ counts: StatusCounts; totalNames: TotalNames }> => {
-      // Get all audits with their metadata for total_names and contractor filtering
-      const { data: audits, error } = await supabase
-        .from("audits")
-        .select(`
-          status, 
-          locked_by, 
-          locked_at,
-          is_re_audit,
-          reviewed_by,
-          file_url,
-          file_name,
-          mobile_zip_url,
-          interview_metadata(total_names, contractor_id)
-        `);
+      // Paginated fetch to bypass the 1000-row default limit
+      const batchSize = 1000;
+      let allAudits: any[] = [];
+      let from = 0;
+      let hasMore = true;
 
-      if (error) throw error;
+      while (hasMore) {
+        const { data: batch, error } = await supabase
+          .from("audits")
+          .select(`
+            status, 
+            locked_by, 
+            locked_at,
+            is_re_audit,
+            reviewed_by,
+            file_url,
+            file_name,
+            mobile_zip_url,
+            interview_metadata(total_names, contractor_id)
+          `)
+          .range(from, from + batchSize - 1);
+
+        if (error) throw error;
+        if (batch) allAudits = [...allAudits, ...batch];
+        hasMore = batch?.length === batchSize;
+        from += batchSize;
+      }
 
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
@@ -79,7 +90,7 @@ export const useStatusCounts = () => {
         "Ready for Review": 0,
       };
 
-      audits?.forEach((audit) => {
+      allAudits?.forEach((audit) => {
         const metadata = audit.interview_metadata as { total_names: number | null; contractor_id: string | null }[] | null;
         const hasMetadata = metadata && metadata.length > 0;
         const names = metadata?.[0]?.total_names || 0;
