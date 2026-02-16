@@ -184,25 +184,26 @@ const PaymentTracking = () => {
   };
 
   return (
-    <div className="container mx-auto py-6 px-4 space-y-6">
+    <div className="container mx-auto py-4 sm:py-6 px-3 sm:px-4 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Payment & Budget Tracking</h1>
-          <p className="text-muted-foreground">Track interview payments and budget allocation</p>
+          <h1 className="text-xl sm:text-2xl font-bold">Payment & Budget Tracking</h1>
+          <p className="text-sm text-muted-foreground hidden sm:block">Track interview payments and budget allocation</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            <RefreshCw className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
           {canUpload && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Add Payment Data
-                  <ChevronDown className="h-4 w-4 ml-2" />
+                <Button size="sm">
+                  <Upload className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Add Payment Data</span>
+                  <span className="sm:hidden">Add</span>
+                  <ChevronDown className="h-4 w-4 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -224,43 +225,43 @@ const PaymentTracking = () => {
       <BudgetStatsCard stats={budgetStats || null} isLoading={statsLoading} />
 
       {/* Assignment & Payment Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <Card>
-          <CardContent className="pt-4 pb-4">
+          <CardContent className="pt-3 pb-3 sm:pt-4 sm:pb-4 px-3 sm:px-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground">Assigned to Clerks</p>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-[10px] sm:text-xs text-muted-foreground">Assigned to Clerks</p>
+                <p className="text-lg sm:text-2xl font-bold text-blue-600">
                   {records ? records.filter(r => r.assignment !== null).length : 0}
                 </p>
               </div>
-              <Users className="h-6 w-6 text-blue-600" />
+              <Users className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4 pb-4">
+          <CardContent className="pt-3 pb-3 sm:pt-4 sm:pb-4 px-3 sm:px-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground">Total Paid</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-[10px] sm:text-xs text-muted-foreground">Total Paid</p>
+                <p className="text-lg sm:text-2xl font-bold text-green-600">
                   {records ? records.filter(r => r.payment !== null).length : 0}
                 </p>
               </div>
-              <FileText className="h-6 w-6 text-green-600" />
+              <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="pt-4 pb-4">
+          <CardContent className="pt-3 pb-3 sm:pt-4 sm:pb-4 px-3 sm:px-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground">Assigned, Not Paid</p>
-                <p className="text-2xl font-bold text-amber-600">
+                <p className="text-[10px] sm:text-xs text-muted-foreground">Assigned, Not Paid</p>
+                <p className="text-lg sm:text-2xl font-bold text-amber-600">
                   {records ? records.filter(r => r.assignment !== null && r.payment === null).length : 0}
                 </p>
               </div>
-              <Search className="h-6 w-6 text-amber-600" />
+              <Search className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
             </div>
           </CardContent>
         </Card>
@@ -386,25 +387,30 @@ const PaymentTracking = () => {
 
       {/* Main Content */}
       <Tabs defaultValue="assigned" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="assigned" className="gap-2">
-            <Users className="h-4 w-4" />
-            Assigned to Clerks
-            <Badge variant="secondary" className="ml-1">
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="assigned" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Assigned to Clerks</span>
+            <span className="sm:hidden">Assigned</span>
+            <Badge variant="secondary" className="ml-1 text-[10px] sm:text-xs">
               {assignedRecords.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="unassigned" className="gap-2">
-            <FolderOpen className="h-4 w-4" />
-            Not Assigned
-            <Badge variant="outline" className="ml-1">
+          <TabsTrigger value="unassigned" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+            <FolderOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Not Assigned</span>
+            <span className="sm:hidden">Unassigned</span>
+            <Badge variant="outline" className="ml-1 text-[10px] sm:text-xs">
               {unassignedRecords.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="invoices" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Invoice History
-          </TabsTrigger>
+          {canUpload && (
+            <TabsTrigger value="invoices" className="gap-1 sm:gap-2 text-xs sm:text-sm">
+              <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Invoice History</span>
+              <span className="sm:hidden">Invoices</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="assigned">
@@ -425,9 +431,11 @@ const PaymentTracking = () => {
           />
         </TabsContent>
 
-        <TabsContent value="invoices">
-          <InvoiceHistoryTab />
-        </TabsContent>
+        {canUpload && (
+          <TabsContent value="invoices">
+            <InvoiceHistoryTab />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Upload Dialogs */}
