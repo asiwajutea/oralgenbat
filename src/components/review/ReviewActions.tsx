@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,7 +24,6 @@ interface ReviewActionsProps {
   auditId: string;
   currentStatus: string;
   currentFileName: string;
-  nextAuditId?: string;
   checklistCompleted?: boolean;
   hasChecklistFailures?: boolean;
   checklistFailureComments?: string;
@@ -34,13 +32,13 @@ interface ReviewActionsProps {
   audioAnalysisComplete?: boolean;
   pdfAnalysisComplete?: boolean;
   onScrollToChecklist?: () => void;
+  onReviewCompleted?: (result: "passed" | "failed") => void;
 }
 
 export const ReviewActions = ({ 
   auditId, 
   currentStatus, 
   currentFileName, 
-  nextAuditId,
   checklistCompleted = false,
   hasChecklistFailures = false,
   checklistFailureComments = "",
@@ -49,6 +47,7 @@ export const ReviewActions = ({
   audioAnalysisComplete = false,
   pdfAnalysisComplete = false,
   onScrollToChecklist,
+  onReviewCompleted,
 }: ReviewActionsProps) => {
   const [showFailDialog, setShowFailDialog] = useState(false);
   const [showPassDialog, setShowPassDialog] = useState(false);
@@ -57,7 +56,6 @@ export const ReviewActions = ({
   const [actionPlan, setActionPlan] = useState("");
   const [artifactCorrection, setArtifactCorrection] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile, userRole } = useAuth();
 
@@ -131,10 +129,8 @@ export const ReviewActions = ({
       queryClient.invalidateQueries({ queryKey: ["next-unreviewed-audit"] });
       queryClient.invalidateQueries({ queryKey: ["audits"] });
       
-      if (nextAuditId) {
-        setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
-      } else {
-        setTimeout(() => navigate("/"), 500);
+      if (onReviewCompleted) {
+        onReviewCompleted("passed");
       }
     } catch (error) {
       console.error("Error passing interview:", error);
@@ -220,10 +216,8 @@ export const ReviewActions = ({
       queryClient.invalidateQueries({ queryKey: ["next-unreviewed-audit"] });
       queryClient.invalidateQueries({ queryKey: ["audits"] });
       
-      if (nextAuditId) {
-        setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
-      } else {
-        setTimeout(() => navigate("/"), 500);
+      if (onReviewCompleted) {
+        onReviewCompleted("failed");
       }
     } catch (error) {
       console.error("Error failing interview:", error);
@@ -470,9 +464,6 @@ export const ReviewActions = ({
               description: "Interview submitted for re-audit",
             });
             setShowReauditDialog(false);
-            if (nextAuditId) {
-              setTimeout(() => navigate(`/review/${nextAuditId}`), 500);
-            }
           }}
         />
       )}

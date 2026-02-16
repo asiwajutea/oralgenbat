@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, MessageCircle, Flag, ShieldCheck } from "lucide-react";
+import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, XCircle, MessageCircle, Flag, ShieldCheck, ShieldOff } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -62,6 +62,7 @@ const ReviewInterview = () => {
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [completionResult, setCompletionResult] = useState<"passed" | "failed" | null>(null);
   
   // Resolution modal state
   const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
@@ -270,6 +271,20 @@ const ReviewInterview = () => {
     retry: 1,
   });
 
+  // Awaiting review count query (for completion page)
+  const { data: awaitingCount } = useQuery({
+    queryKey: ["awaiting-review-count"],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("audits")
+        .select("id, interview_metadata!inner(id)", { count: "exact", head: true })
+        .in("status", ["Pending", "Awaiting Review"]);
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: completionResult !== null,
+  });
+
   // Initialize state from saved progress
   useEffect(() => {
     if (checklistProgress?.is_completed) {
@@ -442,6 +457,42 @@ const ReviewInterview = () => {
         </div>
       </div>;
   }
+
+  // Show completion page after pass/fail
+  if (completionResult) {
+    const isPassed = completionResult === "passed";
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md p-8">
+          {isPassed ? (
+            <CheckCircle className="h-16 w-16 mx-auto mb-4 text-emerald-500" />
+          ) : (
+            <XCircle className="h-16 w-16 mx-auto mb-4 text-destructive" />
+          )}
+          <h2 className="text-2xl font-bold mb-2">
+            Interview {isPassed ? "Passed" : "Failed"}
+          </h2>
+          <p className="text-muted-foreground mb-1">
+            Your review has been submitted successfully.
+          </p>
+          {awaitingCount !== undefined && (
+            <p className="text-sm font-medium text-foreground mt-4 mb-6">
+              {awaitingCount} {awaitingCount === 1 ? "interview" : "interviews"} awaiting review
+            </p>
+          )}
+          <div className="flex gap-3 justify-center mt-6">
+            <Button onClick={() => navigate("/interviews")}>
+              Go to Interviews
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Return to Dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="h-screen flex flex-col lg:flex-row">
@@ -499,12 +550,17 @@ const ReviewInterview = () => {
               <p className="text-xs text-muted-foreground font-medium truncate">
                 {audit.file_name}
               </p>
-              {fieldAuditData?.found && (
+              {fieldAuditData?.found ? (
                 <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] px-1.5 py-0 gap-1 flex-shrink-0">
                   <ShieldCheck className="h-3 w-3" />
                   Field Audited{fieldAuditData.reviewed_at ? ` - ${format(new Date(fieldAuditData.reviewed_at), 'MMM d, yyyy')}` : ''}
                 </Badge>
-              )}
+              ) : fieldAuditData && !fieldAuditData.found ? (
+                <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0 gap-1 flex-shrink-0">
+                  <ShieldOff className="h-3 w-3" />
+                  No Field Audit
+                </Badge>
+              ) : null}
             </div>
           </div>
         </div>
@@ -535,7 +591,6 @@ const ReviewInterview = () => {
             auditId={auditId!}
             currentStatus={audit.status}
             currentFileName={audit.file_name}
-            nextAuditId={nextAudit?.id}
             checklistCompleted={checklistCompleted}
             hasChecklistFailures={hasChecklistFailures}
             checklistFailureComments={checklistComments}
@@ -549,6 +604,7 @@ const ReviewInterview = () => {
             onScrollToChecklist={() => {
               checklistRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
+            onReviewCompleted={(result) => setCompletionResult(result)}
           />
         </div>
 
