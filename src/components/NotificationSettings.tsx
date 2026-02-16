@@ -4,6 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { useNotifications } from "@/hooks/useNotifications";
 import { toast } from "sonner";
 
@@ -46,6 +47,20 @@ const NotificationSettings = () => {
     );
   }
 
+  const ToggleRow = ({ id, label, description, checked }: { id: string; label: string; description: string; checked: boolean }) => (
+    <div className="flex items-center justify-between">
+      <div className="space-y-0.5">
+        <Label htmlFor={id}>{label}</Label>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={(val) => handleToggle(id, val)}
+      />
+    </div>
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -83,77 +98,45 @@ const NotificationSettings = () => {
           )}
         </div>
 
-        {/* Notification Type Toggles */}
+        {/* Audit Notifications */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="notify_inactivity">Inactivity Reminders</Label>
-              <p className="text-sm text-muted-foreground">
-                Remind me to come online after 12 hours of inactivity
-              </p>
-            </div>
-            <Switch
-              id="notify_inactivity"
-              checked={settings?.notify_inactivity ?? true}
-              onCheckedChange={(checked) => handleToggle("notify_inactivity", checked)}
-            />
-          </div>
+          <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Audit Notifications</h4>
+          <ToggleRow id="notify_audit_passed" label="Audit Passed" description="Notify when interviews pass audit" checked={settings?.notify_audit_passed ?? true} />
+          <ToggleRow id="notify_failed_audit" label="Failed Audits" description="Notify when team interviews fail audit" checked={settings?.notify_failed_audit ?? true} />
+          <ToggleRow id="notify_re_audit" label="Re-Audit Requests" description="Notify when interviews are sent for re-audit" checked={settings?.notify_re_audit ?? true} />
+          <ToggleRow id="notify_new_interviews" label="New Interviews" description="Notify when new interviews are uploaded" checked={settings?.notify_new_interviews ?? true} />
+        </div>
 
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="notify_new_interviews">New Interviews</Label>
-              <p className="text-sm text-muted-foreground">
-                Notify me when new interviews are uploaded
-              </p>
-            </div>
-            <Switch
-              id="notify_new_interviews"
-              checked={settings?.notify_new_interviews ?? true}
-              onCheckedChange={(checked) => handleToggle("notify_new_interviews", checked)}
-            />
-          </div>
+        <Separator />
 
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="notify_re_audit">Re-Audit Requests</Label>
-              <p className="text-sm text-muted-foreground">
-                Notify me when interviews I reviewed are sent for re-audit
-              </p>
-            </div>
-            <Switch
-              id="notify_re_audit"
-              checked={settings?.notify_re_audit ?? true}
-              onCheckedChange={(checked) => handleToggle("notify_re_audit", checked)}
-            />
-          </div>
+        {/* Team Notifications */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Team Notifications</h4>
+          <ToggleRow id="notify_team_requests" label="Team Requests" description="Notify on team assignment requests, approvals, and rejections" checked={settings?.notify_team_requests ?? true} />
+          <ToggleRow id="notify_agent_reassigned" label="Agent Reassigned" description="Notify when interviewers are reassigned between field managers" checked={settings?.notify_agent_reassigned ?? true} />
+          <ToggleRow id="notify_interview_assigned" label="Interview Assigned" description="Notify when interviews are assigned to data entry teams" checked={settings?.notify_interview_assigned ?? true} />
+        </div>
 
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="notify_failed_audit">Failed Audits</Label>
-              <p className="text-sm text-muted-foreground">
-                Notify me when my team's interviews fail audit
-              </p>
-            </div>
-            <Switch
-              id="notify_failed_audit"
-              checked={settings?.notify_failed_audit ?? true}
-              onCheckedChange={(checked) => handleToggle("notify_failed_audit", checked)}
-            />
-          </div>
+        <Separator />
 
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="notify_milestones">Achievements</Label>
-              <p className="text-sm text-muted-foreground">
-                Notify me when I earn new achievements
-              </p>
-            </div>
-            <Switch
-              id="notify_milestones"
-              checked={settings?.notify_milestones ?? true}
-              onCheckedChange={(checked) => handleToggle("notify_milestones", checked)}
-            />
-          </div>
+        {/* Account Notifications */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Account Notifications</h4>
+          <ToggleRow id="notify_account_status" label="Account Status" description="Notify on account approval or suspension" checked={settings?.notify_account_status ?? true} />
+          <ToggleRow id="notify_new_registration" label="New Registrations" description="Notify when new users register and await approval" checked={settings?.notify_new_registration ?? true} />
+        </div>
+
+        <Separator />
+
+        {/* Other Notifications */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Other Notifications</h4>
+          <ToggleRow id="notify_payment" label="Payments" description="Notify on payment records and booklet journey updates" checked={settings?.notify_payment ?? true} />
+          <ToggleRow id="notify_data_entry_complete" label="Data Entry Complete" description="Notify when data entry is completed for interviews" checked={settings?.notify_data_entry_complete ?? true} />
+          <ToggleRow id="notify_issues" label="Issues" description="Notify on flagged issues and resolutions" checked={settings?.notify_issues ?? true} />
+          <ToggleRow id="notify_comments" label="Comments" description="Notify on comment replies and resolution comments" checked={settings?.notify_comments ?? true} />
+          <ToggleRow id="notify_milestones" label="Achievements" description="Notify when you earn new achievements" checked={settings?.notify_milestones ?? true} />
+          <ToggleRow id="notify_inactivity" label="Inactivity Reminders" description="Remind me after extended inactivity" checked={settings?.notify_inactivity ?? true} />
         </div>
       </CardContent>
     </Card>

@@ -79,10 +79,14 @@ export function PushNotificationPrompt() {
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>You'll receive notifications for:</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Failed audit alerts</li>
+              <li>Audit results (passed & failed)</li>
               <li>Re-audit submissions</li>
               <li>New interview uploads</li>
+              <li>Team assignment requests & approvals</li>
+              <li>Payment records & booklet updates</li>
+              <li>Account approvals & status changes</li>
               <li>Issue flags and resolutions</li>
+              <li>Data entry completion</li>
               <li>Achievement milestones</li>
             </ul>
           </div>
