@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isValidInterviewName } from "@/lib/utils";
 import { compressPdf, shouldCompressPdf, formatFileSize } from "@/utils/compressPdf";
-import { Upload } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -315,11 +315,23 @@ export const UploadDialog = ({
                   <li key={index} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
                       <span className="truncate flex-1">{file.name}</span>
-                      {uploadProgress[file.name] !== undefined && (
-                        <span className="text-xs text-muted-foreground ml-2">
-                          {uploadProgress[file.name]}%
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {uploadProgress[file.name] !== undefined && (
+                          <span className="text-xs text-muted-foreground">
+                            {uploadProgress[file.name]}%
+                          </span>
+                        )}
+                        {!isUploading && uploadProgress[file.name] === undefined && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 shrink-0"
+                            onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== index))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     {uploadProgress[file.name] !== undefined && (
                       <Progress value={uploadProgress[file.name]} className="h-2" />

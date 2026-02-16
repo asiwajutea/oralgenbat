@@ -542,7 +542,23 @@ export const CombinedUploadDialog = ({
                           {getStatusIcon(pair)}
                           <span className="text-sm truncate font-mono">{pair.fileName}</span>
                         </div>
-                        {pair.status === "pending" ? getPairIndicator(pair) : getStatusBadge(pair)}
+                        <div className="flex items-center gap-1">
+                          {pair.status === "pending" ? getPairIndicator(pair) : getStatusBadge(pair)}
+                          {!isUploading && pair.status === "pending" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => {
+                                setFilePairs(prev => prev.filter(p => p.fileName !== pair.fileName));
+                                setPdfFiles(prev => prev.filter(f => f.name.replace(/\.pdf$/i, '') !== pair.fileName));
+                                setZipFiles(prev => prev.filter(f => f.name.replace(/\.zip$/i, '') !== pair.fileName));
+                              }}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       {(pair.status === "uploading-pdf" || pair.status === "uploading-zip" || pair.status === "processing") && (
                         <Progress value={pair.progress} className="h-1.5" />

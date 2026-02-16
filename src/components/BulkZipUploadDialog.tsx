@@ -359,7 +359,19 @@ export const BulkZipUploadDialog = ({
                           {getStatusIcon(zipFile.status)}
                           <span className="text-sm truncate">{zipFile.file.name}</span>
                         </div>
-                        {getStatusBadge(zipFile)}
+                        <div className="flex items-center gap-1">
+                          {getStatusBadge(zipFile)}
+                          {!isUploading && zipFile.status === "pending" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => setZipFiles(prev => prev.filter(f => f.fileName !== zipFile.fileName))}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       {(zipFile.status === "uploading" || zipFile.status === "processing") && (
                         <Progress value={zipFile.progress} className="h-1.5" />

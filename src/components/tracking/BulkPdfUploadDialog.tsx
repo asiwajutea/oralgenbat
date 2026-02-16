@@ -460,7 +460,19 @@ export const BulkPdfUploadDialog = ({
                           {getStatusIcon(pdfFile)}
                           <span className="text-sm truncate">{pdfFile.file.name}</span>
                         </div>
-                        {getStatusBadge(pdfFile)}
+                        <div className="flex items-center gap-1">
+                          {getStatusBadge(pdfFile)}
+                          {!isUploading && pdfFile.status === "pending" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => setPdfFiles(prev => prev.filter(f => f.fileName !== pdfFile.fileName))}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       {pdfFile.auditStatus && pdfFile.status === "pending" && (
                         <div className="text-xs text-muted-foreground pl-6">Current status: {pdfFile.auditStatus}</div>
