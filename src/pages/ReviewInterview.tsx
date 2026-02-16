@@ -1,8 +1,9 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, MessageCircle, Flag } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, MessageCircle, Flag, ShieldCheck } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -254,6 +255,21 @@ const ReviewInterview = () => {
     enabled: !!auditId && isAuditor && !!user?.id
   });
 
+  // Field audit lookup from AVTool
+  const { data: fieldAuditData } = useQuery({
+    queryKey: ["field-audit", audit?.file_name],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('check-field-audit', {
+        body: { file_name: audit!.file_name }
+      });
+      if (error) throw error;
+      return data as { found: boolean; status?: string; reviewed_at?: string; reviewed_by?: string; created_at?: string } | null;
+    },
+    enabled: !!audit?.file_name,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
   // Initialize state from saved progress
   useEffect(() => {
     if (checklistProgress?.is_completed) {
@@ -479,9 +495,17 @@ const ReviewInterview = () => {
           </div>
           <div className="mt-3 sm:mt-4">
             <h1 className="text-lg sm:text-xl font-bold">Interview Review</h1>
-            <p className="text-xs mt-0.5 text-muted-foreground font-medium truncate">
-              {audit.file_name}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <p className="text-xs text-muted-foreground font-medium truncate">
+                {audit.file_name}
+              </p>
+              {fieldAuditData?.found && (
+                <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] px-1.5 py-0 gap-1 flex-shrink-0">
+                  <ShieldCheck className="h-3 w-3" />
+                  Field Audited{fieldAuditData.reviewed_at ? ` - ${format(new Date(fieldAuditData.reviewed_at), 'MMM d, yyyy')}` : ''}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
 
