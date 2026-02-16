@@ -35,6 +35,7 @@ interface BulkPdfUploadDialogProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onUploadProgress?: (progress: import("@/components/FloatingUploadProgress").UploadProgressData | null) => void;
 }
 
 interface PdfFile {
@@ -56,6 +57,7 @@ export const BulkPdfUploadDialog = ({
   trigger,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  onUploadProgress,
 }: BulkPdfUploadDialogProps) => {
   const { user, userRole } = useAuth();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -277,6 +279,8 @@ export const BulkPdfUploadDialog = ({
     let errorCount = 0;
     let reAuditProcessedCount = 0;
 
+    const totalSize = filesToUpload.reduce((s, f) => s + f.file.size, 0);
+
     for (let i = 0; i < filesToUpload.length; i += CONCURRENT_UPLOADS) {
       const batch = filesToUpload.slice(i, i + CONCURRENT_UPLOADS);
       const results = await Promise.allSettled(batch.map((f) => processPdfFile(f)));
@@ -288,6 +292,16 @@ export const BulkPdfUploadDialog = ({
           errorCount++;
         }
       });
+      // Update floating progress
+      const done = i + batch.length;
+      const pct = Math.round((done / filesToUpload.length) * 100);
+      onUploadProgress?.({
+        fileName: `${done}/${filesToUpload.length} files`,
+        interviewName: "Bulk PDF Upload",
+        fileSize: totalSize,
+        progress: pct,
+        status: pct >= 100 ? "success" : "uploading",
+      });
     }
 
     setIsUploading(false);
@@ -297,8 +311,27 @@ export const BulkPdfUploadDialog = ({
       let msg = `Successfully uploaded ${successCount} PDF(s)`;
       if (reAuditProcessedCount > 0) msg += ` (${reAuditProcessedCount} sent for re-audit)`;
       toast.success(msg);
+      onUploadProgress?.({
+        fileName: `${successCount} files`,
+        interviewName: "Bulk PDF Upload",
+        fileSize: totalSize,
+        progress: 100,
+        status: "success",
+      });
     }
-    if (errorCount > 0) toast.error(`Failed to upload ${errorCount} file(s)`);
+    if (errorCount > 0) {
+      toast.error(`Failed to upload ${errorCount} file(s)`);
+      if (successCount === 0) {
+        onUploadProgress?.({
+          fileName: `${errorCount} files failed`,
+          interviewName: "Bulk PDF Upload",
+          fileSize: totalSize,
+          progress: 0,
+          status: "error",
+          errorMessage: `${errorCount} file(s) failed`,
+        });
+      }
+    }
     if (successCount > 0) onUploadComplete();
   };
 

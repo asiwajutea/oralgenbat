@@ -10,6 +10,7 @@ import { AuditPagination } from "@/components/AuditPagination";
 import { AuditorStatsCard } from "@/components/AuditorStatsCard";
 import { AdminStatsCard } from "@/components/AdminStatsCard";
 import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
+import { FloatingUploadProgress, type UploadProgressData } from "@/components/FloatingUploadProgress";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -62,7 +63,7 @@ const Index = () => {
   const [pdfUploadOpen, setPdfUploadOpen] = useState(false);
   const [bulkZipOpen, setBulkZipOpen] = useState(false);
   const [combinedUploadOpen, setCombinedUploadOpen] = useState(false);
-  
+  const [activeUpload, setActiveUpload] = useState<UploadProgressData | null>(null);
   const hideReviewButton = userRole === 'field_manager' || userRole === 'contractor';
   const canUpload = userRole !== 'auditor'; // Auditors cannot upload files
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
@@ -356,6 +357,7 @@ const Index = () => {
                   onUploadComplete={fetchAudits} 
                   open={pdfUploadOpen}
                   onOpenChange={setPdfUploadOpen}
+                  onUploadProgress={setActiveUpload}
                 />
                 <BulkZipUploadDialog 
                   onUploadComplete={fetchAudits}
@@ -366,6 +368,7 @@ const Index = () => {
                   onUploadComplete={fetchAudits}
                   open={combinedUploadOpen}
                   onOpenChange={setCombinedUploadOpen}
+                  onUploadProgress={setActiveUpload}
                 />
               </>
             )}
@@ -406,6 +409,13 @@ const Index = () => {
       <div className="hidden lg:block sticky top-0 h-screen">
         <FilterSidebar onFilterChange={setFilters} />
       </div>
+      {/* Floating Upload Progress */}
+      {activeUpload && (
+        <FloatingUploadProgress
+          {...activeUpload}
+          onClose={() => setActiveUpload(null)}
+        />
+      )}
     </div>
   );
 };

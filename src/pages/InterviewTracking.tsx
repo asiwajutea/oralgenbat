@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { formatFileSize } from "@/utils/compressPdf";
+import { FloatingUploadProgress, type UploadProgressData } from "@/components/FloatingUploadProgress";
 import { 
   Search, 
   Download,
@@ -822,8 +823,7 @@ const InterviewTracking = () => {
         description: "The metadata ZIP has been uploaded and processed.",
       });
 
-      // Auto-dismiss after 3 seconds
-      setTimeout(() => setActiveUpload(null), 3000);
+      // No auto-dismiss -- user must manually close the panel
     } catch (error: any) {
       console.error("Upload error:", error);
       setActiveUpload(prev => prev ? { ...prev, status: "error", errorMessage: error.message || "Upload failed" } : prev);
@@ -865,6 +865,11 @@ const InterviewTracking = () => {
             />
             <BulkPdfUploadDialog
               onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
+              onUploadProgress={(p) => {
+                if (p) {
+                  setActiveUpload({ interviewId: "bulk-pdf", ...p });
+                }
+              }}
               trigger={
                 <Button variant="outline" className="gap-2 text-xs sm:text-sm">
                   <Upload className="h-4 w-4" />
@@ -1507,6 +1512,11 @@ const InterviewTracking = () => {
         open={showFailedModal}
         onOpenChange={setShowFailedModal}
         interview={selectedInterview}
+        onUploadProgress={(p) => {
+          if (p) {
+            setActiveUpload({ interviewId: selectedInterview?.id || "failed", ...p });
+          }
+        }}
       />
 
       {/* View Issue Dialog */}
@@ -1542,50 +1552,15 @@ const InterviewTracking = () => {
 
       {/* Floating Upload Progress Panel */}
       {activeUpload && (
-        <div className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto">
-          <Card className={cn(
-            "shadow-lg border-2",
-            activeUpload.status === "success" && "border-green-500",
-            activeUpload.status === "error" && "border-destructive",
-            activeUpload.status !== "success" && activeUpload.status !== "error" && "border-primary"
-          )}>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{activeUpload.interviewName}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {activeUpload.fileName} — {formatFileSize(activeUpload.fileSize)}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 shrink-0"
-                  onClick={() => setActiveUpload(null)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <Progress
-                value={activeUpload.progress}
-                className="h-2 mb-1"
-                indicatorClassName={cn(
-                  activeUpload.status === "success" && "bg-green-500",
-                  activeUpload.status === "error" && "bg-destructive"
-                )}
-              />
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
-                  {activeUpload.status === "uploading" && "Uploading..."}
-                  {activeUpload.status === "processing" && "Processing metadata..."}
-                  {activeUpload.status === "success" && "Complete!"}
-                  {activeUpload.status === "error" && (activeUpload.errorMessage || "Failed")}
-                </p>
-                <p className="text-xs font-medium">{activeUpload.progress}%</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <FloatingUploadProgress
+          fileName={activeUpload.fileName}
+          interviewName={activeUpload.interviewName}
+          fileSize={activeUpload.fileSize}
+          progress={activeUpload.progress}
+          status={activeUpload.status}
+          errorMessage={activeUpload.errorMessage}
+          onClose={() => setActiveUpload(null)}
+        />
       )}
     </div>
   );
