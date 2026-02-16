@@ -1,66 +1,85 @@
 
 
-## Plan: Mobile-Friendly Upload Progress for Tracking Page
+## Plan: Remove Auto-Dismiss and Add Floating Upload Progress Everywhere
 
-### Problem
-When uploading a file from a mobile phone on the Tracking page using the per-row "Upload Metadata" button, the only feedback is a small spinner icon on the button. After selecting a file from the phone's folder, there is:
-- No file name shown
-- No upload progress bar
-- No file size indicator
-- No status updates (uploading, processing, complete)
-- The user can scroll away from the row and lose sight of even the spinner
+### Overview
+Three changes: (1) remove auto-dismiss on the existing floating panel, (2) add upload progress to the Failed Interview Modal, (3) create a reusable floating progress component and integrate it into all upload dialogs across both the Tracking and Interviews pages.
 
-### Solution
-Add a **sticky floating upload progress panel** at the bottom of the screen that appears whenever an inline upload is in progress. This panel will show the file name, size, progress bar, and current status -- visible regardless of scrolling.
+---
 
-### Technical Details
+### 1. Remove Auto-Dismiss from Existing Floating Panel
 
 **File: `src/pages/InterviewTracking.tsx`**
+- Remove the `setTimeout(() => setActiveUpload(null), 3000)` line (around line 826)
+- The panel already has a close (X) button -- users will dismiss it manually
 
-1. **Expand upload state** (around line 159-160):
-   - Change `uploadingId` from `string | null` to a richer state object:
-     ```typescript
-     interface UploadProgress {
-       interviewId: string;
-       fileName: string;
-       interviewName: string;
-       fileSize: number;
-       progress: number; // 0-100
-       status: "uploading" | "processing" | "success" | "error";
-       errorMessage?: string;
-     }
-     const [activeUpload, setActiveUpload] = useState<UploadProgress | null>(null);
-     ```
+---
 
-2. **Update `handleMetadataUpload`** (lines 728-794):
-   - Set `activeUpload` with file details immediately after file selection
-   - Use XHR with `createSignedUploadUrl` instead of direct `supabase.storage.upload` so we can track upload progress via `xhr.upload.onprogress`
-   - Update progress: 0-80% for upload, 80-90% for DB update, 90-100% for edge function processing
-   - Set status to "success" or "error" on completion
-   - Auto-dismiss the panel after 3 seconds on success
+### 2. Create Reusable Floating Upload Progress Component
 
-3. **Add floating progress panel** (before the closing `</div>` of the page):
-   - A sticky bottom panel (`fixed bottom-4 left-4 right-4 z-50`) that shows:
-     - Interview name (e.g., "NG71_650_20250702_1233")
-     - File name and size (e.g., "metadata.zip - 2.3 MB")
-     - Progress bar with percentage
-     - Status label ("Uploading...", "Processing metadata...", "Complete!", "Failed")
-     - A dismiss/close button
-   - Styled with `Card` component, with green accent on success, red on error
-   - On mobile, full-width with rounded corners and shadow
+**New file: `src/components/FloatingUploadProgress.tsx`**
+- Extract the floating panel UI from `InterviewTracking.tsx` into a reusable component
+- Props: `fileName`, `interviewName`, `fileSize`, `progress`, `status`, `errorMessage`, `onClose`
+- Same styling: fixed bottom position, Card with colored border (green for success, red for error, primary for uploading), Progress bar, status label, manual close button
+- No auto-dismiss -- always requires manual close
 
-4. **Keep backward compatibility**:
-   - Maintain `uploadingId` derived from `activeUpload?.interviewId` so the button spinner still works
-   - The per-row button still shows the spinner, but now the floating panel provides the detailed feedback
+---
 
-### Summary
+### 3. Add Progress Tracking to Failed Interview Modal
 
-| Area | Change |
+**File: `src/components/tracking/FailedInterviewModal.tsx`**
+- Add `uploadProgress` state to track: `{ progress: number, status: string, currentFile: string }`
+- Refactor PDF upload to use XHR with `createSignedUploadUrl` for real-time progress
+- Refactor ZIP upload to use XHR with `createSignedUploadUrl` for real-time progress
+- Add a progress section inside the modal showing:
+  - Which file is uploading ("Uploading PDF..." / "Uploading ZIP..." / "Processing...")
+  - Progress bar with percentage
+  - File name and size
+- Use the `FloatingUploadProgress` component to also show a sticky panel outside the modal (passed via callback to parent `InterviewTracking.tsx`)
+
+---
+
+### 4. Add Floating Progress to Bulk PDF Upload Dialog (Tracking Page)
+
+**File: `src/components/tracking/BulkPdfUploadDialog.tsx`**
+- Add a new `onUploadProgress` callback prop: `(progress: UploadProgressData | null) => void`
+- During upload, call `onUploadProgress` with overall progress data (current file count, total, percentage)
+- The dialog already has internal progress bars -- the floating panel adds visibility when the dialog is minimized on mobile
+
+**File: `src/pages/InterviewTracking.tsx`**
+- Pass `onUploadProgress` to `BulkPdfUploadDialog` that updates `activeUpload` state
+- The existing floating panel renders automatically since it already watches `activeUpload`
+
+---
+
+### 5. Add Floating Progress to Interviews Page Upload Dialogs
+
+**File: `src/components/UploadDialog.tsx`**
+- Add `onUploadProgress` callback prop
+- During `handleUpload`, call it with progress data for each file being uploaded
+- Clear on completion
+
+**File: `src/components/CombinedUploadDialog.tsx`**
+- Add `onUploadProgress` callback prop
+- During `processFilePair`, call it with progress data
+
+**File: `src/pages/Index.tsx`**
+- Add `activeUpload` state (same `UploadProgress` interface)
+- Pass `onUploadProgress` callbacks to `UploadDialog` and `CombinedUploadDialog`
+- Render the `FloatingUploadProgress` component at the bottom of the page
+
+---
+
+### Technical Summary
+
+| File | Change |
 |------|--------|
-| Upload state | Replace simple `uploadingId` string with rich `UploadProgress` object |
-| `handleMetadataUpload` | Use XHR for progress tracking, update `activeUpload` state throughout |
-| New UI element | Sticky bottom floating panel showing file name, size, progress bar, status |
-| Mobile UX | Panel is always visible regardless of scroll position |
+| `src/components/FloatingUploadProgress.tsx` | New reusable floating progress panel component |
+| `src/pages/InterviewTracking.tsx` | Remove auto-dismiss; pass progress callback to BulkPdfUploadDialog and FailedInterviewModal; use FloatingUploadProgress |
+| `src/components/tracking/FailedInterviewModal.tsx` | Add XHR-based upload with progress; add `onUploadProgress` callback |
+| `src/components/tracking/BulkPdfUploadDialog.tsx` | Add `onUploadProgress` callback during uploads |
+| `src/components/UploadDialog.tsx` | Add `onUploadProgress` callback |
+| `src/components/CombinedUploadDialog.tsx` | Add `onUploadProgress` callback |
+| `src/pages/Index.tsx` | Add activeUpload state, render FloatingUploadProgress |
 
-Only one file is modified: `src/pages/InterviewTracking.tsx`. No new dependencies or database changes needed.
-
+No database changes needed.
