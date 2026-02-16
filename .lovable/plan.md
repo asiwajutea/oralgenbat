@@ -1,61 +1,74 @@
 
 
-## Plan: Push Notifications on Notice Board, Navigation Sub-Menus, and Persistent Permission Prompt
+## Plan: Review Completion Auto-Load, Bulk Upload Re-Audit Logic, and Mobile Labels
 
-### 1. Add Push Notification Messaging to the Notice Board Page
+### 1. Auto-Load Next Interview on Completion Page
 
-**File: `src/pages/NoticeBoard.tsx`**
+**File: `src/pages/ReviewInterview.tsx`**
 
-- Add a new tab "Push Notifications" alongside "All Announcements" and "My Announcements"
-- This tab contains a simple form allowing authorized users (super_admin, contractor, sub_contractor, quality_assurance_manager) to compose and send a push notification message
-- The push notification is sent by creating a targeted announcement with `frequency: 'once'` which triggers the existing `notify_new_announcement` database trigger, delivering browser push notifications to targeted users
-- The tab also shows the push notification permission status with an "Enable" button for users who haven't granted permission yet
+Modify the completion page (lines 461-493) to add:
 
-### 2. Navigation Sub-Menus (Desktop + Mobile)
+- A 5-second countdown timer using `useState` and `useEffect` with `setInterval`
+- Display the next interview ID (from the existing `nextAudit` query) below the countdown
+- When countdown reaches 0, auto-navigate to `/review/{nextAuditId}`
+- A "Go to Next Interview" manual button as fallback
+- If `nextAudit` is null (no interviews left), show "No more interviews to review" with only the "Go to Dashboard" button and no countdown
+- Clicking any manual navigation button cancels the countdown
+- The countdown should pause/cancel if user clicks "Go to Interviews" or "Return to Dashboard"
 
-**File: `src/components/Header.tsx`**
+The `nextAudit` query already exists (lines 182-216) and fetches the next available unreviewed audit with metadata. The `awaitingCount` query (lines 275-286) provides the count. Both are already enabled when `completionResult` is set.
 
-- Create a new "Communications" NavigationMenu dropdown containing:
-  - Notice Board (`/notices`)
-  - Push Notifications (`/notices?tab=push`) -- links directly to the push tab
-- Move "Fraud Analytics" under a new "Analytics" NavigationMenu dropdown for admin/super_admin:
-  - Analytics (`/analytics` or `/my-analytics` depending on role)
-  - Fraud Analytics (`/fraud-analytics`)
-- For non-admin roles that have both My Analytics and Fraud Analytics, group them similarly under an "Analytics" dropdown
-- Remove the standalone "Fraud Analytics" NavLink
+### 2. Bulk Upload Artifact Correction Logic
 
-**File: `src/components/MobileNav.tsx`**
+The `artifact_correction` field on `audits` is a text array that can contain `'scanned_pdf'` and/or `'mobile_metadata'`. The new rules require checking this field to decide whether to send for re-audit or just replace the artifact.
 
-- Add a "Communications" section header with:
-  - Notice Board
-  - Push Notifications (links to `/notices?tab=push`)
-- Move "Fraud Analytics" under an "Analytics" section header alongside existing analytics links
+**File: `src/components/tracking/BulkPdfUploadDialog.tsx`**
 
-### 3. Persistent Push Notification Prompt for Users Without Permission
+Changes to `handleFileSelect` (line ~94):
+- Fetch `artifact_correction` alongside `id, file_name, file_url, status` from the audits query
+- In the file classification logic (lines 120-128), when status is "Audit Failed":
+  - Check if `artifact_correction` contains both `'scanned_pdf'` and `'mobile_metadata'`
+  - If both: mark as replacement only (NOT re-audit). Set a new flag like `isPartialFix = true`
+  - If only `'scanned_pdf'`: mark as re-audit (current behavior)
 
-**File: `src/components/PushNotificationPrompt.tsx`**
+Changes to `processPdfFile` (line ~217):
+- For `isPartialFix` files: instead of calling `mark_audit_for_reaudit`, do a regular update:
+  - Update `file_url` to the new URL
+  - Update `artifact_correction` to `['mobile_metadata']` (remove `'scanned_pdf'`)
+  - Update `last_modified` to now
+  - Do NOT change status or trigger re-audit
 
-- Change the condition: remove the check for `Notification.permission !== "default"` when permission is "default" (not yet decided)
-- Remove the `localStorage` dismissed check for users whose permission is still "default" -- show the prompt on every visit using `sessionStorage` instead
-- Users who click "Don't Ask Again" will still have it permanently dismissed via `localStorage`
-- Users who click "Not Now" will only dismiss for the current session (use `sessionStorage`)
-- If permission is already "granted" or "denied", don't show the prompt
+**File: `src/components/tracking/BulkMetadataUploadDialog.tsx`**
 
-### 4. Re-Enable Push Notifications from Profile Page
+Same parallel changes:
+- Fetch `artifact_correction` in the audits query (line ~98)
+- In classification (lines 128-135), when status is "Audit Failed":
+  - If both corrections needed: mark as replacement (partial fix), not re-audit
+  - If only `'mobile_metadata'`: mark as re-audit (current behavior)
 
-**File: `src/components/NotificationSettings.tsx`**
+Changes to `processZipFile` (line ~198):
+- For partial fix files: instead of calling `mark_audit_for_reaudit`:
+  - Update `mobile_zip_url` and `mobile_zip_uploaded_at`
+  - Update `artifact_correction` to `['scanned_pdf']` (remove `'mobile_metadata'`)
+  - Update `last_modified` to now
+  - Still invoke `process-mobile-zip` to parse metadata
+  - Do NOT change status or trigger re-audit
 
-- When permission is "denied", add helpful text explaining how to re-enable in browser settings (since we can't programmatically override a browser denial)
-- When permission is "default", show an "Enable Push Notifications" button that calls `requestPermission()`
-- Add a "Reset Prompt" button that clears the `push_notification_prompt_dismissed` localStorage key, so the user will see the prompt again on next visit
+### 3. Mobile Labels on Bulk Upload Buttons
+
+**File: `src/pages/InterviewTracking.tsx`**
+
+On lines 875-893, the bulk upload buttons show icons only on mobile (text is hidden with `hidden sm:inline`). Add tiny labels visible only on mobile:
+
+- For Bulk Metadata button: add `<span className="sm:hidden text-[10px]">ZIP</span>` next to the icon
+- For Bulk PDF button: add `<span className="sm:hidden text-[10px]">PDF</span>` next to the icon
 
 ### Technical Summary
 
 | File | Change |
 |------|--------|
-| `src/pages/NoticeBoard.tsx` | Add "Push Notifications" tab with send form |
-| `src/components/Header.tsx` | Add "Communications" dropdown (Notice Board + Push Notifications), move Fraud Analytics under "Analytics" dropdown |
-| `src/components/MobileNav.tsx` | Add Communications section, move Fraud Analytics under Analytics section |
-| `src/components/PushNotificationPrompt.tsx` | Show prompt every session for users with "default" permission; "Not Now" uses sessionStorage, "Don't Ask Again" uses localStorage |
-| `src/components/NotificationSettings.tsx` | Add "Reset Prompt" button and browser instructions for denied state |
+| `src/pages/ReviewInterview.tsx` | Add 5-second auto-load countdown on completion page with next interview ID display and fallback navigation |
+| `src/components/tracking/BulkPdfUploadDialog.tsx` | Fetch `artifact_correction`, add partial-fix logic for both-artifact failures (replace PDF + update correction to metadata-only) |
+| `src/components/tracking/BulkMetadataUploadDialog.tsx` | Fetch `artifact_correction`, add partial-fix logic for both-artifact failures (replace metadata + update correction to PDF-only) |
+| `src/pages/InterviewTracking.tsx` | Add tiny "PDF" and "ZIP" labels on mobile view for bulk upload buttons |
 
