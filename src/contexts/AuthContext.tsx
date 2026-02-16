@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -37,6 +37,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [accountStatus, setAccountStatus] = useState('active');
   const [loading, setLoading] = useState(true);
   const [isFetchingProfile, setIsFetchingProfile] = useState(false);
+  const initialLoadDone = useRef(false);
   const navigate = useNavigate();
 
   const fetchProfileAndRole = async (userId: string) => {
@@ -97,15 +98,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     } catch (error) {
       console.error("Error fetching profile and role:", error);
-      // On any unexpected error, also clear session to prevent infinite loops
-      await supabase.auth.signOut();
-      setProfile(null);
-      setUserRole(null);
-      setIsApproved(false);
-      setAccountStatus('active');
+      // Don't sign out on transient errors - keep existing state
+      // Auth-specific errors (corrupted token, 406, JWT) are already handled above
     } finally {
       setLoading(false);
       setIsFetchingProfile(false);
+      initialLoadDone.current = true;
     }
   };
 
@@ -118,10 +116,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          // Only show loading spinner for initial sign-in, not token refreshes.
-          // TOKEN_REFRESHED fires when returning from mobile file picker (app was backgrounded),
-          // and setting loading=true would unmount the page, destroying open modals/uploads.
-          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          // Only show loading spinner on the very first session load.
+          // Subsequent events (TOKEN_REFRESHED, or even SIGNED_IN fired by some
+          // mobile browsers when returning from file picker) must NOT set loading=true,
+          // as that would unmount the page and destroy open modals/uploads.
+          if (!initialLoadDone.current) {
             setLoading(true);
           }
           // CRITICAL: Defer Supabase calls to prevent auth deadlock
