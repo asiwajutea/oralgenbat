@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -34,55 +35,116 @@ export function useCleanableAudits(minAgeDays: number = 30, contractorFilter?: s
   });
 }
 
-interface DeleteAuditFilesParams {
-  auditIds: string[];
-  deleteZips: boolean;
-  deletePhotos: boolean;
-}
-
-interface CleanupSummary {
-  auditsProcessed: number;
+export interface BatchProgress {
+  phase: 'idle' | 'deleting' | 'done' | 'error';
+  processed: number;
+  total: number;
+  currentBatch: number;
+  totalBatches: number;
   zipsDeleted: number;
   photosDeleted: number;
-  spaceFeedMb: number;
   errors: string[];
 }
 
-export function useDeleteAuditFiles() {
+function splitIntoChunks<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+export function useBatchDeleteAuditFiles() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [progress, setProgress] = useState<BatchProgress>({
+    phase: 'idle',
+    processed: 0,
+    total: 0,
+    currentBatch: 0,
+    totalBatches: 0,
+    zipsDeleted: 0,
+    photosDeleted: 0,
+    errors: [],
+  });
 
-  return useMutation({
-    mutationFn: async ({ auditIds, deleteZips, deletePhotos }: DeleteAuditFilesParams): Promise<CleanupSummary> => {
-      const { data, error } = await supabase.functions.invoke('cleanup-audit-files', {
-        body: { auditIds, deleteZips, deletePhotos }
-      });
+  const execute = useCallback(async (auditIds: string[], deleteZips: boolean, deletePhotos: boolean) => {
+    const BATCH_SIZE = 25;
+    const chunks = splitIntoChunks(auditIds, BATCH_SIZE);
 
-      if (error) throw error;
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Cleanup failed');
+    setProgress({
+      phase: 'deleting',
+      processed: 0,
+      total: auditIds.length,
+      currentBatch: 0,
+      totalBatches: chunks.length,
+      zipsDeleted: 0,
+      photosDeleted: 0,
+      errors: [],
+    });
+
+    let totalZips = 0;
+    let totalPhotos = 0;
+    const allErrors: string[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        const { data, error } = await supabase.functions.invoke('cleanup-audit-files', {
+          body: { auditIds: chunks[i], deleteZips, deletePhotos }
+        });
+
+        if (error) {
+          allErrors.push(`Batch ${i + 1}: ${error.message}`);
+        } else if (data?.success) {
+          totalZips += data.summary.zipsDeleted || 0;
+          totalPhotos += data.summary.photosDeleted || 0;
+          if (data.summary.errors?.length) {
+            allErrors.push(...data.summary.errors);
+          }
+        } else {
+          allErrors.push(`Batch ${i + 1}: ${data?.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        allErrors.push(`Batch ${i + 1}: ${err instanceof Error ? err.message : String(err)}`);
       }
 
-      return data.summary;
-    },
-    onSuccess: (summary) => {
-      // Invalidate storage usage and cleanable audits queries
-      queryClient.invalidateQueries({ queryKey: ['storage-usage'] });
-      queryClient.invalidateQueries({ queryKey: ['cleanable-audits'] });
-
-      // Show success toast
-      toast({
-        title: 'Cleanup Complete',
-        description: `Deleted ${summary.zipsDeleted} ZIP files and ${summary.photosDeleted} photos. Freed ${summary.spaceFeedMb.toFixed(1)} MB.`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Cleanup Failed',
-        description: error.message,
-        variant: 'destructive',
+      const processed = Math.min((i + 1) * BATCH_SIZE, auditIds.length);
+      setProgress({
+        phase: 'deleting',
+        processed,
+        total: auditIds.length,
+        currentBatch: i + 1,
+        totalBatches: chunks.length,
+        zipsDeleted: totalZips,
+        photosDeleted: totalPhotos,
+        errors: allErrors,
       });
     }
-  });
+
+    // Done
+    setProgress(prev => ({ ...prev, phase: 'done' }));
+
+    queryClient.invalidateQueries({ queryKey: ['storage-usage'] });
+    queryClient.invalidateQueries({ queryKey: ['cleanable-audits'] });
+
+    toast({
+      title: 'Cleanup Complete',
+      description: `Deleted ${totalZips} ZIP files and ${totalPhotos} photos.`,
+    });
+  }, [queryClient, toast]);
+
+  const reset = useCallback(() => {
+    setProgress({
+      phase: 'idle',
+      processed: 0,
+      total: 0,
+      currentBatch: 0,
+      totalBatches: 0,
+      zipsDeleted: 0,
+      photosDeleted: 0,
+      errors: [],
+    });
+  }, []);
+
+  return { progress, execute, reset };
 }

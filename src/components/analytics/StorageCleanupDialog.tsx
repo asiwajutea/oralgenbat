@@ -8,8 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { useCleanableAudits, useDeleteAuditFiles } from "@/hooks/useCleanupAudits";
-import { Trash2, AlertTriangle, CheckCircle2, Package, Images } from "lucide-react";
+import { useCleanableAudits, useBatchDeleteAuditFiles } from "@/hooks/useCleanupAudits";
+import { Trash2, AlertTriangle, CheckCircle2, Package, Images, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface StorageCleanupDialogProps {
@@ -28,12 +28,14 @@ export const StorageCleanupDialog = ({ open, onOpenChange, currentUsageMb }: Sto
   const [deletePhotos, setDeletePhotos] = useState(true);
 
   const { data: cleanableAudits, isLoading } = useCleanableAudits(minAgeDays, contractorFilter);
-  const deleteMutation = useDeleteAuditFiles();
+  const { progress, execute, reset } = useBatchDeleteAuditFiles();
+
+  const isDeleting = progress.phase === 'deleting';
+  const isDone = progress.phase === 'done';
 
   const estimatedSavingsMb = useMemo(() => {
     if (!cleanableAudits) return 0;
     const selected = cleanableAudits.filter(a => selectedAudits.has(a.audit_id));
-    // Rough estimate: 5MB per ZIP, 100KB per photo
     const zipSavings = deleteZips ? selected.length * 5 : 0;
     const photoSavings = deletePhotos ? selected.reduce((sum, a) => sum + (a.photo_count * 0.1), 0) : 0;
     return zipSavings + photoSavings;
@@ -72,18 +74,7 @@ export const StorageCleanupDialog = ({ open, onOpenChange, currentUsageMb }: Sto
 
   const handleConfirmDelete = async () => {
     if (confirmationText !== "DELETE") return;
-
-    await deleteMutation.mutateAsync({
-      auditIds: Array.from(selectedAudits),
-      deleteZips,
-      deletePhotos
-    });
-
-    // Reset state
-    setSelectedAudits(new Set());
-    setShowConfirmation(false);
-    setConfirmationText("");
-    onOpenChange(false);
+    await execute(Array.from(selectedAudits), deleteZips, deletePhotos);
   };
 
   const handleCancel = () => {
@@ -91,79 +82,149 @@ export const StorageCleanupDialog = ({ open, onOpenChange, currentUsageMb }: Sto
     setConfirmationText("");
   };
 
+  const handleDone = () => {
+    setSelectedAudits(new Set());
+    setShowConfirmation(false);
+    setConfirmationText("");
+    reset();
+    onOpenChange(false);
+  };
+
+  const progressPercent = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+
   if (showConfirmation) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={open} onOpenChange={isDeleting ? undefined : onOpenChange}>
+        <DialogContent className="max-w-2xl" onPointerDownOutside={isDeleting ? (e) => e.preventDefault() : undefined}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Confirm Deletion
+              {isDone ? (
+                <CheckCircle2 className="h-5 w-5 text-success" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              )}
+              {isDone ? "Cleanup Complete" : "Confirm Deletion"}
             </DialogTitle>
             <DialogDescription>
-              This action cannot be undone. Please review carefully.
+              {isDone ? "Here's a summary of the cleanup." : "This action cannot be undone. Please review carefully."}
             </DialogDescription>
           </DialogHeader>
 
-          <Alert variant="destructive" className="my-4">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-semibold">You are about to delete:</p>
-                <ul className="list-disc list-inside space-y-1 ml-2">
-                  {deleteZips && <li>{selectedCount} mobile ZIP files (~{Math.round(selectedCount * 5)} MB)</li>}
-                  {deletePhotos && <li>{selectedPhotosCount} interview photos (~{Math.round(selectedPhotosCount * 0.1)} MB)</li>}
-                  <li className="font-semibold">Total: ~{estimatedSavingsMb.toFixed(1)} MB</li>
-                </ul>
+          {/* Done summary */}
+          {isDone && (
+            <div className="space-y-4 my-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-lg border p-4 text-center">
+                  <p className="text-2xl font-bold">{progress.zipsDeleted}</p>
+                  <p className="text-sm text-muted-foreground">ZIPs Deleted</p>
+                </div>
+                <div className="rounded-lg border p-4 text-center">
+                  <p className="text-2xl font-bold">{progress.photosDeleted}</p>
+                  <p className="text-sm text-muted-foreground">Photos Deleted</p>
+                </div>
               </div>
-            </AlertDescription>
-          </Alert>
-
-          <div className="space-y-3 py-4">
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
-              <p className="text-sm">All audit records will be preserved</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
-              <p className="text-sm">All PDF reports will be preserved</p>
-            </div>
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
-              <p className="text-sm">All extracted metadata will be preserved</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="confirmation">Type "DELETE" to confirm:</Label>
-            <Input
-              id="confirmation"
-              value={confirmationText}
-              onChange={(e) => setConfirmationText(e.target.value)}
-              placeholder="DELETE"
-              className="font-mono"
-            />
-          </div>
-
-          {deleteMutation.isPending && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">Deleting files... Please wait.</p>
-              <Progress value={undefined} className="h-2" />
+              <p className="text-sm text-muted-foreground text-center">
+                Processed {progress.processed} of {progress.total} audits
+              </p>
+              {progress.errors.length > 0 && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    <p className="font-semibold mb-1">{progress.errors.length} error(s):</p>
+                    <ul className="list-disc list-inside text-xs max-h-32 overflow-y-auto">
+                      {progress.errors.map((err, i) => <li key={i}>{err}</li>)}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+              <div className="flex justify-end">
+                <Button onClick={handleDone}>Done</Button>
+              </div>
             </div>
           )}
 
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={handleCancel} disabled={deleteMutation.isPending}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmDelete}
-              disabled={confirmationText !== "DELETE" || deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Confirm Deletion"}
-            </Button>
-          </div>
+          {/* Deleting progress */}
+          {isDeleting && (
+            <div className="space-y-4 my-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Batch {progress.currentBatch} of {progress.totalBatches}
+                  </span>
+                  <span className="font-medium">{progressPercent}%</span>
+                </div>
+                <Progress value={progressPercent} className="h-3" />
+                <p className="text-xs text-muted-foreground text-center">
+                  {progress.processed} / {progress.total} audits processed
+                </p>
+              </div>
+              <div className="flex gap-4 text-sm text-muted-foreground justify-center">
+                <span>📦 {progress.zipsDeleted} ZIPs deleted</span>
+                <span>📷 {progress.photosDeleted} photos deleted</span>
+              </div>
+              {progress.errors.length > 0 && (
+                <p className="text-xs text-destructive">{progress.errors.length} error(s) so far</p>
+              )}
+            </div>
+          )}
+
+          {/* Pre-delete confirmation */}
+          {!isDeleting && !isDone && (
+            <>
+              <Alert variant="destructive" className="my-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <p className="font-semibold">You are about to delete:</p>
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      {deleteZips && <li>{selectedCount} mobile ZIP files (~{Math.round(selectedCount * 5)} MB)</li>}
+                      {deletePhotos && <li>{selectedPhotosCount} interview photos (~{Math.round(selectedPhotosCount * 0.1)} MB)</li>}
+                      <li className="font-semibold">Total: ~{estimatedSavingsMb.toFixed(1)} MB</li>
+                    </ul>
+                  </div>
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-3 py-4">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+                  <p className="text-sm">All audit records will be preserved</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+                  <p className="text-sm">All PDF reports will be preserved</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+                  <p className="text-sm">All extracted metadata will be preserved</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmation">Type "DELETE" to confirm:</Label>
+                <Input
+                  id="confirmation"
+                  value={confirmationText}
+                  onChange={(e) => setConfirmationText(e.target.value)}
+                  placeholder="DELETE"
+                  className="font-mono"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={handleCancel}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmDelete}
+                  disabled={confirmationText !== "DELETE"}
+                >
+                  Confirm Deletion
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     );
