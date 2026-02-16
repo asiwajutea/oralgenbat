@@ -1,44 +1,85 @@
 
 
-## Plan: Fix Analytics Page Issues
+## Plan: Fix Storage Cleanup & UI Issues
 
-### 1. Fix Cleanup Dialog - Ambiguous Column Bug
+### Problem Analysis
 
-**Problem**: The `get_cleanable_audit_files` RPC function has an ambiguous `audit_id` column reference. The subquery for `interview_photos` uses `audit_id` in the JOIN condition `p.audit_id = a.id`, but the return table also defines `audit_id` as an output column, creating ambiguity.
+1. **Cleanup function times out**: The edge function processes all 404 audits sequentially in a single HTTP request. Each audit requires ~3-4 database calls (fetch audit, delete ZIP, delete photos, log cleanup). With 404 audits, this exceeds the edge function timeout limit, causing "Failed to fetch" error.
 
-**Fix**: Recreate the RPC function with fully qualified column references (e.g., `p.audit_id` in the subquery join).
+2. **No visual progress**: The current UI shows an indeterminate progress bar with no real feedback on how many audits have been processed.
 
-### 2. Add Shorter Minimum Age Options to Cleanup Dialog
+3. **Storage card shows "of 1 GB"**: The card displays a hardcoded 1 GB limit which is incorrect for this project (actual usage is 12+ GB).
 
-**Problem**: Currently only 30/60/90/180 day options exist. User wants 24 hours, 5 days, and 15 days added.
+---
 
-**Changes**:
-- **`src/components/analytics/StorageCleanupDialog.tsx`**: Add `SelectItem` entries for 1 day, 5 days, and 15 days. Set default to 1 day.
-- **Database function**: Update the RPC to also remove the `m.id IS NOT NULL` requirement (so files without metadata can also be cleaned) and lower the minimum enforced age.
-- **Edge function** (`cleanup-audit-files/index.ts`): Lower the safety check from 30 days to allow cleaning files as young as 1 day old.
+### Fix 1: Batch Processing with Progress Tracking
 
-### 3. Add "Audited Today" Count to Auditors Tab
+**Problem**: Single request with 404 audits times out.
+**Solution**: Process audits in batches of 25 from the client side, updating a progress bar after each batch completes.
 
-**Problem**: The Auditors tab table doesn't show how many interviews each auditor reviewed today.
+**File: `src/hooks/useCleanupAudits.ts`**
+- Replace the single `mutateAsync` call with a batched approach
+- Add a new hook `useBatchDeleteAuditFiles` that:
+  - Splits `auditIds` into chunks of 25
+  - Calls the edge function for each chunk sequentially
+  - Tracks progress state: `{ processed: number, total: number, currentBatch: number, totalBatches: number, errors: string[] }`
+  - Returns progress via a callback or state
 
-**Changes**:
-- **`src/hooks/useAnalytics.ts`**: Add `reviews_today` to the `AuditorPerformance` interface and compute it by filtering reviews where `reviewed_at >= startOfDay(now)`.
-- **`src/components/analytics/AuditorPerformanceTable.tsx`**: Add a "Today" column displaying the count.
+**File: `src/components/analytics/StorageCleanupDialog.tsx`**
+- Replace `useDeleteAuditFiles` with the new batch hook
+- Show a real progress bar with percentage: e.g., "Processing batch 3 of 17... (75/404 audits)"
+- Show running totals of ZIPs and photos deleted as batches complete
+- Disable close/cancel while deletion is in progress
 
-### 4. Fix Field Managers Tab
+### Fix 2: Visual Progress Indicator
 
-**Problem**: The Field Managers tab data relies on joining `team_assignments` with `profiles` via a foreign key on `field_manager_id`. The query uses `profiles!inner(full_name)` which requires the foreign key relationship to work. If the query hits the 1,000-row default limit, some field managers may be missing.
+**File: `src/components/analytics/StorageCleanupDialog.tsx`** (confirmation view)
+- Replace the indeterminate `<Progress value={undefined}>` with a determinate progress bar showing actual batch progress
+- Add text showing: "Batch X of Y - Z/Total audits processed"
+- Show cumulative results: "Deleted X ZIPs, Y photos so far..."
+- After completion, show a summary before closing
 
-**Changes**:
-- **`src/hooks/useAnalytics.ts`**: The `useFieldManagerPerformance` hook fetches `team_assignments` and `interview_metadata` separately. Both queries may hit the 1,000-row limit. Use paginated fetching (the existing `fetchAllRows` utility) for both queries to ensure all data is retrieved.
+### Fix 3: Storage Usage Card - Remove "of 1 GB" and Always Show Cleanup Button
+
+**File: `src/components/analytics/StorageUsageCard.tsx`**
+- Remove the "of {storage_limit_gb} GB" text and the percentage-based progress bar
+- Just show the total size used (e.g., "12.28 GB") and file count
+- Remove the `showWarning` conditional -- always show the "Cleanup Old Files" button
+- Remove the warning alert wrapper; just render the button directly in the card content
+
+---
+
+### Technical Details
+
+**Batch processing approach in `useCleanupAudits.ts`**:
+```
+function useBatchDeleteAuditFiles():
+  state: { phase, processed, total, zipsDeleted, photosDeleted, errors }
+  
+  execute(auditIds, deleteZips, deletePhotos):
+    chunks = splitIntoChunks(auditIds, 25)
+    for each chunk:
+      call edge function with chunk
+      accumulate results
+      update state (triggers re-render with new progress)
+    invalidate queries on completion
+```
+
+**StorageCleanupDialog confirmation view changes**:
+- During deletion: show determinate progress bar + batch counter + running totals
+- After completion: show final summary with total ZIPs deleted, photos deleted, and errors if any
+- Add a "Done" button that appears after completion to close the dialog
+
+**StorageUsageCard changes**:
+- Display: "12.28 GB" (large), "11518 files" (subtitle)
+- Remove progress bar and percentage
+- Always show "Cleanup Old Files" button below the stats
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| Database migration (new) | Fix `get_cleanable_audit_files` RPC - qualify ambiguous column references, remove metadata requirement, allow lower min age |
-| `src/components/analytics/StorageCleanupDialog.tsx` | Add 1-day, 5-day, 15-day options; update default; update description text |
-| `src/hooks/useAnalytics.ts` | Add `reviews_today` to AuditorPerformance; use paginated fetch for FM queries |
-| `src/components/analytics/AuditorPerformanceTable.tsx` | Add "Today" column |
-| `supabase/functions/cleanup-audit-files/index.ts` | Lower minimum age safety check from 30 days to 1 day |
+| `src/hooks/useCleanupAudits.ts` | Add batched deletion hook with progress state |
+| `src/components/analytics/StorageCleanupDialog.tsx` | Use batch hook, show real progress, show completion summary |
+| `src/components/analytics/StorageUsageCard.tsx` | Remove "of 1 GB", remove progress bar, always show cleanup button |
 
