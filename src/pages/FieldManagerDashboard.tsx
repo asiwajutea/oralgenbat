@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
@@ -7,14 +8,37 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AuditTable } from "@/components/AuditTable";
 import { FilterSidebar } from "@/components/FilterSidebar";
 import { Button } from "@/components/ui/button";
-import { Users, FileCheck, AlertCircle, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Users, FileCheck, AlertCircle, CheckCircle, XCircle, Loader2, FileText, Archive, RefreshCw, Search, Eye } from "lucide-react";
 import { ReAuditDialog } from "@/components/review/ReAuditDialog";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { format } from "date-fns";
+
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case "Audit Passed":
+      return <Badge className="bg-green-500/10 text-green-500 border-green-500/20 text-xs">Passed</Badge>;
+    case "Audit Failed":
+      return <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-xs">Failed</Badge>;
+    case "Awaiting Review":
+      return <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 text-xs">Awaiting</Badge>;
+    case "Pending":
+      return <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs">Pending</Badge>;
+    default:
+      return <Badge variant="outline" className="text-xs">{status}</Badge>;
+  }
+};
 
 const FieldManagerDashboard = () => {
   const { session } = useAuth();
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [filters, setFilters] = useState({});
   const [selectedAudit, setSelectedAudit] = useState<any>(null);
   const [reauditDialogOpen, setReauditDialogOpen] = useState(false);
+  const [mobileSearch, setMobileSearch] = useState("");
 
   // Fetch approved team members
   const { data: teamMembers, isLoading: loadingTeam } = useQuery({
@@ -81,6 +105,17 @@ const FieldManagerDashboard = () => {
     setReauditDialogOpen(true);
   };
 
+  // Filter audits for mobile search
+  const filteredAudits = audits?.filter((a) => {
+    if (!mobileSearch) return true;
+    const search = mobileSearch.toLowerCase();
+    return (
+      a.file_name?.toLowerCase().includes(search) ||
+      (a.interview_metadata as any)?.interviewer_code?.toLowerCase().includes(search) ||
+      (a.interview_metadata as any)?.interviewer_name?.toLowerCase().includes(search)
+    );
+  }) || [];
+
   if (loadingTeam) {
     return (
       <Layout>
@@ -116,16 +151,15 @@ const FieldManagerDashboard = () => {
       <div className="flex min-h-screen w-full">
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
-          <div className="container mx-auto p-6 space-y-6">
+          <div className="container mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
             <div>
-              <h1 className="text-3xl font-bold">Field Manager Dashboard</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-2xl md:text-3xl font-bold">Field Manager Dashboard</h1>
+              <p className="text-sm md:text-base text-muted-foreground">
                 Monitor your team's interview audits ({teamMembers.length} interviewer{teamMembers.length !== 1 ? 's' : ''})
               </p>
             </div>
 
-            {/* Statistics Cards - Compact on mobile, full on desktop */}
-            {/* Mobile: Compact horizontal scroll */}
+            {/* Mobile: Compact horizontal scroll stats */}
             <div className="flex gap-2 overflow-x-auto pb-2 md:hidden -mx-2 px-2">
               <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
                 <FileCheck className="h-4 w-4 text-primary" />
@@ -163,9 +197,7 @@ const FieldManagerDashboard = () => {
             <div className="hidden md:grid gap-4 md:grid-cols-6">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Interviews
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Interviews</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
@@ -174,12 +206,9 @@ const FieldManagerDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Awaiting Review
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Awaiting Review</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
@@ -188,12 +217,9 @@ const FieldManagerDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Re-Audits
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Re-Audits</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
@@ -202,12 +228,9 @@ const FieldManagerDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Passed
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Passed</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
@@ -216,12 +239,9 @@ const FieldManagerDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Failed
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Failed</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
@@ -230,12 +250,9 @@ const FieldManagerDashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Missing Artifacts
-                  </CardTitle>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Missing Artifacts</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
@@ -246,19 +263,150 @@ const FieldManagerDashboard = () => {
               </Card>
             </div>
 
-            {/* Audits Table */}
+            {/* Audits Table / Mobile Accordion */}
             <Card>
               <CardHeader>
-                <CardTitle>Team Interviews</CardTitle>
+                <CardTitle className="text-lg md:text-xl">Team Interviews</CardTitle>
                 <CardDescription>
                   All interviews conducted by your team members
                 </CardDescription>
+                {/* Mobile search */}
+                {isMobile && (
+                  <div className="relative mt-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by file name or interviewer..."
+                      value={mobileSearch}
+                      onChange={(e) => setMobileSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 {loadingAudits ? (
                   <div className="flex justify-center p-12">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
+                ) : isMobile ? (
+                  /* Mobile Accordion View */
+                  filteredAudits.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">No interviews found</p>
+                  ) : (
+                    <Accordion type="single" collapsible className="space-y-2">
+                      {filteredAudits.map((audit) => {
+                        const metadata = audit.interview_metadata as any;
+                        return (
+                          <AccordionItem
+                            key={audit.id}
+                            value={audit.id}
+                            className="border rounded-lg px-3"
+                          >
+                            <AccordionTrigger className="hover:no-underline py-3">
+                              <div className="flex flex-col items-start gap-1 text-left flex-1 min-w-0 mr-2">
+                                <span className="text-sm font-medium truncate w-full">
+                                  {audit.file_name?.replace('.pdf', '')}
+                                </span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {getStatusBadge(audit.status)}
+                                  {audit.is_re_audit && (
+                                    <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-500">
+                                      <RefreshCw className="h-3 w-3 mr-1" />
+                                      Re-Audit #{audit.re_audit_count}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-3">
+                              <div className="space-y-3">
+                                {/* Details */}
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  <div>
+                                    <p className="text-muted-foreground text-xs">Interviewer</p>
+                                    <p className="font-medium">
+                                      {metadata?.interviewer_code}
+                                      {metadata?.interviewer_name && (
+                                        <span className="text-muted-foreground"> ({metadata.interviewer_name})</span>
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground text-xs">Status</p>
+                                    <p className="font-medium">{audit.status}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground text-xs">Uploaded</p>
+                                    <p className="font-medium">{format(new Date(audit.uploaded_at), 'MMM dd, yyyy')}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground text-xs">Last Modified</p>
+                                    <p className="font-medium">{format(new Date(audit.last_modified || audit.uploaded_at), 'MMM dd, yyyy')}</p>
+                                  </div>
+                                  {audit.reviewed_by && (
+                                    <div className="col-span-2">
+                                      <p className="text-muted-foreground text-xs">Reviewed By</p>
+                                      <p className="font-medium">{audit.reviewed_by}</p>
+                                    </div>
+                                  )}
+                                  {audit.review_comment && (
+                                    <div className="col-span-2">
+                                      <p className="text-muted-foreground text-xs">Review Comment</p>
+                                      <p className="font-medium text-sm">{audit.review_comment}</p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Artifacts */}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-muted-foreground">Artifacts:</span>
+                                  {audit.file_url && (
+                                    <Badge variant="outline" className="text-xs">
+                                      <FileText className="h-3 w-3 mr-1" />PDF
+                                    </Badge>
+                                  )}
+                                  {audit.mobile_zip_url && (
+                                    <Badge variant="outline" className="text-xs">
+                                      <Archive className="h-3 w-3 mr-1" />ZIP
+                                    </Badge>
+                                  )}
+                                  {!audit.file_url && !audit.mobile_zip_url && (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex gap-2 pt-1">
+                                  {audit.file_url && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1"
+                                      onClick={() => navigate(`/review/${audit.id}`)}
+                                    >
+                                      <Eye className="h-4 w-4 mr-1" />
+                                      View
+                                    </Button>
+                                  )}
+                                  {(audit.status === "Audit Failed" || audit.status === "Audit Passed") && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1"
+                                      onClick={() => handleReaudit(audit)}
+                                    >
+                                      <RefreshCw className="h-4 w-4 mr-1" />
+                                      Re-Audit
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        );
+                      })}
+                    </Accordion>
+                  )
                 ) : (
                   <AuditTable
                     audits={audits || []}
