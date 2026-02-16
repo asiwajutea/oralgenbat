@@ -1,95 +1,71 @@
 
 
-## Plan: Connect Oralgenbat to AVTool for Field Audit Lookup
+## Plan: Field Audit Badge + Post-Review Confirmation Page
 
-### How It Works
+### Change 1: Show "No Field Audit" badge when not found
 
-When an auditor opens the Review Interview page in Oralgenbat, the app will check AVTool's database to see if a field audit record exists for that interview ID. If found, a badge/banner will appear showing "Field Audited" with the audit date and status.
+**File: `src/pages/ReviewInterview.tsx`** (lines 502-507)
 
-### Architecture
+Currently the field audit badge only appears when `fieldAuditData?.found` is true. Add an `else` branch to show a gray/muted badge indicating "No Field Audit Record" when the query has completed but no record was found.
 
-The connection works in two steps:
+- When `fieldAuditData?.found === true`: green "Field Audited - Date" badge (keep as-is)
+- When `fieldAuditData` is loaded and `found === false`: gray "No Field Audit" badge with a different icon (e.g., `ShieldOff` or `ShieldX`)
+- While loading: no badge shown (avoid flicker)
 
-1. **AVTool** needs a new edge function that accepts an interview ID and returns the field audit record (you'll create this in the AVTool project)
-2. **Oralgenbat** calls that edge function and displays the result on the review page
+### Change 2: Show confirmation page after Pass/Fail instead of auto-navigating
 
-```text
-Oralgenbat (Review Page)
-    |
-    |-- Edge Function: check-field-audit
-    |       |
-    |       |-- HTTP call to AVTool edge function
-    |       |
-    v
-AVTool (Edge Function: get-field-audit)
-    |
-    |-- Queries AVTool's audits table by folder_name
-    |
-    v
-Returns: { found: true, status, reviewed_at, reviewed_by, ... }
-```
+**File: `src/components/review/ReviewActions.tsx`**
 
-### Step-by-Step
+Instead of navigating to the next interview or home after passing/failing, show a confirmation screen.
 
-#### Step 1: Create edge function in AVTool (you do this in the AVTool project)
+**New state**: `showCompletionPage` (boolean) and `completionResult` ("passed" | "failed")
 
-You'll need to go to [OralGen AVTool](/projects/3daf200c-dd78-4f5a-aa4f-10ebcf86b789) and ask Lovable to create an edge function called `get-field-audit` that:
-- Accepts a `folder_name` parameter (the interview ID)
-- Queries the AVTool `audits` table for a matching record
-- Returns the audit status, reviewed_at, reviewed_by, and created_at
-- Does NOT require JWT (so Oralgenbat can call it), but uses a shared API key for security
+**After successful pass/fail**:
+- Set `showCompletionPage = true` and `completionResult` accordingly
+- Do NOT navigate away
 
-You can copy-paste this prompt into the AVTool project:
+**New query**: Fetch count of interviews "awaiting review" that have both PDF and metadata available:
+- Query `audits` joined with `interview_metadata` where status is "Pending" or "Awaiting Review"
+- This gives the "ready for review" count
 
-> "Create an edge function called `get-field-audit` that accepts a JSON body with `folder_name` (string) and an optional `api_key` header for security. It should query the `audits` table for a record matching that folder_name. Return `{ found: true, status, reviewed_at, reviewed_by, created_at }` if found, or `{ found: false }` if not. Set verify_jwt = false in config.toml. Include CORS headers."
+**Confirmation page UI** (rendered as a full-screen overlay or replacing the action bar):
+- Large check/X icon with "Interview Passed" or "Interview Failed"
+- Text: "X interviews are awaiting review"
+- Button: "Go to Interviews" (navigates to `/interviews`)
+- Secondary button: "Return to Dashboard" (navigates to `/`)
 
-#### Step 2: Store AVTool credentials in Oralgenbat (secrets)
+**Props change**: Add a callback `onReviewCompleted` to `ReviewActionsProps` so the parent (`ReviewInterview.tsx`) can show the confirmation page full-screen instead of the review content.
 
-After the AVTool edge function is deployed, we need to store:
-- `AVTOOL_SUPABASE_URL` -- the AVTool project URL (https://cajuhevrfsqjnyaajloi.supabase.co)
-- `AVTOOL_API_KEY` -- a shared secret key that both apps know, to prevent unauthorized access
-
-#### Step 3: Create edge function in Oralgenbat
-
-Create `supabase/functions/check-field-audit/index.ts` that:
-- Receives the interview `file_name` from Oralgenbat's frontend
-- Extracts the folder name (interview ID) from the file_name
-- Calls AVTool's `get-field-audit` edge function
-- Returns the result to the frontend
-
-#### Step 4: Update the Review Interview page
-
-**File: `src/pages/ReviewInterview.tsx`**
-- Add a `useQuery` hook that calls the `check-field-audit` edge function with the audit's `file_name`
-- Display a badge/banner near the interview title showing:
-  - A green "Field Audited" badge with the date if a record is found
-  - Nothing if no record is found (no clutter)
-
-**Visual result on the review page:**
-```text
-NG71_650_20250120_1234        [Field Audited - Jan 25, 2025] [Audit Passed]
-```
-
-### What You Need To Do First
-
-Before I can implement steps 2-4, you need to:
-
-1. Go to the **AVTool** project and create the `get-field-audit` edge function (using the prompt above)
-2. Decide on a shared API key (a random string) that both apps will use for security
-3. Come back here and tell me it's ready -- I'll then set up the secrets and build the integration
+**Implementation approach**: 
+- Add `onReviewCompleted: (result: "passed" | "failed") => void` prop to `ReviewActions`
+- In `ReviewInterview.tsx`, add state `completionResult` and when set, render a full-page confirmation instead of the review layout
+- The confirmation page queries the awaiting-review count and shows the summary
 
 ### Technical Details
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| `get-field-audit` edge function | AVTool project | Exposes field audit data via HTTP |
-| `AVTOOL_API_KEY` secret | Oralgenbat secrets | Shared key for secure cross-app calls |
-| `check-field-audit` edge function | Oralgenbat project | Proxy that calls AVTool |
-| `useQuery` hook | ReviewInterview.tsx | Fetches and caches field audit status |
-| Field Audit Badge | ReviewInterview.tsx | Visual indicator on the review page |
+| File | Change |
+|------|--------|
+| `src/pages/ReviewInterview.tsx` | Add "No Field Audit" badge in else branch (line ~502). Add `completionResult` state. Render confirmation page when set. |
+| `src/components/review/ReviewActions.tsx` | Replace `navigate()` calls after pass/fail with `onReviewCompleted` callback. Add `onReviewCompleted` to props interface. Remove `nextAuditId` navigation logic. |
 
-- The edge function call is lightweight (single DB lookup) so it won't slow down page load
-- Results are cached per interview ID so repeated visits don't re-fetch
-- The shared API key prevents random people from querying your audit data
-- No database changes needed in either project
+**Confirmation page layout:**
+```text
++------------------------------------------+
+|                                          |
+|         [CheckCircle / XCircle]          |
+|      Interview Passed / Failed           |
+|                                          |
+|   12 interviews awaiting review          |
+|                                          |
+|  [Go to Interviews]  [Return to Home]    |
+|                                          |
++------------------------------------------+
+```
+
+The awaiting-review count query:
+```sql
+SELECT count(*) FROM audits a
+INNER JOIN interview_metadata m ON m.audit_id = a.id
+WHERE a.status IN ('Pending', 'Awaiting Review')
+```
 
