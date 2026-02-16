@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,12 +23,52 @@ interface NotificationSettings {
   notify_re_audit: boolean;
   notify_failed_audit: boolean;
   notify_milestones: boolean;
+  notify_audit_passed: boolean;
+  notify_team_requests: boolean;
+  notify_interview_assigned: boolean;
+  notify_data_entry_complete: boolean;
+  notify_account_status: boolean;
+  notify_new_registration: boolean;
+  notify_payment: boolean;
+  notify_agent_reassigned: boolean;
+  notify_issues: boolean;
+  notify_comments: boolean;
+}
+
+// Maps notification type to the corresponding settings key
+function getSettingsKeyForType(type: string): keyof NotificationSettings | null {
+  const map: Record<string, keyof NotificationSettings> = {
+    new_interview: "notify_new_interviews",
+    failed_audit: "notify_failed_audit",
+    re_audit: "notify_re_audit",
+    milestone: "notify_milestones",
+    inactivity: "notify_inactivity",
+    audit_passed: "notify_audit_passed",
+    team_request_approved: "notify_team_requests",
+    team_request_rejected: "notify_team_requests",
+    new_team_request: "notify_team_requests",
+    interview_assigned: "notify_interview_assigned",
+    data_entry_complete: "notify_data_entry_complete",
+    account_approved: "notify_account_status",
+    account_suspended: "notify_account_status",
+    new_registration: "notify_new_registration",
+    payment_created: "notify_payment",
+    journey_updated: "notify_payment",
+    agent_reassigned: "notify_agent_reassigned",
+    issue_flagged: "notify_issues",
+    issue_resolved: "notify_issues",
+    comment_reply: "notify_comments",
+    resolution_comment: "notify_comments",
+    announcement: "notify_new_interviews", // announcements always show
+  };
+  return map[type] || null;
 }
 
 export const useNotifications = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>("default");
+  const settingsRef = useRef<NotificationSettings | null>(null);
 
   // Check notification permission status
   useEffect(() => {
@@ -73,6 +113,63 @@ export const useNotifications = () => {
     },
     enabled: !!user?.id,
   });
+
+  // Keep ref in sync for realtime callback
+  useEffect(() => {
+    settingsRef.current = settings ?? null;
+  }, [settings]);
+
+  // Realtime subscription for push notifications
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`user-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "user_notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const newNotification = payload.new as Notification;
+
+          // Invalidate query cache so bell icon updates
+          queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
+
+          // Check if push is allowed for this type
+          const settingsKey = getSettingsKeyForType(newNotification.type);
+          const currentSettings = settingsRef.current;
+          const isEnabled = settingsKey
+            ? (currentSettings?.[settingsKey] ?? true)
+            : true;
+
+          // Fire browser notification if permitted
+          if (
+            isEnabled &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            try {
+              new window.Notification(newNotification.title, {
+                body: newNotification.message,
+                icon: "/pwa-192x192.png",
+                tag: newNotification.id,
+              });
+            } catch (err) {
+              console.error("Failed to show notification:", err);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
 
   // Count unread notifications
   const unreadCount = notifications.filter(n => !n.is_read).length;
@@ -140,17 +237,14 @@ export const useNotifications = () => {
     setPermissionStatus(permission);
     
     if (permission === "granted") {
-      // Subscribe to push notifications if service worker is available
       if ("serviceWorker" in navigator && "PushManager" in window) {
         try {
           const registration = await navigator.serviceWorker.ready;
-          // VAPID key would be configured here for production push notifications
           const subscription = await (registration as any).pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
           });
           
-          // Save subscription to database
           await updateSettings.mutateAsync({
             push_subscription: subscription.toJSON(),
           });
@@ -187,15 +281,3 @@ export const useNotifications = () => {
     showNotification,
   };
 };
-
-// Helper function to convert VAPID key
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}

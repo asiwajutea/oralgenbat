@@ -1190,11 +1190,21 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          notify_account_status: boolean | null
+          notify_agent_reassigned: boolean | null
+          notify_audit_passed: boolean | null
+          notify_comments: boolean | null
+          notify_data_entry_complete: boolean | null
           notify_failed_audit: boolean | null
           notify_inactivity: boolean | null
+          notify_interview_assigned: boolean | null
+          notify_issues: boolean | null
           notify_milestones: boolean | null
           notify_new_interviews: boolean | null
+          notify_new_registration: boolean | null
+          notify_payment: boolean | null
           notify_re_audit: boolean | null
+          notify_team_requests: boolean | null
           push_subscription: Json | null
           updated_at: string | null
           user_id: string
@@ -1202,11 +1212,21 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          notify_account_status?: boolean | null
+          notify_agent_reassigned?: boolean | null
+          notify_audit_passed?: boolean | null
+          notify_comments?: boolean | null
+          notify_data_entry_complete?: boolean | null
           notify_failed_audit?: boolean | null
           notify_inactivity?: boolean | null
+          notify_interview_assigned?: boolean | null
+          notify_issues?: boolean | null
           notify_milestones?: boolean | null
           notify_new_interviews?: boolean | null
+          notify_new_registration?: boolean | null
+          notify_payment?: boolean | null
           notify_re_audit?: boolean | null
+          notify_team_requests?: boolean | null
           push_subscription?: Json | null
           updated_at?: string | null
           user_id: string
@@ -1214,11 +1234,21 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          notify_account_status?: boolean | null
+          notify_agent_reassigned?: boolean | null
+          notify_audit_passed?: boolean | null
+          notify_comments?: boolean | null
+          notify_data_entry_complete?: boolean | null
           notify_failed_audit?: boolean | null
           notify_inactivity?: boolean | null
+          notify_interview_assigned?: boolean | null
+          notify_issues?: boolean | null
           notify_milestones?: boolean | null
           notify_new_interviews?: boolean | null
+          notify_new_registration?: boolean | null
+          notify_payment?: boolean | null
           notify_re_audit?: boolean | null
+          notify_team_requests?: boolean | null
           push_subscription?: Json | null
           updated_at?: string | null
           user_id?: string
