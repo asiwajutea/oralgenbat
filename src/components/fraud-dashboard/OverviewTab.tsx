@@ -1,5 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, AlertTriangle, TrendingUp, BarChart3, ShieldAlert } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Users, AlertTriangle, TrendingUp, BarChart3, ShieldAlert, Target, CheckCircle2, ShieldCheck, ShieldX, Flame } from "lucide-react";
 import type { AgentFraudProfile } from "@/utils/fraudCalculations";
 import { FraudGradeDistribution } from "./FraudGradeDistribution";
 import { FraudHeatmap } from "./FraudHeatmap";
@@ -81,6 +81,66 @@ export const OverviewTab = ({ profiles }: OverviewTabProps) => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Fraud Score Interpretation Guide */}
+      <Card className="border-2 border-dashed border-muted-foreground/30">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">Understanding Fraud Scores</CardTitle>
+          </div>
+          <CardDescription>
+            The fraud score (0–100) measures how likely an agent's work patterns indicate irregularities. A <strong>lower score is better</strong>. Leaders should aim for all agents to maintain Grade A or B.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Grade A */}
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+              <ShieldCheck className="h-6 w-6 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-sm">Grade A · Safe</p>
+                <p className="text-xs text-muted-foreground font-medium">Score: 0–25</p>
+                <p className="text-xs text-muted-foreground mt-1">No concerns. Agent follows proper interview procedures consistently. <strong>This is the target for all agents.</strong></p>
+              </div>
+            </div>
+            {/* Grade B */}
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+              <CheckCircle2 className="h-6 w-6 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-sm">Grade B · Caution</p>
+                <p className="text-xs text-muted-foreground font-medium">Score: 26–50</p>
+                <p className="text-xs text-muted-foreground mt-1">Minor irregularities detected. Monitor closely and provide coaching to improve interview quality.</p>
+              </div>
+            </div>
+            {/* Grade C */}
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+              <ShieldX className="h-6 w-6 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-sm">Grade C · High Risk</p>
+                <p className="text-xs text-muted-foreground font-medium">Score: 51–75</p>
+                <p className="text-xs text-muted-foreground mt-1">Significant red flags in interview patterns. Requires immediate investigation and field supervision.</p>
+              </div>
+            </div>
+            {/* Grade D */}
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+              <Flame className="h-6 w-6 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-sm">Grade D · Critical</p>
+                <p className="text-xs text-muted-foreground font-medium">Score: 76–100</p>
+                <p className="text-xs text-muted-foreground mt-1">Strong evidence of fraudulent activity. Recommend suspension pending full review. Escalate immediately.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground text-sm mb-1">🎯 Leadership Goals</p>
+            <p>• <strong>Team target:</strong> 80%+ of agents at Grade A, 0 agents at Grade C or D</p>
+            <p>• <strong>Key drivers:</strong> Interview spacing (&gt;45 min apart), proper audio durations (Family Story ≥10 min, Pedigree ≥15 min), consistent name counts, and high audit pass rates</p>
+            <p>• <strong>Action:</strong> Review Grade C/D agents weekly. Pair them with top-performing agents for field mentorship</p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Charts Row */}
       <div className="grid lg:grid-cols-2 gap-6">
