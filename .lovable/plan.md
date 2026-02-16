@@ -1,72 +1,50 @@
+## Plan: Show Filtered Total Names on Stat Cards
 
+### What This Does
 
-## Plan: Fix "Awaiting Review" Filter Failing for Large Contractor Datasets
-
-### Root Cause
-
-The user `lawala.wakeel@gmail.com` is an **auditor** with `contractor_id = NG71`. There are **1,171 NG71 audits** in the database. The current code in `src/pages/Index.tsx` builds an array of all matching audit IDs from two queries (interview_metadata + file_name prefix), then passes them to Supabase via `.in("id", contractorAuditIds)`. With ~1,171 UUIDs (each 36 characters), this creates a URL query string of ~42KB, which **exceeds PostgREST's URL length limit** and causes the request to fail silently.
-
-### Solution
-
-Replace the client-side ID collection approach with a **database RPC function** that performs the contractor-scoped filtering server-side, avoiding the URL length issue entirely.
+When any filter is active (e.g., contractor NG71), each stat card (Total, Passed, Failed, Unresolved Issues, No Metadata, Filtered) will show the filtered total names count and interviews count in brackets below the overall stat -- so users can see at a glance how many names belong to the filtered subset.
 
 ### Changes
 
-**1. Database Migration: Create an RPC function**
+**File: `src/pages/InterviewTracking.tsx**`
 
-Create a function `get_contractor_audit_ids(p_contractor_id TEXT)` that returns audit IDs matching either:
-- `interview_metadata.contractor_id = p_contractor_id`, OR
-- `audits.file_name ILIKE p_contractor_id || '_%'`
+1. **Expand `nameStats` memo** (lines 553-568) to also compute filtered counts per category:
+  - `filteredTotal` - sum of total_names from `filteredInterviews`
+  - `filteredPassed` - sum from filtered interviews with status "Audit Passed"
+  - `filteredFailed` - sum from filtered interviews with status "Audit Failed"
+  - `filteredUnresolved` - sum from filtered interviews flagged with unresolved issues
+  - `filteredNoMetadata` - sum from filtered interviews without metadata
+2. **Update each stat card** (lines 893-971) to show filtered names in brackets when any filter is active:
+  - **Total card**: Below "X names", show `(Y names)` where Y = filtered total names
+  - **Passed card**: Below "X names", show `(Y names)`
+  - **Failed card**: Below "X names", show `(Y names)`
+  - **Unresolved Issues card**: Add the filtered names count (currently has no names line)
+  - **No Metadata card**: Add the filtered names count (currently has no names line)
+  - **Filtered card**: Already shows filtered names, no change needed
+   The bracketed count only appears when `hasActiveFilters` is true and the filtered count differs from the overall count.
 
-This moves the filtering entirely to the database, returning only IDs needed for the current page.
+### Visual Result
 
-Alternatively (simpler approach): Instead of collecting IDs first, restructure the main query to use a **two-step approach with batching** -- split the `.in()` call into chunks of 200 IDs and merge results. However, the RPC approach is cleaner.
+Before (no filter):
 
-**2. File: `src/pages/Index.tsx`**
-
-Replace the contractor filtering section (lines ~99-131) that collects all IDs into `contractorAuditIds` with an RPC call:
-
-```text
-Current flow (broken):
-  1. Fetch ALL matching audit IDs from interview_metadata (~1100+ rows)
-  2. Fetch ALL matching audit IDs from audits by file_name (~1100+ rows)  
-  3. Combine into array (~1171 UUIDs)
-  4. Pass to .in("id", [...1171 UUIDs]) -- EXCEEDS URL LIMIT
-
-New flow (fixed):
-  1. Call RPC function that returns matching audit IDs server-side
-  2. The RPC is used as a subquery filter in the main query
-  -- OR --
-  1. Use .rpc() to get paginated results directly with all filters applied
+```
+Total         Passed        Failed
+1372          989           182
+144,849 names 109,584 names 19,939 names
 ```
 
-The simplest fix that avoids creating a new RPC: **batch the `.in()` call**. Split `contractorAuditIds` into chunks of 300 and run parallel queries, then merge. But this complicates pagination.
+After (with NG71 filter active):
 
-**Recommended approach**: Create a database function that accepts the contractor_id and status filters, and returns the paginated audit rows directly. This keeps the URL small and pagination accurate.
+```
+Total         Passed        Failed        Unresolved Issues  No Metadata
+1372 (782)    989 (700)     182 (82)      28 (8)             65 (15)
+144,849 names 109,584 names 19,939 names
+(52,311 names)(38,200 names)(8,100 names) (1,200 names)      (3,500 names)
+```
 
 ### Technical Details
 
-**New RPC function** `get_contractor_audits`:
-- Parameters: `p_contractor_id TEXT`, `p_statuses TEXT[]`, `p_search TEXT`, `p_reviewer TEXT`, `p_interviewer TEXT`, `p_start_date TIMESTAMPTZ`, `p_end_date TIMESTAMPTZ`, `p_limit INT`, `p_offset INT`, `p_sort_by_artifacts BOOLEAN`
-- Logic: Query audits WHERE (id IN metadata match OR file_name ILIKE match), apply status/search/date filters, paginate, return results
-- Returns: `SETOF audits` plus a count
-
-**Frontend changes** in `src/pages/Index.tsx`:
-- Replace the two-step fetch (collect IDs then query) with a single `.rpc('get_contractor_audits', {...})` call
-- Keep all existing filter logic (status, search, date range, reviewer) but pass them as RPC parameters
-- For non-contractor/auditor roles (admins), keep the existing direct query approach unchanged
-
-### Files to Create/Modify
-
-| File | Action |
-|------|--------|
-| Database migration (new RPC function) | Create |
-| `src/pages/Index.tsx` | Modify - replace contractor ID collection with RPC call |
-
-### What Stays the Same
-
-- Filter sidebar UI and behavior
-- Admin/super_admin query path (no contractor filtering needed)
-- Pagination component
-- Upload dialogs
-- All other pages
+- No new queries needed -- all data is already in memory via `interviewsWithUnreadCounts` and `filteredInterviews`
+- The filtered name counts are computed in the existing `nameStats` useMemo by adding filter-aware calculations
+- Bracketed text uses a smaller font size and muted color to distinguish from the main stat
+- The bracket line is conditionally rendered only when `hasActiveFilters` is truthy
