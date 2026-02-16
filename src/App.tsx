@@ -18,6 +18,7 @@ import { ApproverRoute } from "@/components/ApproverRoute";
 import { DataEntryRoute } from "@/components/DataEntryRoute";
 import { TrackingRoute } from "@/components/TrackingRoute";
 import { SubContractorRoute } from "@/components/SubContractorRoute";
+import FraudAnalyticsRoute from "@/components/FraudAnalyticsRoute";
 import Layout from "@/components/Layout";
 import Index from "./pages/Index";
 import Home from "./pages/Home";
@@ -45,6 +46,7 @@ import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
 import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
 import SmsLogs from "./pages/SmsLogs";
 import PaymentTracking from "./pages/PaymentTracking";
+import FraudAnalyticsDashboard from "./pages/FraudAnalyticsDashboard";
 import NoticeBoard from "./pages/NoticeBoard";
 import AccountSuspended from "./pages/AccountSuspended";
 import NotFound from "./pages/NotFound";
@@ -332,6 +334,18 @@ const App = () => (
                   <Layout>
                     <AgentFraudAnalysis />
                   </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/fraud-analytics"
+              element={
+                <ProtectedRoute>
+                  <FraudAnalyticsRoute>
+                    <Layout>
+                      <FraudAnalyticsDashboard />
+                    </Layout>
+                  </FraudAnalyticsRoute>
                 </ProtectedRoute>
               }
             />
