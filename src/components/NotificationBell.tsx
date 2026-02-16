@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Check, CheckCheck, FileText, AlertTriangle, RefreshCw, Trophy, Clock, Megaphone } from "lucide-react";
+import { Bell, Check, CheckCheck, FileText, AlertTriangle, RefreshCw, Trophy, Clock, Megaphone, UserCheck, UserX, CreditCard, ClipboardCheck, Users, PackageCheck, Send, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,7 +22,10 @@ const getNotificationIcon = (type: string) => {
       return <FileText className="h-4 w-4 text-blue-500" />;
     case "failed_audit":
       return <AlertTriangle className="h-4 w-4 text-red-500" />;
+    case "audit_passed":
+      return <Check className="h-4 w-4 text-green-500" />;
     case "re_audit":
+    case "artifact_replaced":
       return <RefreshCw className="h-4 w-4 text-orange-500" />;
     case "milestone":
       return <Trophy className="h-4 w-4 text-yellow-500" />;
@@ -34,8 +37,73 @@ const getNotificationIcon = (type: string) => {
       return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     case "announcement":
       return <Megaphone className="h-4 w-4 text-purple-500" />;
+    case "team_request_approved":
+      return <UserCheck className="h-4 w-4 text-green-500" />;
+    case "team_request_rejected":
+      return <UserX className="h-4 w-4 text-red-500" />;
+    case "new_team_request":
+      return <Users className="h-4 w-4 text-blue-500" />;
+    case "interview_assigned":
+      return <ClipboardCheck className="h-4 w-4 text-blue-500" />;
+    case "data_entry_complete":
+      return <PackageCheck className="h-4 w-4 text-green-500" />;
+    case "account_approved":
+      return <UserCheck className="h-4 w-4 text-green-500" />;
+    case "account_suspended":
+      return <UserX className="h-4 w-4 text-red-500" />;
+    case "new_registration":
+      return <Users className="h-4 w-4 text-blue-500" />;
+    case "payment_created":
+    case "journey_updated":
+      return <CreditCard className="h-4 w-4 text-green-500" />;
+    case "agent_reassigned":
+      return <ArrowRightLeft className="h-4 w-4 text-orange-500" />;
+    case "sms_sent":
+      return <Send className="h-4 w-4 text-blue-500" />;
+    case "comment_reply":
+    case "resolution_comment":
+      return <FileText className="h-4 w-4 text-blue-500" />;
     default:
       return <Bell className="h-4 w-4 text-muted-foreground" />;
+  }
+};
+
+const getNotificationRoute = (notification: any): string | null => {
+  const type = notification.type;
+  const meta = notification.metadata;
+
+  switch (type) {
+    case "comment_reply":
+    case "resolution_comment":
+      return meta?.audit_id ? `/review/${meta.audit_id}?showComments=true` : null;
+    case "issue_resolved":
+    case "flagged_issue":
+      return "/data-entry";
+    case "announcement":
+      return "/notices";
+    case "milestone":
+      return "/achievements";
+    case "team_request_approved":
+    case "team_request_rejected":
+    case "agent_reassigned":
+      return "/team-management";
+    case "new_team_request":
+      return "/team-approvals";
+    case "interview_assigned":
+    case "data_entry_complete":
+      return "/data-entry";
+    case "account_approved":
+    case "account_suspended":
+      return "/";
+    case "new_registration":
+      return "/admin";
+    case "payment_created":
+    case "journey_updated":
+      return "/payment-tracking";
+    case "sms_sent":
+      return "/sms-logs";
+    default:
+      return meta?.audit_id ? `/review/${meta.audit_id}` : null;
   }
 };
 
@@ -51,30 +119,13 @@ const NotificationBell = () => {
   } = useNotifications();
 
   const handleNotificationClick = (notification: any) => {
-    // Mark as read
     if (!notification.is_read) {
       markAsRead(notification.id);
     }
     
-    // Navigate based on notification type
-    if (notification.type === "comment_reply" || notification.type === "resolution_comment") {
-      // Navigate to review page with comments modal open
-      const auditId = notification.metadata?.audit_id;
-      if (auditId) {
-        navigate(`/review/${auditId}?showComments=true`);
-      }
-      setOpen(false);
-    } else if (notification.type === "issue_resolved" || notification.type === "flagged_issue") {
-      navigate("/data-entry");
-      setOpen(false);
-    } else if (notification.type === "announcement") {
-      navigate("/notices");
-      setOpen(false);
-    } else if (notification.metadata?.audit_id) {
-      navigate(`/review/${notification.metadata.audit_id}`);
-      setOpen(false);
-    } else if (notification.type === "milestone") {
-      navigate("/achievements");
+    const route = getNotificationRoute(notification);
+    if (route) {
+      navigate(route);
       setOpen(false);
     }
   };
