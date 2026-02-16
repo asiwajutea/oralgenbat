@@ -1393,6 +1393,47 @@ export type Database = {
           zip_url: string
         }[]
       }
+      get_contractor_audits: {
+        Args: {
+          p_auditor_name?: string
+          p_contractor_id: string
+          p_end_date?: string
+          p_interviewer?: string
+          p_is_auditor?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_reviewer?: string
+          p_search?: string
+          p_sort_by_artifacts?: boolean
+          p_start_date?: string
+          p_statuses?: string[]
+        }
+        Returns: {
+          action_plan: string
+          artifact_correction: string[]
+          artifact_correction_resolved_at: string
+          artifact_correction_resolved_by: string
+          file_name: string
+          file_url: string
+          id: string
+          is_re_audit: boolean
+          last_modified: string
+          locked_at: string
+          locked_by: string
+          mobile_zip_uploaded_at: string
+          mobile_zip_url: string
+          original_status: Database["public"]["Enums"]["audit_status"]
+          re_audit_count: number
+          review_comment: string
+          review_duration_seconds: number
+          review_started_at: string
+          reviewed_at: string
+          reviewed_by: string
+          status: Database["public"]["Enums"]["audit_status"]
+          total_count: number
+          uploaded_at: string
+        }[]
+      }
       get_storage_usage: {
         Args: never
         Returns: {

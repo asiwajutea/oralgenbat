@@ -94,108 +94,82 @@ const Index = () => {
     try {
       setIsLoading(true);
       
-      // For non-super-admin contractors/auditors, filter by contractor_id via interview_metadata
-      // For auditors, also include audits matching contractor prefix in file_name (without metadata)
-      let contractorAuditIds: string[] | null = null;
+      const from = (currentPage - 1) * itemsPerPage;
+      
+      const shouldSortByArtifacts = filters.statuses.includes("Awaiting Review") 
+        || filters.statuses.includes("Ready for Review")
+        || filters.statuses.includes("Pending")
+        || (filters.statuses.length === 0);
+
+      // For contractors/auditors, use the RPC function to avoid URL length limits
       if (shouldFilterByContractor && effectiveContractorId) {
-        // Get audit IDs from metadata
-        const { data: contractorAudits } = await supabase
-          .from("interview_metadata")
-          .select("audit_id")
-          .eq("contractor_id", effectiveContractorId);
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_contractor_audits', {
+          p_contractor_id: effectiveContractorId,
+          p_is_auditor: isAuditor,
+          p_auditor_name: (!isAdmin && isAuditor && profile?.full_name) ? profile.full_name : null,
+          p_statuses: filters.statuses.length > 0 ? filters.statuses : null,
+          p_search: filters.interviewId || null,
+          p_reviewer: filters.reviewer || null,
+          p_interviewer: filters.interviewerId || null,
+          p_start_date: filters.startDate || null,
+          p_end_date: filters.endDate || null,
+          p_limit: itemsPerPage,
+          p_offset: from,
+          p_sort_by_artifacts: shouldSortByArtifacts,
+        });
+
+        if (rpcError) throw rpcError;
+
+        const results = rpcData || [];
+        const total = results.length > 0 ? Number(results[0].total_count) : 0;
         
-        const metadataAuditIds = contractorAudits?.map(a => a.audit_id).filter(Boolean) as string[] || [];
-        
-        if (isAuditor) {
-          // Also get audits whose file_name starts with the contractor prefix (e.g., "NG71_")
-          // This catches interviews without metadata
-          const { data: fileNameAudits } = await supabase
-            .from("audits")
-            .select("id")
-            .ilike("file_name", `${effectiveContractorId}_%`);
-          
-          const fileNameAuditIds = fileNameAudits?.map(a => a.id) || [];
-          
-          // Combine both sets (deduplicate)
-          contractorAuditIds = [...new Set([...metadataAuditIds, ...fileNameAuditIds])];
-        } else {
-          contractorAuditIds = metadataAuditIds;
-        }
-        
-        if (contractorAuditIds.length === 0) {
-          setAudits([]);
-          setTotalCount(0);
-          setIsLoading(false);
-          return;
-        }
+        setAudits(results as unknown as Audit[]);
+        setTotalCount(total);
+        setIsLoading(false);
+        return;
       }
       
+      // For admins and other roles, use the existing direct query approach
       let query = supabase
         .from("audits")
         .select("*", { count: "exact" });
-
-      // Apply contractor filter if applicable
-      if (contractorAuditIds) {
-        query = query.in("id", contractorAuditIds);
-      }
 
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
       // Apply filters to query
       if (filters.statuses.length > 0) {
-        // Handle special filters
         const hasReAudit = filters.statuses.includes("Re-Audit");
         const hasInProgress = filters.statuses.includes("In Progress");
         const hasReadyForReview = filters.statuses.includes("Ready for Review");
         const otherStatuses = filters.statuses.filter(s => s !== "In Progress" && s !== "Re-Audit" && s !== "Ready for Review");
 
         if (hasReadyForReview && !hasReAudit && !hasInProgress && otherStatuses.length === 0) {
-          // Only Ready for Review filter - use mobile_zip_url as proxy for metadata presence
           query = query
             .in("status", ["Pending", "Awaiting Review"])
             .not("file_url", "is", null)
             .not("mobile_zip_url", "is", null);
         } else if (hasReAudit && !hasInProgress && !hasReadyForReview && otherStatuses.length === 0) {
-          // Only Re-Audit filter
           query = query.eq("is_re_audit", true).eq("status", "Awaiting Review");
-          
-          // For auditors, only show their own re-audits
-          if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
-            query = query.eq("reviewed_by", profile.full_name);
-          }
         } else if (hasInProgress && !hasReAudit && !hasReadyForReview && otherStatuses.length === 0) {
-          // Only In Progress filter
           query = query
             .not("locked_by", "is", null)
             .gte("locked_at", oneHourAgo);
         } else if (hasInProgress || hasReAudit || hasReadyForReview) {
-          // Complex OR filter with multiple conditions
           const conditions = [];
-          
           if (hasInProgress) {
             conditions.push(`and(locked_by.not.is.null,locked_at.gte.${oneHourAgo})`);
           }
-          
           if (hasReAudit) {
-            if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
-              conditions.push(`and(is_re_audit.eq.true,status.eq."Awaiting Review",reviewed_by.eq.${profile.full_name})`);
-            } else {
-              conditions.push(`and(is_re_audit.eq.true,status.eq."Awaiting Review")`);
-            }
+            conditions.push(`and(is_re_audit.eq.true,status.eq."Awaiting Review")`);
           }
-          
           if (hasReadyForReview) {
-            // Ready for Review: audits with both PDF and metadata, in Pending or Awaiting Review status
             conditions.push(`and(or(status.eq.Pending,status.eq."Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null)`);
           }
-          
           if (otherStatuses.length > 0) {
             conditions.push(`status.in.(${otherStatuses.map(s => `"${s}"`).join(",")})`);
           }
-          
           query = query.or(conditions.join(","));
         } else {
-          // Standard status filter
           query = query.in("status", otherStatuses as Array<Audit["status"]>);
         }
       }
@@ -215,16 +189,7 @@ const Index = () => {
         query = query.lte("uploaded_at", filters.endDate);
       }
 
-      // Add pagination and ordering
-      const from = (currentPage - 1) * itemsPerPage;
       const to = from + itemsPerPage - 1;
-      
-      // When "Awaiting Review", "Pending", or "Ready for Review" filter is active, 
-      // order by complete artifacts first (interviews with both PDF + metadata appear on first pages)
-      const shouldSortByArtifacts = filters.statuses.includes("Awaiting Review") 
-        || filters.statuses.includes("Ready for Review")
-        || filters.statuses.includes("Pending")
-        || (filters.statuses.length === 0); // Also sort when no filter is applied
       
       if (shouldSortByArtifacts) {
         query = query
@@ -234,40 +199,11 @@ const Index = () => {
         query = query.order("uploaded_at", { ascending: false });
       }
       
-      const { data, error, count } = await query
-        .range(from, to);
+      const { data, error, count } = await query.range(from, to);
 
       if (error) throw error;
       
-      // Filter data based on role
-      let filteredData = data || [];
-      
-      if (!isAdmin && userRole === 'auditor' && profile?.full_name) {
-        filteredData = filteredData.filter(audit => {
-          // For "Pending" / "Awaiting Review" status, only show if it has complete artifacts
-          if ((audit.status === 'Pending' || audit.status === 'Awaiting Review') && !audit.is_re_audit) {
-            const hasCompleteArtifacts = !!audit.file_url && !!audit.mobile_zip_url;
-            if (!hasCompleteArtifacts) return false;
-          }
-          
-          // If it's a re-audit, only show if the current user reviewed it originally
-          if (audit.is_re_audit && audit.status === 'Awaiting Review') {
-            return audit.reviewed_by === profile.full_name;
-          }
-          return true;
-        });
-      }
-      
-      // Sort: when "Awaiting Review" filter is active, show complete artifacts first
-      if (filters.statuses.includes("Awaiting Review")) {
-        filteredData.sort((a, b) => {
-          const aReady = a.file_url && a.mobile_zip_url ? 1 : 0;
-          const bReady = b.file_url && b.mobile_zip_url ? 1 : 0;
-          return bReady - aReady;
-        });
-      }
-      
-      setAudits(filteredData);
+      setAudits(data || []);
       setTotalCount(count || 0);
     } catch (error) {
       console.error("Error fetching audits:", error);
