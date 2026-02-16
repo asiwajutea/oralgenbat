@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
+import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
 const FieldManagerDashboard = () => {
@@ -188,6 +189,9 @@ const FieldManagerDashboard = () => {
 
       {/* Payment Stats */}
       <PaymentStatsCards />
+
+      {/* Critical Fraud Alerts */}
+      <CriticalAgentsCard />
 
       {/* Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

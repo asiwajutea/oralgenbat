@@ -5,8 +5,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ExportButton } from "@/components/analytics/ExportButton";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Search, ArrowUpDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { AgentFraudProfile } from "@/utils/fraudCalculations";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -36,6 +38,7 @@ export const LeaderboardTab = ({ profiles }: Props) => {
   const [sortAsc, setSortAsc] = useState(false);
   const navigate = useNavigate();
   const { userRole } = useAuth();
+  const isMobile = useIsMobile();
 
   const filtered = useMemo(() => {
     let list = profiles;
@@ -91,75 +94,138 @@ export const LeaderboardTab = ({ profiles }: Props) => {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col gap-3">
           <CardTitle className="text-base">Agent Leaderboard</CardTitle>
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-none">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search agent, name, contractor..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 w-64" />
+              <Input placeholder="Search agent, name, contractor..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 w-full sm:w-64" />
             </div>
             <ExportButton data={exportData} filename="agent-leaderboard" />
           </div>
         </div>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead>Agent</TableHead>
-              <TableHead>Contractor</TableHead>
-              <TableHead className="cursor-pointer" onClick={() => handleSort('total_interviews')}>
-                <span className="flex items-center gap-1">Interviews <ArrowUpDown className="h-3 w-3" /></span>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => handleSort('passRate')}>
-                <span className="flex items-center gap-1">Pass Rate <ArrowUpDown className="h-3 w-3" /></span>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => handleSort('avgNames')}>
-                <span className="flex items-center gap-1">Avg Names <ArrowUpDown className="h-3 w-3" /></span>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => handleSort('avgFamilyStoryDuration')}>
-                <span className="flex items-center gap-1">Avg Audio <ArrowUpDown className="h-3 w-3" /></span>
-              </TableHead>
-              <TableHead className="cursor-pointer" onClick={() => handleSort('overallFraudScore')}>
-                <span className="flex items-center gap-1">Fraud Score <ArrowUpDown className="h-3 w-3" /></span>
-              </TableHead>
-              <TableHead>Grade</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No agents found</TableCell></TableRow>
-            ) : (
-              filtered.map((p, i) => (
-                <TableRow 
-                  key={p.interviewer_code} 
-                  className={`cursor-pointer hover:bg-accent/50 ${rowBg[p.fraudGrade]}`}
-                  onClick={() => navigate(getAgentLink(p.interviewer_code))}
-                >
-                  <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
-                  <TableCell>
-                    <div>
-                      <span className="font-medium">{p.interviewer_code}</span>
-                      {p.interviewer_name && <p className="text-xs text-muted-foreground">{p.interviewer_name}</p>}
+      <CardContent>
+        {isMobile ? (
+          /* Mobile: Accordion cards */
+          filtered.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No agents found</p>
+          ) : (
+            <Accordion type="single" collapsible className="space-y-2">
+              {filtered.map((p, i) => (
+                <AccordionItem key={p.interviewer_code} value={p.interviewer_code} className={`border rounded-lg px-3 ${rowBg[p.fraudGrade]}`}>
+                  <AccordionTrigger className="hover:no-underline py-3">
+                    <div className="flex items-center justify-between w-full mr-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs text-muted-foreground font-mono w-6">#{i + 1}</span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{p.interviewer_code}</p>
+                          {p.interviewer_name && <p className="text-xs text-muted-foreground truncate">{p.interviewer_name}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="font-mono font-bold text-sm">{p.overallFraudScore.toFixed(1)}</span>
+                        <Badge variant="outline" className={`text-xs ${gradeColors[p.fraudGrade]}`}>{p.fraudGrade}</Badge>
+                      </div>
                     </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{p.contractor_id}</TableCell>
-                  <TableCell>{p.total_interviews}</TableCell>
-                  <TableCell>{p.indicators.passRate.toFixed(1)}%</TableCell>
-                  <TableCell>{p.avgNames.toFixed(0)}</TableCell>
-                  <TableCell>{(p.avgFamilyStoryDuration / 60).toFixed(1)}m</TableCell>
-                  <TableCell className="font-mono font-bold">{p.overallFraudScore.toFixed(1)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={gradeColors[p.fraudGrade]}>
-                      {p.fraudGrade}
-                    </Badge>
-                  </TableCell>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-3">
+                    <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Contractor</p>
+                        <p className="font-medium">{p.contractor_id}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Interviews</p>
+                        <p className="font-medium">{p.total_interviews}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Pass Rate</p>
+                        <p className="font-medium">{p.indicators.passRate.toFixed(1)}%</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Avg Names</p>
+                        <p className="font-medium">{p.avgNames.toFixed(0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Avg Audio</p>
+                        <p className="font-medium">{(p.avgFamilyStoryDuration / 60).toFixed(1)}m</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Classification</p>
+                        <p className="font-medium">{p.classification}</p>
+                      </div>
+                    </div>
+                    <Button size="sm" className="w-full" onClick={() => navigate(getAgentLink(p.interviewer_code))}>
+                      View Full Report
+                    </Button>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          )
+        ) : (
+          /* Desktop: Table */
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Agent</TableHead>
+                  <TableHead>Contractor</TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort('total_interviews')}>
+                    <span className="flex items-center gap-1">Interviews <ArrowUpDown className="h-3 w-3" /></span>
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort('passRate')}>
+                    <span className="flex items-center gap-1">Pass Rate <ArrowUpDown className="h-3 w-3" /></span>
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort('avgNames')}>
+                    <span className="flex items-center gap-1">Avg Names <ArrowUpDown className="h-3 w-3" /></span>
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort('avgFamilyStoryDuration')}>
+                    <span className="flex items-center gap-1">Avg Audio <ArrowUpDown className="h-3 w-3" /></span>
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort('overallFraudScore')}>
+                    <span className="flex items-center gap-1">Fraud Score <ArrowUpDown className="h-3 w-3" /></span>
+                  </TableHead>
+                  <TableHead>Grade</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No agents found</TableCell></TableRow>
+                ) : (
+                  filtered.map((p, i) => (
+                    <TableRow 
+                      key={p.interviewer_code} 
+                      className={`cursor-pointer hover:bg-accent/50 ${rowBg[p.fraudGrade]}`}
+                      onClick={() => navigate(getAgentLink(p.interviewer_code))}
+                    >
+                      <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell>
+                        <div>
+                          <span className="font-medium">{p.interviewer_code}</span>
+                          {p.interviewer_name && <p className="text-xs text-muted-foreground">{p.interviewer_name}</p>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{p.contractor_id}</TableCell>
+                      <TableCell>{p.total_interviews}</TableCell>
+                      <TableCell>{p.indicators.passRate.toFixed(1)}%</TableCell>
+                      <TableCell>{p.avgNames.toFixed(0)}</TableCell>
+                      <TableCell>{(p.avgFamilyStoryDuration / 60).toFixed(1)}m</TableCell>
+                      <TableCell className="font-mono font-bold">{p.overallFraudScore.toFixed(1)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={gradeColors[p.fraudGrade]}>
+                          {p.fraudGrade}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

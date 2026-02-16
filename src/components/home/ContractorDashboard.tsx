@@ -35,6 +35,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
+import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import { format } from "date-fns";
 import { useState } from "react";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
@@ -300,6 +301,9 @@ const ContractorDashboard = () => {
 
       {/* Payment Stats */}
       <PaymentStatsCards />
+
+      {/* Critical Fraud Alerts */}
+      <CriticalAgentsCard />
 
       {/* Team Overview & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

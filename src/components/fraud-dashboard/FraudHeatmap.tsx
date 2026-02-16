@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { AgentFraudProfile } from "@/utils/fraudCalculations";
 
 interface Props {
@@ -15,6 +16,7 @@ const getHeatColor = (score: number) => {
 
 export const FraudHeatmap = ({ profiles }: Props) => {
   const sorted = [...profiles].sort((a, b) => b.overallFraudScore - a.overallFraudScore);
+  const isMobile = useIsMobile();
 
   return (
     <Card>
@@ -25,7 +27,7 @@ export const FraudHeatmap = ({ profiles }: Props) => {
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">No data available</p>
         ) : (
-          <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-1">
+          <div className={`grid gap-1 ${isMobile ? 'grid-cols-5' : 'grid-cols-6 sm:grid-cols-8 md:grid-cols-10'}`}>
             {sorted.slice(0, 100).map(p => (
               <Tooltip key={p.interviewer_code}>
                 <TooltipTrigger asChild>
@@ -44,7 +46,7 @@ export const FraudHeatmap = ({ profiles }: Props) => {
             ))}
           </div>
         )}
-        <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 mt-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-green-500/80" /> Safe</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-yellow-500/80" /> Caution</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-500/80" /> High Risk</span>
