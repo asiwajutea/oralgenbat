@@ -498,7 +498,19 @@ export const BulkMetadataUploadDialog = ({
                           {getStatusIcon(zipFile)}
                           <span className="text-sm truncate">{zipFile.file.name}</span>
                         </div>
-                        {getStatusBadge(zipFile)}
+                        <div className="flex items-center gap-1">
+                          {getStatusBadge(zipFile)}
+                          {!isUploading && zipFile.status === "pending" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => setZipFiles(prev => prev.filter(f => f.fileName !== zipFile.fileName))}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       {zipFile.auditStatus && zipFile.status === "pending" && (
                         <div className="text-xs text-muted-foreground pl-6">
