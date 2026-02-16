@@ -10,12 +10,6 @@ import { FraudBreakdownTab } from "@/components/fraud-dashboard/FraudBreakdownTa
 import { TrendsTab } from "@/components/fraud-dashboard/TrendsTab";
 import { AuditReportTab } from "@/components/fraud-dashboard/AuditReportTab";
 
-const periodLabels: Record<TimePeriod, string> = {
-  '13weeks': '13 Weeks',
-  '365days': '365 Days',
-  'lifetime': 'Lifetime',
-};
-
 const FraudAnalyticsDashboard = () => {
   const [period, setPeriod] = useState<TimePeriod>('13weeks');
   const { data: profiles, isLoading } = useFraudDashboard(period);
@@ -23,20 +17,20 @@ const FraudAnalyticsDashboard = () => {
   const { data: trends = [] } = useFraudDashboardTrends(profiles, trendWeeks);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <ShieldAlert className="h-6 w-6 text-primary" />
+          <ShieldAlert className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
           <div>
-            <h1 className="text-2xl font-bold">Fraud Analytics</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold">Fraud Analytics</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               {profiles ? `${profiles.length} agents in scope` : 'Loading...'}
             </p>
           </div>
         </div>
         <Select value={period} onValueChange={(v) => setPeriod(v as TimePeriod)}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-36 sm:w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -58,13 +52,15 @@ const FraudAnalyticsDashboard = () => {
         </div>
       ) : (
         <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
-            <TabsTrigger value="fraud">Fraud Analysis</TabsTrigger>
-            <TabsTrigger value="trends">Trends</TabsTrigger>
-            <TabsTrigger value="audit">Audit Report</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full sm:min-w-0 sm:grid sm:w-full sm:grid-cols-5 lg:w-auto lg:inline-grid">
+              <TabsTrigger value="overview" className="text-xs sm:text-sm px-3 sm:px-4">Overview</TabsTrigger>
+              <TabsTrigger value="leaderboard" className="text-xs sm:text-sm px-3 sm:px-4">Leaderboard</TabsTrigger>
+              <TabsTrigger value="fraud" className="text-xs sm:text-sm px-3 sm:px-4">Fraud Analysis</TabsTrigger>
+              <TabsTrigger value="trends" className="text-xs sm:text-sm px-3 sm:px-4">Trends</TabsTrigger>
+              <TabsTrigger value="audit" className="text-xs sm:text-sm px-3 sm:px-4">Audit Report</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="overview">
             <OverviewTab profiles={profiles || []} />

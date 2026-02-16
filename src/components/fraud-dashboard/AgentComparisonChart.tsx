@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { WeeklyAgentTrend } from "@/hooks/useFraudDashboard";
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export const AgentComparisonChart = ({ trends, selectedAgents, colors }: Props) => {
+  const isMobile = useIsMobile();
+  
   const data = useMemo(() => 
     trends.map(t => {
       const point: Record<string, any> = { week: t.week };
@@ -20,13 +23,13 @@ export const AgentComparisonChart = ({ trends, selectedAgents, colors }: Props) 
     }), [trends, selectedAgents]);
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ResponsiveContainer width="100%" height={isMobile ? 220 : 300}>
       <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-        <XAxis dataKey="week" className="text-xs" />
-        <YAxis className="text-xs" domain={[0, 100]} />
+        <XAxis dataKey="week" className="text-xs" tick={{ fontSize: isMobile ? 10 : 12 }} />
+        <YAxis className="text-xs" domain={[0, 100]} tick={{ fontSize: isMobile ? 10 : 12 }} />
         <Tooltip />
-        <Legend />
+        <Legend wrapperStyle={{ fontSize: isMobile ? 11 : 14 }} />
         {selectedAgents.map((code, i) => (
           <Line
             key={code}

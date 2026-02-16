@@ -18,6 +18,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
+import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 
@@ -231,6 +232,9 @@ const SubContractorDashboard = () => {
 
       {/* Payment Stats */}
       <PaymentStatsCards />
+
+      {/* Critical Fraud Alerts */}
+      <CriticalAgentsCard />
 
       {/* Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
