@@ -557,6 +557,11 @@ const InterviewTracking = () => {
     
     const sum = (list: typeof interviewsWithUnreadCounts) => 
       list.reduce((acc, i) => acc + (i.total_names || 0), 0);
+
+    const filteredPassed = filteredInterviews.filter(i => i.status === "Audit Passed");
+    const filteredFailed = filteredInterviews.filter(i => i.status === "Audit Failed");
+    const filteredUnresolved = filteredInterviews.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at);
+    const filteredNoMeta = filteredInterviews.filter(i => !i.has_metadata);
     
     return {
       total: sum(interviewsWithUnreadCounts),
@@ -564,6 +569,16 @@ const InterviewTracking = () => {
       failed: sum(failed),
       pending: sum(pending),
       filtered: sum(filteredInterviews),
+      filteredTotal: sum(filteredInterviews),
+      filteredPassed: sum(filteredPassed),
+      filteredFailed: sum(filteredFailed),
+      filteredUnresolved: sum(filteredUnresolved),
+      filteredNoMeta: sum(filteredNoMeta),
+      filteredInterviewCount: filteredInterviews.length,
+      filteredPassedCount: filteredPassed.length,
+      filteredFailedCount: filteredFailed.length,
+      filteredUnresolvedCount: filteredUnresolved.length,
+      filteredNoMetaCount: filteredNoMeta.length,
     };
   }, [interviewsWithUnreadCounts, filteredInterviews]);
 
@@ -898,10 +913,16 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Total</p>
-                <p className="text-lg sm:text-2xl font-bold">{interviewsWithUnreadCounts.length}</p>
+                <p className="text-lg sm:text-2xl font-bold">
+                  {interviewsWithUnreadCounts.length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredInterviewCount})</span>}
+                </p>
                 <p className="text-xs font-medium text-primary">
                   {nameStats.total.toLocaleString()} names
                 </p>
+                {hasActiveFilters && nameStats.filteredTotal !== nameStats.total && (
+                  <p className="text-xs text-muted-foreground">({nameStats.filteredTotal.toLocaleString()} names)</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -912,10 +933,16 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Passed</p>
-                <p className="text-lg sm:text-2xl font-bold">{interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed").length}</p>
+                <p className="text-lg sm:text-2xl font-bold">
+                  {interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed").length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredPassedCount})</span>}
+                </p>
                 <p className="text-xs font-medium text-success">
                   {nameStats.passed.toLocaleString()} names
                 </p>
+                {hasActiveFilters && nameStats.filteredPassed !== nameStats.passed && (
+                  <p className="text-xs text-muted-foreground">({nameStats.filteredPassed.toLocaleString()} names)</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -926,10 +953,16 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Failed</p>
-                <p className="text-lg sm:text-2xl font-bold">{interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed").length}</p>
+                <p className="text-lg sm:text-2xl font-bold">
+                  {interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed").length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredFailedCount})</span>}
+                </p>
                 <p className="text-xs font-medium text-destructive">
                   {nameStats.failed.toLocaleString()} names
                 </p>
+                {hasActiveFilters && nameStats.filteredFailed !== nameStats.failed && (
+                  <p className="text-xs text-muted-foreground">({nameStats.filteredFailed.toLocaleString()} names)</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -940,7 +973,13 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Unresolved Issues</p>
-                <p className="text-lg sm:text-2xl font-bold text-red-600">{interviewsWithUnreadCounts.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at).length}</p>
+                <p className="text-lg sm:text-2xl font-bold text-red-600">
+                  {interviewsWithUnreadCounts.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at).length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredUnresolvedCount})</span>}
+                </p>
+                {hasActiveFilters && (
+                  <p className="text-xs text-muted-foreground">({nameStats.filteredUnresolved.toLocaleString()} names)</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -951,7 +990,13 @@ const InterviewTracking = () => {
               </div>
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">No Metadata</p>
-                <p className="text-lg sm:text-2xl font-bold text-orange-600">{interviewsWithUnreadCounts.filter(i => !i.has_metadata).length}</p>
+                <p className="text-lg sm:text-2xl font-bold text-orange-600">
+                  {interviewsWithUnreadCounts.filter(i => !i.has_metadata).length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredNoMetaCount})</span>}
+                </p>
+                {hasActiveFilters && (
+                  <p className="text-xs text-muted-foreground">({nameStats.filteredNoMeta.toLocaleString()} names)</p>
+                )}
               </div>
             </CardContent>
           </Card>
