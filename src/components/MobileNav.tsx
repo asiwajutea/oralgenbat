@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign } from "lucide-react";
+import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -21,53 +21,20 @@ const MobileNav = () => {
   useEffect(() => {
     const fetchContractors = async () => {
       if (!profile?.id) return;
-
       const allContractors: Set<string> = new Set();
-
-      // Always include user's contractor_id
-      if (profile.contractor_id) {
-        allContractors.add(profile.contractor_id);
-      }
-
-      // Check user_contractor_assignments
-      const { data: assignments } = await supabase.
-      from('user_contractor_assignments').
-      select('id, contractor_id, is_primary').
-      eq('user_id', profile.id);
-
-      if (assignments && assignments.length > 0) {
-        assignments.forEach((a) => allContractors.add(a.contractor_id));
-      }
-
-      // For sub_contractors, also get contractors from their assigned field managers
+      if (profile.contractor_id) allContractors.add(profile.contractor_id);
+      const { data: assignments } = await supabase.from('user_contractor_assignments').select('id, contractor_id, is_primary').eq('user_id', profile.id);
+      if (assignments && assignments.length > 0) assignments.forEach((a) => allContractors.add(a.contractor_id));
       if (userRole === 'sub_contractor') {
-        const { data: fmAssignments } = await supabase.
-        from("field_manager_subcontractor_assignments").
-        select("field_manager_id").
-        eq("sub_contractor_id", profile.id).
-        eq("is_active", true);
-
+        const { data: fmAssignments } = await supabase.from("field_manager_subcontractor_assignments").select("field_manager_id").eq("sub_contractor_id", profile.id).eq("is_active", true);
         if (fmAssignments && fmAssignments.length > 0) {
           const fmIds = fmAssignments.map((a) => a.field_manager_id);
-
-          const { data: fmProfiles } = await supabase.
-          from("profiles").
-          select("contractor_id").
-          in("id", fmIds);
-
-          fmProfiles?.forEach((p) => {
-            if (p.contractor_id) allContractors.add(p.contractor_id);
-          });
+          const { data: fmProfiles } = await supabase.from("profiles").select("contractor_id").in("id", fmIds);
+          fmProfiles?.forEach((p) => { if (p.contractor_id) allContractors.add(p.contractor_id); });
         }
       }
-
-      // Convert to array and create contractor objects
       const uniqueContractors = Array.from(allContractors);
-      setUserContractors(uniqueContractors.map((cid, idx) => ({
-        id: `${profile.id}-${cid}`,
-        contractor_id: cid,
-        is_primary: idx === 0
-      })));
+      setUserContractors(uniqueContractors.map((cid, idx) => ({ id: `${profile.id}-${cid}`, contractor_id: cid, is_primary: idx === 0 })));
     };
     fetchContractors();
   }, [profile?.id, userRole]);
@@ -76,11 +43,7 @@ const MobileNav = () => {
     if (!profile?.id || switching) return;
     setSwitching(true);
     try {
-      const { error } = await supabase.
-      from('profiles').
-      update({ active_contractor_id: contractorId }).
-      eq('id', profile.id);
-
+      const { error } = await supabase.from('profiles').update({ active_contractor_id: contractorId }).eq('id', profile.id);
       if (error) throw error;
       await refreshProfile();
       toast.success(`Switched to ${contractorId}`);
@@ -94,22 +57,13 @@ const MobileNav = () => {
   const isActive = (path: string) => location.pathname === path;
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isSubContractor = userRole === 'sub_contractor';
+  const canSeeFraudAnalytics = userRole && ['field_manager', 'contractor', 'admin', 'super_admin', 'sub_contractor'].includes(userRole);
 
   const NavItem = ({ to, icon: Icon, children }: {to: string;icon: React.ElementType;children: React.ReactNode;}) =>
-  <Link
-    to={to}
-    onClick={() => setOpen(false)}
-    className={cn(
-      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-      isActive(to) ?
-      "bg-primary text-primary-foreground" :
-      "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    )}>
-
+    <Link to={to} onClick={() => setOpen(false)} className={cn("flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors", isActive(to) ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")}>
       <Icon className="h-4 w-4" />
       {children}
     </Link>;
-
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -138,110 +92,90 @@ const MobileNav = () => {
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
             <NavItem to="/" icon={Home}>Home</NavItem>
-            {(userRole === 'auditor' || isAdmin) &&
-            <NavItem to="/interviews" icon={ClipboardList}>Interviews</NavItem>
-            }
+            {(userRole === 'auditor' || isAdmin) && <NavItem to="/interviews" icon={ClipboardList}>Interviews</NavItem>}
             
-            {userRole === 'field_manager' &&
-            <>
-                <NavItem to="/field-manager-dashboard" icon={BarChart3}>My Dashboard</NavItem>
-                <NavItem to="/team-management" icon={Users}>Team Management</NavItem>
-              </>
-            }
+            {userRole === 'field_manager' && <>
+              <NavItem to="/field-manager-dashboard" icon={BarChart3}>My Dashboard</NavItem>
+              <NavItem to="/team-management" icon={Users}>Team Management</NavItem>
+            </>}
             
-            {userRole === 'contractor' &&
-            <>
-                <NavItem to="/contractor-dashboard" icon={BarChart3}>My Dashboard</NavItem>
-                <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
-              </>
-            }
+            {userRole === 'contractor' && <>
+              <NavItem to="/contractor-dashboard" icon={BarChart3}>My Dashboard</NavItem>
+            </>}
             
-            {(userRole === 'contractor' || isAdmin) &&
-            <NavItem to="/admin/team-approvals" icon={Shield}>Team Approvals</NavItem>
-            }
+            {(userRole === 'contractor' || isAdmin) && <NavItem to="/admin/team-approvals" icon={Shield}>Team Approvals</NavItem>}
             
-            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) &&
-            <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>
-            }
+            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>}
             
-            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) &&
-            <NavItem to="/payment-tracking" icon={DollarSign}>Payments</NavItem>
-            }
-            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) &&
-            <NavItem to="/fraud-analytics" icon={Shield}>Fraud Analytics</NavItem>
-            }
+            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && <NavItem to="/payment-tracking" icon={DollarSign}>Payments</NavItem>}
             
-            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) &&
-            <NavItem to="/data-entry" icon={Database}>Data Entry</NavItem>
-            }
+            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && <NavItem to="/data-entry" icon={Database}>Data Entry</NavItem>}
+            
+            {userRole === 'auditor' && <NavItem to="/review-history" icon={History}>My Reviews</NavItem>}
+            
+            {isSubContractor && <>
+              <Separator className="my-3" />
+              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sub-contractor</p>
+              <NavItem to="/subcontractor-team-management" icon={Users}>Team Management</NavItem>
+            </>}
 
-            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager') &&
-            <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
-            }
-            
-            {userRole === 'auditor' &&
-            <NavItem to="/review-history" icon={History}>My Reviews</NavItem>
-            }
-            
-            {isSubContractor &&
-            <>
-                <Separator className="my-3" />
-                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sub-contractor</p>
-                <NavItem to="/subcontractor-team-management" icon={Users}>Team Management</NavItem>
-                <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
-              </>
-            }
-            
-            {isAdmin &&
-            <>
-                <Separator className="my-3" />
-                <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Admin</p>
-                <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
-                {userRole === 'super_admin' ?
-              <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem> :
+            {/* Analytics Section */}
+            {(canSeeFraudAnalytics || userRole === 'contractor' || userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isSubContractor || isAdmin) && <>
+              <Separator className="my-3" />
+              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Analytics</p>
+              {(userRole === 'contractor' || userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isSubContractor) && <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>}
+              {isAdmin && (
+                userRole === 'super_admin'
+                  ? <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
+                  : <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
+              )}
+              {canSeeFraudAnalytics && <NavItem to="/fraud-analytics" icon={Shield}>Fraud Analytics</NavItem>}
+            </>
+}
 
-              <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
-              }
-                <NavItem to="/admin/review-history" icon={History}>Review History</NavItem>
-                <NavItem to="/admin/team-assignments" icon={FolderOpen}>Team Assignments</NavItem>
-                <NavItem to="/admin/zip-diagnostics" icon={FileText}>ZIP Diagnostics</NavItem>
-                <NavItem to="/admin/locked-interviews" icon={Lock}>Locks</NavItem>
-              </>
-            }
+            {/* Communications Section */}
+            <Separator className="my-3" />
+            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Communications</p>
+            <NavItem to="/notices" icon={Megaphone}>Notice Board</NavItem>
+            <NavItem to="/notices?tab=push" icon={Bell}>Push Notifications</NavItem>
+            
+            {isAdmin && <>
+              <Separator className="my-3" />
+              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Admin</p>
+              <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
+              <NavItem to="/admin/review-history" icon={History}>Review History</NavItem>
+              <NavItem to="/admin/team-assignments" icon={FolderOpen}>Team Assignments</NavItem>
+              <NavItem to="/admin/zip-diagnostics" icon={FileText}>ZIP Diagnostics</NavItem>
+              <NavItem to="/admin/locked-interviews" icon={Lock}>Locks</NavItem>
+            </>
+}
           </nav>
 
           {/* Footer */}
           <div className="border-t p-3 space-y-3">
-            {/* Contractor Switcher */}
-            {userContractors.length > 1 &&
-            <div className="space-y-2">
+            {userContractors.length > 1 && (
+              <div className="space-y-2">
                 <div className="flex items-center gap-2 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   <Building2 className="h-3 w-3" />
                   Switch Contractor
                 </div>
-                <Select
-                value={profile?.active_contractor_id || profile?.contractor_id}
-                onValueChange={switchContractor}
-                disabled={switching}>
-
+                <Select value={profile?.active_contractor_id || profile?.contractor_id} onValueChange={switchContractor} disabled={switching}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select contractor" />
                   </SelectTrigger>
                   <SelectContent>
-                    {userContractors.map((uc) =>
-                  <SelectItem key={uc.contractor_id} value={uc.contractor_id}>
+                    {userContractors.map((uc) => (
+                      <SelectItem key={uc.contractor_id} value={uc.contractor_id}>
                         <div className="flex items-center gap-2">
                           <span>{uc.contractor_id}</span>
-                          {(profile?.active_contractor_id || profile?.contractor_id) === uc.contractor_id &&
-                      <Check className="h-3 w-3 text-primary" />
-                      }
+                          {(profile?.active_contractor_id || profile?.contractor_id) === uc.contractor_id && <Check className="h-3 w-3 text-primary" />}
                         </div>
                       </SelectItem>
-                  )}
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-            }
+            )}
             
             <Separator />
             
@@ -249,22 +183,15 @@ const MobileNav = () => {
               <span className="text-sm text-muted-foreground">Theme</span>
               <ThemeToggle />
             </div>
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={() => {
-                setOpen(false);
-                signOut();
-              }}>
-
+            <Button variant="ghost" className="w-full justify-start gap-3 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => { setOpen(false); signOut(); }}>
               <LogOut className="h-4 w-4" />
               Sign out
             </Button>
           </div>
         </div>
       </SheetContent>
-    </Sheet>);
-
+    </Sheet>
+  );
 };
 
 export default MobileNav;

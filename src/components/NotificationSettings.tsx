@@ -81,20 +81,49 @@ const NotificationSettings = () => {
               Receive browser notifications when you're not on the app
             </p>
           </div>
-          {permissionStatus === "granted" ? (
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-              <Check className="h-3 w-3 mr-1" />
-              Enabled
-            </Badge>
+        {permissionStatus === "granted" ? (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                <Check className="h-3 w-3 mr-1" />
+                Enabled
+              </Badge>
+            </div>
           ) : permissionStatus === "denied" ? (
-            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-              <BellOff className="h-3 w-3 mr-1" />
-              Blocked
-            </Badge>
+            <div className="space-y-2">
+              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                <BellOff className="h-3 w-3 mr-1" />
+                Blocked
+              </Badge>
+              <p className="text-xs text-muted-foreground">
+                To re-enable: click the lock/info icon in your browser's address bar → Site settings → Notifications → Allow, then refresh the page.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  localStorage.removeItem("push_notification_prompt_dismissed");
+                  toast.success("Prompt reset! You'll see the notification prompt on your next visit.");
+                }}
+              >
+                Reset Prompt
+              </Button>
+            </div>
           ) : (
-            <Button onClick={handleRequestPermission} size="sm">
-              Enable
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={handleRequestPermission} size="sm">
+                Enable
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  localStorage.removeItem("push_notification_prompt_dismissed");
+                  toast.success("Prompt reset! You'll see the notification prompt on your next visit.");
+                }}
+              >
+                Reset Prompt
+              </Button>
+            </div>
           )}
         </div>
 
