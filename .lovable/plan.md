@@ -1,85 +1,64 @@
 
 
-## Plan: Remove Auto-Dismiss and Add Floating Upload Progress Everywhere
+## Plan: Add Per-File Cancel/Remove Buttons to All Upload Dialogs
 
-### Overview
-Three changes: (1) remove auto-dismiss on the existing floating panel, (2) add upload progress to the Failed Interview Modal, (3) create a reusable floating progress component and integrate it into all upload dialogs across both the Tracking and Interviews pages.
+### Problem
+After selecting files for upload across all batch upload dialogs, there is no way to remove individual unwanted files from the list before uploading. Users must re-select all files from scratch if they accidentally included one they don't want.
 
----
-
-### 1. Remove Auto-Dismiss from Existing Floating Panel
-
-**File: `src/pages/InterviewTracking.tsx`**
-- Remove the `setTimeout(() => setActiveUpload(null), 3000)` line (around line 826)
-- The panel already has a close (X) button -- users will dismiss it manually
+### Solution
+Add a small "X" (remove) button next to each file in the selected file list, visible only before the upload starts (not during or after upload). Clicking it removes that specific file from the batch.
 
 ---
 
-### 2. Create Reusable Floating Upload Progress Component
+### Files to Modify
 
-**New file: `src/components/FloatingUploadProgress.tsx`**
-- Extract the floating panel UI from `InterviewTracking.tsx` into a reusable component
-- Props: `fileName`, `interviewName`, `fileSize`, `progress`, `status`, `errorMessage`, `onClose`
-- Same styling: fixed bottom position, Card with colored border (green for success, red for error, primary for uploading), Progress bar, status label, manual close button
-- No auto-dismiss -- always requires manual close
+#### 1. `src/components/UploadDialog.tsx` (Interviews page - PDF upload)
+- Add an `X` button next to each file in the `<li>` element (line 315-328)
+- On click, filter that file out of `selectedFiles` state
+- Hide the button while `isUploading` is true
+- Update the file input to allow re-selection (reset input value)
 
----
+#### 2. `src/components/CombinedUploadDialog.tsx` (Interviews page - PDF + ZIP upload)
+- Add an `X` button next to each file pair in the visible pairs list
+- On click, remove the pair and also remove the corresponding file from `pdfFiles` and/or `zipFiles` arrays, then recalculate `filePairs`
+- Hide while uploading
 
-### 3. Add Progress Tracking to Failed Interview Modal
+#### 3. `src/components/BulkZipUploadDialog.tsx` (Interviews page - Bulk ZIP upload)
+- Add an `X` button next to each ZIP file in the list (line 356-368)
+- On click, filter that file out of `zipFiles` state
+- Hide while uploading
 
-**File: `src/components/tracking/FailedInterviewModal.tsx`**
-- Add `uploadProgress` state to track: `{ progress: number, status: string, currentFile: string }`
-- Refactor PDF upload to use XHR with `createSignedUploadUrl` for real-time progress
-- Refactor ZIP upload to use XHR with `createSignedUploadUrl` for real-time progress
-- Add a progress section inside the modal showing:
-  - Which file is uploading ("Uploading PDF..." / "Uploading ZIP..." / "Processing...")
-  - Progress bar with percentage
-  - File name and size
-- Use the `FloatingUploadProgress` component to also show a sticky panel outside the modal (passed via callback to parent `InterviewTracking.tsx`)
+#### 4. `src/components/tracking/BulkPdfUploadDialog.tsx` (Tracking page - Bulk PDF upload)
+- Add an `X` button next to each PDF file in the list (line 456-470 area)
+- On click, filter that file out of `pdfFiles` state
+- Hide while uploading
 
----
-
-### 4. Add Floating Progress to Bulk PDF Upload Dialog (Tracking Page)
-
-**File: `src/components/tracking/BulkPdfUploadDialog.tsx`**
-- Add a new `onUploadProgress` callback prop: `(progress: UploadProgressData | null) => void`
-- During upload, call `onUploadProgress` with overall progress data (current file count, total, percentage)
-- The dialog already has internal progress bars -- the floating panel adds visibility when the dialog is minimized on mobile
-
-**File: `src/pages/InterviewTracking.tsx`**
-- Pass `onUploadProgress` to `BulkPdfUploadDialog` that updates `activeUpload` state
-- The existing floating panel renders automatically since it already watches `activeUpload`
+#### 5. `src/components/tracking/BulkMetadataUploadDialog.tsx` (Tracking page - Bulk Metadata upload)
+- Add an `X` button next to each ZIP file in the list (line 494-510 area)
+- On click, filter that file out of `zipFiles` state
+- Hide while uploading
 
 ---
 
-### 5. Add Floating Progress to Interviews Page Upload Dialogs
+### UI Pattern (same across all dialogs)
 
-**File: `src/components/UploadDialog.tsx`**
-- Add `onUploadProgress` callback prop
-- During `handleUpload`, call it with progress data for each file being uploaded
-- Clear on completion
+Each file row will get a small ghost-variant X button on the right side, only visible when:
+- The file status is `"pending"` (not yet uploading, not completed, not errored)
+- `isUploading` is false
 
-**File: `src/components/CombinedUploadDialog.tsx`**
-- Add `onUploadProgress` callback prop
-- During `processFilePair`, call it with progress data
+```
+[StatusIcon] filename.pdf        [Badge] [X]
+```
 
-**File: `src/pages/Index.tsx`**
-- Add `activeUpload` state (same `UploadProgress` interface)
-- Pass `onUploadProgress` callbacks to `UploadDialog` and `CombinedUploadDialog`
-- Render the `FloatingUploadProgress` component at the bottom of the page
+The X button will use the existing `X` icon from lucide-react (already imported in most files) with `variant="ghost"` and `size="icon"` styling, sized small (`h-6 w-6`) to fit inline.
 
----
+### Technical Details
 
-### Technical Summary
+- **UploadDialog**: `removeFile(index)` filters `selectedFiles` by index
+- **CombinedUploadDialog**: `removePair(fileName)` filters `filePairs` by fileName, and also removes from `pdfFiles`/`zipFiles` source arrays
+- **BulkZipUploadDialog**: `removeFile(fileName)` filters `zipFiles` by fileName
+- **BulkPdfUploadDialog**: `removeFile(fileName)` filters `pdfFiles` by fileName
+- **BulkMetadataUploadDialog**: `removeFile(fileName)` filters `zipFiles` by fileName
 
-| File | Change |
-|------|--------|
-| `src/components/FloatingUploadProgress.tsx` | New reusable floating progress panel component |
-| `src/pages/InterviewTracking.tsx` | Remove auto-dismiss; pass progress callback to BulkPdfUploadDialog and FailedInterviewModal; use FloatingUploadProgress |
-| `src/components/tracking/FailedInterviewModal.tsx` | Add XHR-based upload with progress; add `onUploadProgress` callback |
-| `src/components/tracking/BulkPdfUploadDialog.tsx` | Add `onUploadProgress` callback during uploads |
-| `src/components/UploadDialog.tsx` | Add `onUploadProgress` callback |
-| `src/components/CombinedUploadDialog.tsx` | Add `onUploadProgress` callback |
-| `src/pages/Index.tsx` | Add activeUpload state, render FloatingUploadProgress |
+No database changes or new dependencies needed.
 
-No database changes needed.
