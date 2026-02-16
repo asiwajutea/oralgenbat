@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { subWeeks, subDays, parseISO, startOfWeek, format } from "date-fns";
 import { useRoleScope, type RoleAnalyticsScope } from "./useRoleAnalytics";
 import { buildFraudProfile, transformMetadataToInterviews, type AgentFraudProfile, type InterviewData } from "@/utils/fraudCalculations";
+import { fetchAllRows } from "@/utils/paginatedFetch";
 
 export type TimePeriod = '13weeks' | '365days' | 'lifetime';
 
@@ -22,30 +23,25 @@ export const useFraudDashboard = (period: TimePeriod) => {
       
       const dateCutoff = getDateCutoff(period);
       
-      // Build query
-      let query = supabase
-        .from('interview_metadata')
-        .select('id, audit_id, interview_date, interview_time, total_names, family_story_duration, pedigree_segment_duration, interviewer_code, interviewer_name, contractor_id, audits!inner(file_name, status, is_re_audit)');
+      const selectStr = 'id, audit_id, interview_date, interview_time, total_names, family_story_duration, pedigree_segment_duration, interviewer_code, interviewer_name, contractor_id, audits!inner(file_name, status, is_re_audit)';
       
-      if (dateCutoff) {
-        query = query.gte('interview_date', dateCutoff);
-      }
-      
-      // Apply scope filtering
-      if (!scope.isFullAccess) {
-        if (scope.teamCodes.length > 0) {
-          // Batch if needed
-          if (scope.teamCodes.length <= 200) {
-            query = query.in('interviewer_code', scope.teamCodes);
-          }
-          // For larger sets, we'll filter client-side
-        } else if (scope.contractorIds.length > 0) {
-          query = query.in('contractor_id', scope.contractorIds);
+      const metadata = await fetchAllRows('interview_metadata', selectStr, (query: any) => {
+        if (dateCutoff) {
+          query = query.gte('interview_date', dateCutoff);
         }
-      }
+        
+        // Apply scope filtering
+        if (!scope.isFullAccess) {
+          if (scope.teamCodes.length > 0 && scope.teamCodes.length <= 200) {
+            query = query.in('interviewer_code', scope.teamCodes);
+          } else if (scope.contractorIds.length > 0) {
+            query = query.in('contractor_id', scope.contractorIds);
+          }
+        }
+        
+        return query;
+      });
       
-      const { data: metadata, error } = await query;
-      if (error) throw error;
       if (!metadata || metadata.length === 0) return [];
       
       // Filter by team codes client-side if needed
