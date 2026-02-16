@@ -175,31 +175,33 @@ export const InvoiceHistoryTab = () => {
             <Card key={group.invoice_number}>
               <Collapsible open={isExpanded} onOpenChange={() => setExpandedInvoice(isExpanded ? null : group.invoice_number)}>
                 <CollapsibleTrigger asChild>
-                  <button className="w-full text-left p-4 hover:bg-muted/50 transition-colors">
+                  <button className="w-full text-left p-3 sm:p-4 hover:bg-muted/50 transition-colors">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                         {isExpanded ? (
                           <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                         ) : (
                           <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                         )}
                         <div className="min-w-0">
-                          <p className="font-medium text-sm truncate">{group.invoice_number}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="font-medium text-xs sm:text-sm truncate">{group.invoice_number}</p>
+                          <p className="text-[10px] sm:text-xs text-muted-foreground">
                             {format(new Date(group.invoice_date), "MMM d, yyyy")}
-                            {group.contractor_name && ` · ${group.contractor_name}`}
+                            {!isMobile && group.contractor_name && ` · ${group.contractor_name}`}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Badge variant="outline" className="text-xs">
-                          {group.records.length} folder{group.records.length !== 1 ? "s" : ""}
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs">
+                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 flex-wrap justify-end">
+                        {!isMobile && (
+                          <Badge variant="outline" className="text-xs">
+                            {group.records.length} folder{group.records.length !== 1 ? "s" : ""}
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="text-[10px] sm:text-xs">
                           {group.totalNames} names
                         </Badge>
                         <Badge
-                          className={`text-xs ${
+                          className={`text-[10px] sm:text-xs ${
                             group.payment_type === "deduction"
                               ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
                               : group.payment_type === "addition"
@@ -212,111 +214,173 @@ export const InvoiceHistoryTab = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7"
+                          className="h-6 w-6 sm:h-7 sm:w-7"
                           onClick={(e) => {
                             e.stopPropagation();
                             setDeleteTarget({ type: "invoice", id: group.invoice_number, invoiceNumber: group.invoice_number });
                           }}
                         >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-destructive" />
                         </Button>
                       </div>
                     </div>
                   </button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <div className="border-t px-4 pb-4">
-                    <table className="w-full text-sm mt-3">
-                      <thead>
-                        <tr className="text-left border-b text-muted-foreground">
-                          <th className="pb-2 font-medium">Folder Name</th>
-                          <th className="pb-2 font-medium text-right">Names</th>
-                          <th className="pb-2 font-medium text-center">Type</th>
-                          <th className="pb-2 font-medium text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                  <div className="border-t px-3 sm:px-4 pb-3 sm:pb-4">
+                    {isMobile ? (
+                      // Mobile: card-based layout
+                      <div className="space-y-2 mt-3">
                         {group.records.map((record) => (
-                          <tr key={record.id} className="border-b last:border-0">
-                            <td className="py-2 font-mono text-xs">{record.folder_name}</td>
-                            <td className="py-2 text-right">
-                              {editingRecord === record.id ? (
-                                <Input
-                                  type="number"
-                                  className="w-20 h-7 text-xs ml-auto"
-                                  value={editValues.names_count ?? ""}
-                                  onChange={(e) =>
-                                    setEditValues((prev) => ({
-                                      ...prev,
-                                      names_count: parseInt(e.target.value, 10) || 0,
-                                    }))
-                                  }
-                                />
-                              ) : (
-                                record.names_count
-                              )}
-                            </td>
-                            <td className="py-2 text-center">
-                              {editingRecord === record.id ? (
-                                <Select
-                                  value={editValues.payment_type}
-                                  onValueChange={(v) => setEditValues((prev) => ({ ...prev, payment_type: v }))}
-                                >
-                                  <SelectTrigger className="h-7 text-xs w-28 mx-auto">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="new_payment">New Payment</SelectItem>
-                                    <SelectItem value="addition">Addition</SelectItem>
-                                    <SelectItem value="deduction">Deduction</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  {PAYMENT_TYPE_LABELS[record.payment_type] || record.payment_type}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2 text-right">
-                              {editingRecord === record.id ? (
-                                <div className="flex items-center justify-end gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => handleSaveEdit(record.id)}
-                                  >
-                                    <Check className="h-3.5 w-3.5 text-green-600" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCancelEdit}>
-                                    <X className="h-3.5 w-3.5" />
-                                  </Button>
+                          <div key={record.id} className="border rounded-lg p-3 space-y-2">
+                            <p className="font-mono text-xs truncate">{record.folder_name}</p>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div>
+                                  <span className="text-[10px] text-muted-foreground">Names</span>
+                                  {editingRecord === record.id ? (
+                                    <Input
+                                      type="number"
+                                      className="w-16 h-7 text-xs"
+                                      value={editValues.names_count ?? ""}
+                                      onChange={(e) =>
+                                        setEditValues((prev) => ({
+                                          ...prev,
+                                          names_count: parseInt(e.target.value, 10) || 0,
+                                        }))
+                                      }
+                                    />
+                                  ) : (
+                                    <p className="text-sm font-medium">{record.names_count}</p>
+                                  )}
                                 </div>
-                              ) : (
-                                <div className="flex items-center justify-end gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => handleStartEdit(record)}
-                                  >
-                                    <Edit2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => setDeleteTarget({ type: "record", id: record.id })}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                  </Button>
+                                <div>
+                                  <span className="text-[10px] text-muted-foreground">Type</span>
+                                  {editingRecord === record.id ? (
+                                    <Select
+                                      value={editValues.payment_type}
+                                      onValueChange={(v) => setEditValues((prev) => ({ ...prev, payment_type: v }))}
+                                    >
+                                      <SelectTrigger className="h-7 text-xs w-24">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="new_payment">New Payment</SelectItem>
+                                        <SelectItem value="addition">Addition</SelectItem>
+                                        <SelectItem value="deduction">Deduction</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                      {PAYMENT_TYPE_LABELS[record.payment_type] || record.payment_type}
+                                    </p>
+                                  )}
                                 </div>
-                              )}
-                            </td>
-                          </tr>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {editingRecord === record.id ? (
+                                  <>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSaveEdit(record.id)}>
+                                      <Check className="h-3.5 w-3.5 text-green-600" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCancelEdit}>
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleStartEdit(record)}>
+                                      <Edit2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteTarget({ type: "record", id: record.id })}>
+                                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    ) : (
+                      // Desktop: table layout
+                      <table className="w-full text-sm mt-3">
+                        <thead>
+                          <tr className="text-left border-b text-muted-foreground">
+                            <th className="pb-2 font-medium">Folder Name</th>
+                            <th className="pb-2 font-medium text-right">Names</th>
+                            <th className="pb-2 font-medium text-center">Type</th>
+                            <th className="pb-2 font-medium text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.records.map((record) => (
+                            <tr key={record.id} className="border-b last:border-0">
+                              <td className="py-2 font-mono text-xs">{record.folder_name}</td>
+                              <td className="py-2 text-right">
+                                {editingRecord === record.id ? (
+                                  <Input
+                                    type="number"
+                                    className="w-20 h-7 text-xs ml-auto"
+                                    value={editValues.names_count ?? ""}
+                                    onChange={(e) =>
+                                      setEditValues((prev) => ({
+                                        ...prev,
+                                        names_count: parseInt(e.target.value, 10) || 0,
+                                      }))
+                                    }
+                                  />
+                                ) : (
+                                  record.names_count
+                                )}
+                              </td>
+                              <td className="py-2 text-center">
+                                {editingRecord === record.id ? (
+                                  <Select
+                                    value={editValues.payment_type}
+                                    onValueChange={(v) => setEditValues((prev) => ({ ...prev, payment_type: v }))}
+                                  >
+                                    <SelectTrigger className="h-7 text-xs w-28 mx-auto">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="new_payment">New Payment</SelectItem>
+                                      <SelectItem value="addition">Addition</SelectItem>
+                                      <SelectItem value="deduction">Deduction</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    {PAYMENT_TYPE_LABELS[record.payment_type] || record.payment_type}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 text-right">
+                                {editingRecord === record.id ? (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSaveEdit(record.id)}>
+                                      <Check className="h-3.5 w-3.5 text-green-600" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCancelEdit}>
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleStartEdit(record)}>
+                                      <Edit2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteTarget({ type: "record", id: record.id })}>
+                                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </CollapsibleContent>
               </Collapsible>
