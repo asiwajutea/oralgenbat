@@ -1,67 +1,61 @@
 
 
-## Payment Page Improvements
+## Plan: Push Notifications on Notice Board, Navigation Sub-Menus, and Persistent Permission Prompt
 
-### 1. Allow Saving Unmatched Folder Names in Manual Invoice Entry
+### 1. Add Push Notification Messaging to the Notice Board Page
 
-**File: `src/components/payment/ManualInvoiceEntryDialog.tsx`**
+**File: `src/pages/NoticeBoard.tsx`**
 
-Currently, the save function filters out folder names not found in the database (`previewRecords.filter(r => r.found)`), making it impossible to save them. Changes:
+- Add a new tab "Push Notifications" alongside "All Announcements" and "My Announcements"
+- This tab contains a simple form allowing authorized users (super_admin, contractor, sub_contractor, quality_assurance_manager) to compose and send a push notification message
+- The push notification is sent by creating a targeted announcement with `frequency: 'once'` which triggers the existing `notify_new_announcement` database trigger, delivering browser push notifications to targeted users
+- The tab also shows the push notification permission status with an "Enable" button for users who haven't granted permission yet
 
-- Remove the `r.found` filter from `handleSave` -- save ALL entered folder names, whether found in the database or not
-- For not-found records, save with `audit_id: null` and use the edited names count (or 0 if not edited)
-- Allow editing the names count on not-found rows (currently disabled with `disabled={!record.found}`)
-- Update the save button text to show total records count instead of only found count
-- Change the warning message from "will be skipped" to an informational note that unmatched records will be saved without a linked interview
+### 2. Navigation Sub-Menus (Desktop + Mobile)
 
-### 2. Budget Stats Use Payment Record's `names_count` Directly
+**File: `src/components/Header.tsx`**
 
-**File: `src/hooks/usePaymentTracking.ts`**
+- Create a new "Communications" NavigationMenu dropdown containing:
+  - Notice Board (`/notices`)
+  - Push Notifications (`/notices?tab=push`) -- links directly to the push tab
+- Move "Fraud Analytics" under a new "Analytics" NavigationMenu dropdown for admin/super_admin:
+  - Analytics (`/analytics` or `/my-analytics` depending on role)
+  - Fraud Analytics (`/fraud-analytics`)
+- For non-admin roles that have both My Analytics and Fraud Analytics, group them similarly under an "Analytics" dropdown
+- Remove the standalone "Fraud Analytics" NavLink
 
-The `useBudgetStats` hook already sums `names_count` from `payment_records` table directly. This is correct behavior. However, the stat cards ("Total Names Paid") currently show this sum correctly. The key fix is ensuring:
+**File: `src/components/MobileNav.tsx`**
 
-- When a manual invoice entry saves with an edited total names override, the `names_count` stored in the payment record reflects that override
-- Currently the dialog saves each folder as a separate payment record with its individual `names_count`. When the user edits the "Total Names" override, that override is not actually used during save -- each record saves its own count. We need to distribute the total override across records OR save a single aggregated record per invoice
+- Add a "Communications" section header with:
+  - Notice Board
+  - Push Notifications (links to `/notices?tab=push`)
+- Move "Fraud Analytics" under an "Analytics" section header alongside existing analytics links
 
-**Approach**: When `totalNamesOverride` is set, save a single payment record per invoice with the overridden total as `names_count` and a combined folder name. This way the stat cards (which sum `names_count`) will show the correct edited total.
+### 3. Persistent Push Notification Prompt for Users Without Permission
 
-Actually, simpler approach: save all records individually, but if `totalNamesOverride` is set, proportionally distribute the override across records. If there's only unmatched records with 0 names each, just assign the full override to the first record.
+**File: `src/components/PushNotificationPrompt.tsx`**
 
-### 3. Invoice History Tab
+- Change the condition: remove the check for `Notification.permission !== "default"` when permission is "default" (not yet decided)
+- Remove the `localStorage` dismissed check for users whose permission is still "default" -- show the prompt on every visit using `sessionStorage` instead
+- Users who click "Don't Ask Again" will still have it permanently dismissed via `localStorage`
+- Users who click "Not Now" will only dismiss for the current session (use `sessionStorage`)
+- If permission is already "granted" or "denied", don't show the prompt
 
-**File: `src/pages/PaymentTracking.tsx`**
+### 4. Re-Enable Push Notifications from Profile Page
 
-Add a third tab "Invoice History" alongside "Assigned to Clerks" and "Not Assigned":
+**File: `src/components/NotificationSettings.tsx`**
 
-- Shows all invoices grouped by `invoice_number`
-- Each row displays: invoice number, date created, payment category, number of folder names, total names count, contractor name
-- Expandable rows showing individual folder entries within each invoice
-- Edit button to modify the `names_count` or `payment_type` of each record
-- Delete option for individual records or entire invoices
-- Mobile-friendly accordion layout
-
-**New file: `src/components/payment/InvoiceHistoryTab.tsx`**
-
-A new component that:
-- Queries `payment_records` grouped by `invoice_number`
-- Displays invoices in a table/accordion layout
-- Allows inline editing of `names_count` per record
-- Allows editing the payment type
-- Has delete functionality for records
-- Uses existing mutations from `usePaymentTracking.ts`
-
-**File: `src/hooks/usePaymentTracking.ts`**
-
-Add new mutations:
-- `useUpdatePaymentRecord` -- update `names_count`, `payment_type` on a payment record
-- `useDeletePaymentRecord` -- delete a payment record by ID
+- When permission is "denied", add helpful text explaining how to re-enable in browser settings (since we can't programmatically override a browser denial)
+- When permission is "default", show an "Enable Push Notifications" button that calls `requestPermission()`
+- Add a "Reset Prompt" button that clears the `push_notification_prompt_dismissed` localStorage key, so the user will see the prompt again on next visit
 
 ### Technical Summary
 
 | File | Change |
 |------|--------|
-| `src/components/payment/ManualInvoiceEntryDialog.tsx` | Allow saving not-found folder names, enable names editing on all rows, distribute total override |
-| `src/hooks/usePaymentTracking.ts` | Add `useUpdatePaymentRecord` and `useDeletePaymentRecord` mutations |
-| `src/components/payment/InvoiceHistoryTab.tsx` | New component: invoice history with edit/delete |
-| `src/pages/PaymentTracking.tsx` | Add "Invoice History" tab |
+| `src/pages/NoticeBoard.tsx` | Add "Push Notifications" tab with send form |
+| `src/components/Header.tsx` | Add "Communications" dropdown (Notice Board + Push Notifications), move Fraud Analytics under "Analytics" dropdown |
+| `src/components/MobileNav.tsx` | Add Communications section, move Fraud Analytics under Analytics section |
+| `src/components/PushNotificationPrompt.tsx` | Show prompt every session for users with "default" permission; "Not Now" uses sessionStorage, "Don't Ask Again" uses localStorage |
+| `src/components/NotificationSettings.tsx` | Add "Reset Prompt" button and browser instructions for denied state |
 
