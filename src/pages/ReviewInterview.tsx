@@ -106,6 +106,10 @@ const ReviewInterview = () => {
     : 0;
   
   const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds);
+
+  // Auto-load countdown for next interview
+  const [countdown, setCountdown] = useState(5);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Update elapsedSeconds when reviewStartedAt changes
   useEffect(() => {
@@ -322,7 +326,39 @@ const ReviewInterview = () => {
     initLock();
   }, [audit, isAuditor, isReviewed, lockedByOther, acquireLock, hasAbandoned, metadata]);
 
-  // Handle abandon review
+  // Start countdown when completion result is set and next audit is available
+  useEffect(() => {
+    if (completionResult && nextAudit?.id) {
+      setCountdown(5);
+      countdownRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            if (countdownRef.current) clearInterval(countdownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [completionResult, nextAudit?.id]);
+
+  // Auto-navigate when countdown reaches 0
+  useEffect(() => {
+    if (completionResult && nextAudit?.id && countdown === 0) {
+      navigate(`/review/${nextAudit.id}`);
+    }
+  }, [countdown, completionResult, nextAudit?.id, navigate]);
+
+  const cancelCountdown = () => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+  };
+
   const handleAbandonReview = async () => {
     setIsAbandoning(true);
     try {
@@ -458,42 +494,6 @@ const ReviewInterview = () => {
       </div>;
   }
 
-  // Auto-load countdown for next interview
-  const [countdown, setCountdown] = useState(5);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Start countdown when completion result is set and next audit is available
-  useEffect(() => {
-    if (completionResult && nextAudit?.id) {
-      setCountdown(5);
-      countdownRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            if (countdownRef.current) clearInterval(countdownRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, [completionResult, nextAudit?.id]);
-
-  // Auto-navigate when countdown reaches 0
-  useEffect(() => {
-    if (completionResult && nextAudit?.id && countdown === 0) {
-      navigate(`/review/${nextAudit.id}`);
-    }
-  }, [countdown, completionResult, nextAudit?.id, navigate]);
-
-  const cancelCountdown = () => {
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
-  };
 
   // Show completion page after pass/fail
   if (completionResult) {
