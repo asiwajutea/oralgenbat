@@ -1,74 +1,40 @@
 
 
-## Plan: Review Completion Auto-Load, Bulk Upload Re-Audit Logic, and Mobile Labels
+## Plan: Fix Missing Review Actions, Improve Failure Summary, and Red Field Audit Badge
 
-### 1. Auto-Load Next Interview on Completion Page
+### 1. Restore Missing ReviewActions Component
 
 **File: `src/pages/ReviewInterview.tsx`**
 
-Modify the completion page (lines 461-493) to add:
+The `ReviewActions` component was accidentally removed from the render output (lines 649-668 are blank where it should be). This is why the Pass/Fail buttons are not appearing.
 
-- A 5-second countdown timer using `useState` and `useEffect` with `setInterval`
-- Display the next interview ID (from the existing `nextAudit` query) below the countdown
-- When countdown reaches 0, auto-navigate to `/review/{nextAuditId}`
-- A "Go to Next Interview" manual button as fallback
-- If `nextAudit` is null (no interviews left), show "No more interviews to review" with only the "Go to Dashboard" button and no countdown
-- Clicking any manual navigation button cancels the countdown
-- The countdown should pause/cancel if user clicks "Go to Interviews" or "Return to Dashboard"
+- Restore the `<ReviewActions>` component in the sticky section (after the checklist, before the closing `</div>` at line 669)
+- Pass all required props: `auditId`, `currentStatus`, `currentFileName`, `checklistCompleted`, `hasChecklistFailures`, `checklistFailureComments`, `reviewDurationSeconds`, `onReleaseLock`, `audioAnalysisComplete`, `pdfAnalysisComplete`, `onScrollToChecklist`, `onReviewCompleted`
 
-The `nextAudit` query already exists (lines 182-216) and fetches the next available unreviewed audit with metadata. The `awaitingCount` query (lines 275-286) provides the count. Both are already enabled when `completionResult` is set.
+### 2. Replace Raw Checklist Failure Summary with Feedback Statements in Fail Dialog
 
-### 2. Bulk Upload Artifact Correction Logic
+**File: `src/components/review/ReviewActions.tsx`**
 
-The `artifact_correction` field on `audits` is a text array that can contain `'scanned_pdf'` and/or `'mobile_metadata'`. The new rules require checking this field to decide whether to send for re-audit or just replace the artifact.
+Currently, when the failure dialog opens, `reviewComment` is pre-populated with the raw checklist output containing section headers and full question text (e.g., "**Documentation & Authorization:** - Q1: Was the interview recorded..."). Instead, it should use the same feedback statement format used in the Admin Review History PDF.
 
-**File: `src/components/tracking/BulkPdfUploadDialog.tsx`**
+- Add the `CHECKLIST_FEEDBACK_STATEMENTS` mapping (questions 1-13) to `ReviewActions.tsx` (or extract to a shared utility)
+- Add a `parseChecklistFeedback` function to extract question IDs and additional comments from the raw checklist comments
+- In the `useEffect` that sets `reviewComment` from `checklistFailureComments`, transform the raw data into feedback statements format:
+  - For each failed question, show: `"Q{id}: {feedback statement}"`
+  - If there's an additional comment from the auditor, append it below
+- This gives field managers/contractors clear, actionable failure reasons
 
-Changes to `handleFileSelect` (line ~94):
-- Fetch `artifact_correction` alongside `id, file_name, file_url, status` from the audits query
-- In the file classification logic (lines 120-128), when status is "Audit Failed":
-  - Check if `artifact_correction` contains both `'scanned_pdf'` and `'mobile_metadata'`
-  - If both: mark as replacement only (NOT re-audit). Set a new flag like `isPartialFix = true`
-  - If only `'scanned_pdf'`: mark as re-audit (current behavior)
+### 3. Change "No Field Audit" Badge to Red
 
-Changes to `processPdfFile` (line ~217):
-- For `isPartialFix` files: instead of calling `mark_audit_for_reaudit`, do a regular update:
-  - Update `file_url` to the new URL
-  - Update `artifact_correction` to `['mobile_metadata']` (remove `'scanned_pdf'`)
-  - Update `last_modified` to now
-  - Do NOT change status or trigger re-audit
+**File: `src/pages/ReviewInterview.tsx`**
 
-**File: `src/components/tracking/BulkMetadataUploadDialog.tsx`**
-
-Same parallel changes:
-- Fetch `artifact_correction` in the audits query (line ~98)
-- In classification (lines 128-135), when status is "Audit Failed":
-  - If both corrections needed: mark as replacement (partial fix), not re-audit
-  - If only `'mobile_metadata'`: mark as re-audit (current behavior)
-
-Changes to `processZipFile` (line ~198):
-- For partial fix files: instead of calling `mark_audit_for_reaudit`:
-  - Update `mobile_zip_url` and `mobile_zip_uploaded_at`
-  - Update `artifact_correction` to `['scanned_pdf']` (remove `'mobile_metadata'`)
-  - Update `last_modified` to now
-  - Still invoke `process-mobile-zip` to parse metadata
-  - Do NOT change status or trigger re-audit
-
-### 3. Mobile Labels on Bulk Upload Buttons
-
-**File: `src/pages/InterviewTracking.tsx`**
-
-On lines 875-893, the bulk upload buttons show icons only on mobile (text is hidden with `hidden sm:inline`). Add tiny labels visible only on mobile:
-
-- For Bulk Metadata button: add `<span className="sm:hidden text-[10px]">ZIP</span>` next to the icon
-- For Bulk PDF button: add `<span className="sm:hidden text-[10px]">PDF</span>` next to the icon
+- On line 619, change the badge styling from `variant="outline" className="text-muted-foreground ..."` to `className="bg-red-100 text-red-700 border-red-200 ..."` (or use `variant="destructive"` with appropriate sizing)
+- Keep the `ShieldOff` icon
 
 ### Technical Summary
 
 | File | Change |
 |------|--------|
-| `src/pages/ReviewInterview.tsx` | Add 5-second auto-load countdown on completion page with next interview ID display and fallback navigation |
-| `src/components/tracking/BulkPdfUploadDialog.tsx` | Fetch `artifact_correction`, add partial-fix logic for both-artifact failures (replace PDF + update correction to metadata-only) |
-| `src/components/tracking/BulkMetadataUploadDialog.tsx` | Fetch `artifact_correction`, add partial-fix logic for both-artifact failures (replace metadata + update correction to PDF-only) |
-| `src/pages/InterviewTracking.tsx` | Add tiny "PDF" and "ZIP" labels on mobile view for bulk upload buttons |
+| `src/pages/ReviewInterview.tsx` | Restore `<ReviewActions>` component in sticky section (lines 649-668); change "No Field Audit" badge to red |
+| `src/components/review/ReviewActions.tsx` | Add `CHECKLIST_FEEDBACK_STATEMENTS` map; transform raw checklist comments into feedback statements in the failure dialog's pre-populated comment |
 
