@@ -32,85 +32,84 @@ export interface ChecklistProgress {
 }
 
 const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
-  // A. Documentation & Authorization
+  // A. Form & Document Review (things checked by looking at the scanned PDF)
   {
     id: 1,
     category: "A",
-    categoryLabel: "Documentation & Authorization",
+    categoryLabel: "Form & Document Review",
     question: "Was the interview recorded on the FSI Standard Interview Collection Form?",
   },
   {
     id: 2,
     category: "A",
-    categoryLabel: "Documentation & Authorization",
+    categoryLabel: "Form & Document Review",
     question: 'Is the Authorization Form signed and dated, and if marked "X," is there a witness signature?',
   },
   {
     id: 3,
     category: "A",
-    categoryLabel: "Documentation & Authorization",
+    categoryLabel: "Form & Document Review",
     question: "Is the Field Manager Checklist fully checked and signed?",
   },
   {
     id: 4,
     category: "A",
-    categoryLabel: "Documentation & Authorization",
-    question: "Do the interviewee's name and age on the header and Authorization Form match the information in the mobile app?",
+    categoryLabel: "Form & Document Review",
+    question: "Are the pages numbered correctly and in sequence?",
   },
-  // B. Data Consistency & Accuracy
+  // B. Data Cross-Check (comparing PDF content against mobile app)
   {
     id: 5,
     category: "B",
-    categoryLabel: "Data Consistency & Accuracy",
-    question: "Does the total number of names on the header match the total names written on the collection form?",
+    categoryLabel: "Data Cross-Check",
+    question: "Do the interviewee's name and age on the header and Authorization Form match the information in the mobile app?",
   },
   {
     id: 6,
     category: "B",
-    categoryLabel: "Data Consistency & Accuracy",
-    question: "Does the earliest ancestor's name on the collection form match the one in the mobile app?",
+    categoryLabel: "Data Cross-Check",
+    question: "Does the total number of names on the header match the total names written on the collection form?",
   },
   {
     id: 7,
     category: "B",
-    categoryLabel: "Data Consistency & Accuracy",
-    question: "Does each name on the collection form have a unique RIN, a relationship code, and a gender?",
+    categoryLabel: "Data Cross-Check",
+    question: "Does the folder name written on the collection form header match the interview date and the interview ID?",
   },
   {
     id: 8,
     category: "B",
-    categoryLabel: "Data Consistency & Accuracy",
-    question: "Are the dates and places of birth recorded for the interviewee, the spouse, and the interviewee's children?",
+    categoryLabel: "Data Cross-Check",
+    question: "Does the earliest ancestor's name on the collection form match the one in the mobile app?",
   },
   {
     id: 9,
     category: "B",
-    categoryLabel: "Data Consistency & Accuracy",
-    question: "Does the folder name written on the collection form header match the interview date and the interview ID?",
+    categoryLabel: "Data Cross-Check",
+    question: "Are the dates and places of birth recorded for the interviewee, the spouse, and the interviewee's children?",
   },
-  // C. Form Structure & Completeness
   {
     id: 10,
-    category: "C",
-    categoryLabel: "Form Structure & Completeness",
-    question: "Are the pages numbered correctly and in sequence?",
+    category: "B",
+    categoryLabel: "Data Cross-Check",
+    question: "Does each name on the collection form have a unique RIN, a relationship code, and a gender?",
   },
-  // D. Media Verification
+  // C. Media Verification (photos and audio)
   {
     id: 11,
-    category: "D",
+    category: "C",
     categoryLabel: "Media Verification",
     question: "Are all photos in the mobile app clear, relevant, and correctly captured?",
   },
   {
     id: 12,
-    category: "D",
+    category: "C",
     categoryLabel: "Media Verification",
     question: "Is the full Authorization Form clearly visible in the uploaded image?",
   },
   {
     id: 13,
-    category: "D",
+    category: "C",
     categoryLabel: "Media Verification",
     question: "Can the Field Agent and interviewee be clearly and easily heard in both the Family Story and Pedigree audio files?",
   },
@@ -368,7 +367,7 @@ export const AuditChecklist = ({
       case "C":
         return "bg-amber-500/10 text-amber-600 border-amber-500/20";
       case "D":
-        return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";
+        return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";  // kept for backwards compat
       default:
         return "bg-muted text-muted-foreground";
     }
