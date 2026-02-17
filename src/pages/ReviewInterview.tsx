@@ -193,6 +193,7 @@ const ReviewInterview = () => {
       from("audits").
       select(`
           id, 
+          file_name,
           locked_by, 
           locked_at,
           interview_metadata!inner(id)
@@ -212,7 +213,7 @@ const ReviewInterview = () => {
         return isNotLocked || isLockExpired || isMyLock;
       });
 
-      return available ? { id: available.id } : null;
+      return available ? { id: available.id, file_name: available.file_name } : null;
     },
     enabled: !!auditId && !!user?.id,
     staleTime: 0, // Always get fresh data
@@ -328,7 +329,7 @@ const ReviewInterview = () => {
 
   // Start countdown when completion result is set and next audit is available
   useEffect(() => {
-    if (completionResult && nextAudit?.id) {
+    if (completionResult && nextAudit?.id && !countdownRef.current) {
       setCountdown(5);
       countdownRef.current = setInterval(() => {
         setCountdown((prev) => {
@@ -341,16 +342,21 @@ const ReviewInterview = () => {
       }, 1000);
     }
     return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
     };
   }, [completionResult, nextAudit?.id]);
 
   // Auto-navigate when countdown reaches 0
   useEffect(() => {
     if (completionResult && nextAudit?.id && countdown === 0) {
-      navigate(`/review/${nextAudit.id}`);
+      cancelCountdown();
+      setCompletionResult(null);
+      window.location.href = `/review/${nextAudit.id}`;
     }
-  }, [countdown, completionResult, nextAudit?.id, navigate]);
+  }, [countdown, completionResult, nextAudit?.id]);
 
   const cancelCountdown = () => {
     if (countdownRef.current) {
@@ -521,7 +527,7 @@ const ReviewInterview = () => {
           {hasNextInterview ?
           <div className="mt-4 mb-6">
               <p className="text-sm text-muted-foreground">
-                Next interview: <span className="font-mono font-medium text-foreground">{nextAudit.id.slice(0, 8)}...</span>
+                Next interview: <span className="font-mono font-medium text-foreground">{nextAudit.file_name || nextAudit.id}</span>
               </p>
               <div className="flex items-center justify-center gap-2 mt-2">
                 <Clock className="h-4 w-4 text-primary animate-pulse" />
@@ -537,7 +543,7 @@ const ReviewInterview = () => {
           }
           <div className="flex gap-3 justify-center mt-2">
             {hasNextInterview &&
-            <Button onClick={() => {cancelCountdown();navigate(`/review/${nextAudit.id}`);}}>
+            <Button onClick={() => {cancelCountdown();setCompletionResult(null);window.location.href = `/review/${nextAudit.id}`;}}>
                 Go to Next Interview
               </Button>
             }
