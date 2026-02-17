@@ -616,7 +616,7 @@ const ReviewInterview = () => {
                   Field Audited{fieldAuditData.reviewed_at ? ` - ${format(new Date(fieldAuditData.reviewed_at), 'MMM d, yyyy')}` : ''}
                 </Badge> :
                 fieldAuditData && !fieldAuditData.found ?
-                <Badge variant="outline" className="text-muted-foreground text-[10px] px-1.5 py-0 gap-1 flex-shrink-0">
+                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0 gap-1 flex-shrink-0">
                   <ShieldOff className="h-3 w-3" />
                   No Field Audit
                 </Badge> :
@@ -647,9 +647,20 @@ const ReviewInterview = () => {
             }
           
           {/* Review Actions */}
-          
-
-
+          <ReviewActions
+            auditId={auditId!}
+            currentStatus={audit.status}
+            currentFileName={audit.file_name}
+            checklistCompleted={checklistCompleted}
+            hasChecklistFailures={hasChecklistFailures}
+            checklistFailureComments={checklistComments}
+            reviewDurationSeconds={elapsedSeconds}
+            onReleaseLock={async () => { await releaseLock(); }}
+            audioAnalysisComplete={!!(metadata?.family_story_duration !== undefined && metadata?.family_story_duration !== null)}
+            pdfAnalysisComplete={!!(metadata?.pdf_clarity_score !== null && metadata?.pdf_clarity_score !== undefined)}
+            onScrollToChecklist={() => checklistRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            onReviewCompleted={(result) => setCompletionResult(result)}
+          />
 
 
 

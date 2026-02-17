@@ -20,6 +20,59 @@ import { toast } from "@/hooks/use-toast";
 import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone, ClipboardList } from "lucide-react";
 import { ReAuditDialog } from "./ReAuditDialog";
 
+const CHECKLIST_FEEDBACK_STATEMENTS: Record<number, string> = {
+  1: "The interview failed because it was not recorded on the FSI Standard Interview Collection Form or an incorrect form was submitted. Please ensure the interview is properly documented using the approved FSI Standard Interview Collection Form and resubmit for review.",
+  2: "The interview failed because the Authorization Form is incomplete, missing a signature and/or date, or a required witness signature is absent where \"X\" was used. Please obtain all required signatures and dates and resubmit the completed Authorization Form.",
+  3: "The interview failed because the Field Manager Checklist was not fully completed and/or signed. Please ensure all required checklist items are checked and the form is properly signed before resubmission.",
+  4: "The interview failed because the interviewee's name and/or age on the collection form header and Authorization Form do not match the information recorded in the mobile app. Please correct the discrepancies so all records are consistent and resubmit for review.",
+  5: "The interview failed because the total number of names recorded on the form header does not match the total number of names written on the collection form or the Mobile App data. Please reconcile the counts and update the documentation accordingly.",
+  6: "The interview failed because the earliest ancestor's name on the collection form does not match the information entered in the mobile app. Please review and correct the ancestor details so both records align.",
+  7: "The interview failed because one or more individuals listed on the collection form are missing a unique RIN, relationship code, and/or gender, or the information is duplicated or incorrect. Please ensure all required identifiers are accurately completed for every individual.",
+  8: "The interview failed because the dates and/or places of birth for the interviewee, spouse, or children are missing or incomplete. Please provide complete birth information for all required individuals and resubmit the interview.",
+  9: "The interview failed because the folder name recorded on the collection form header does not match the interview date and/or interview ID. Please correct the folder naming to reflect the accurate interview details.",
+  10: "The interview failed because the pages are not numbered correctly or are out of sequence. Please renumber the pages in the correct order and ensure the full document is complete before resubmission.",
+  11: "The interview failed because one or more photos uploaded in the mobile app are unclear, incomplete, irrelevant, or improperly captured. Please retake and upload clear, complete, and relevant photos as required.",
+  12: "The interview failed because the Authorization Form image is incomplete, unclear, or partially obscured, making it unreadable. Please upload a clear image showing the full Authorization Form.",
+  13: "The interview failed because the audio recordings are unclear, incomplete, or inaudible, making it difficult to hear the Field Agent and/or interviewee. Please ensure all required audio recordings are clear and fully audible before resubmission.",
+};
+
+const parseChecklistFeedback = (rawComments: string): string => {
+  const lines = rawComments.split('\n');
+  const failures: Array<{questionId: number; additionalComment?: string}> = [];
+  let currentQuestionId: number | null = null;
+
+  for (const line of lines) {
+    const questionMatch = line.match(/^-\s*Q(\d+):/);
+    if (questionMatch) {
+      if (currentQuestionId !== null) {
+        failures.push({ questionId: currentQuestionId });
+      }
+      currentQuestionId = parseInt(questionMatch[1]);
+    } else if (currentQuestionId !== null) {
+      const commentMatch = line.match(/^\s*Comment:\s*(.+)/i);
+      if (commentMatch && commentMatch[1].trim()) {
+        failures.push({ questionId: currentQuestionId, additionalComment: commentMatch[1].trim() });
+        currentQuestionId = null;
+      }
+    }
+  }
+
+  if (currentQuestionId !== null) {
+    failures.push({ questionId: currentQuestionId });
+  }
+
+  if (failures.length === 0) return rawComments;
+
+  return failures.map(f => {
+    const statement = CHECKLIST_FEEDBACK_STATEMENTS[f.questionId] || `Q${f.questionId}: Failed`;
+    let result = `Q${f.questionId}: ${statement}`;
+    if (f.additionalComment) {
+      result += `\nAdditional Comment: ${f.additionalComment}`;
+    }
+    return result;
+  }).join('\n\n');
+};
+
 interface ReviewActionsProps {
   auditId: string;
   currentStatus: string;
@@ -62,7 +115,7 @@ export const ReviewActions = ({
   // Update reviewComment when checklistFailureComments changes
   useEffect(() => {
     if (checklistFailureComments) {
-      setReviewComment(checklistFailureComments);
+      setReviewComment(parseChecklistFeedback(checklistFailureComments));
     }
   }, [checklistFailureComments]);
 
