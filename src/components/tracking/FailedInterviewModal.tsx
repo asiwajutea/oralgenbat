@@ -337,7 +337,7 @@ export function FailedInterviewModal({
               Reason for Failure
             </h3>
             <div className="p-3 bg-destructive/5 border border-destructive/20 rounded-lg">
-              <p className="text-sm">
+              <p className="text-sm whitespace-pre-wrap">
                 {interview.review_comment || "No specific reason provided."}
               </p>
             </div>
@@ -348,7 +348,7 @@ export function FailedInterviewModal({
             <div className="space-y-3">
               <h3 className="font-semibold">Action Plan</h3>
               <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
-                <p className="text-sm">{interview.action_plan}</p>
+                <p className="text-sm whitespace-pre-wrap">{interview.action_plan}</p>
               </div>
             </div>
           )}

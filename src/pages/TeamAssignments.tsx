@@ -390,8 +390,8 @@ const TeamAssignments = () => {
     return exportBatches.filter(b => b.team_id === teamId);
   };
 
-  const getTypingStatusBadge = (status: string) => {
-    if (status === 'typing_completed') {
+  const getTypingStatusBadge = (assignment: Assignment) => {
+    if (assignment.entry_status === 'data_entry_complete' || assignment.typing_status === 'typing_completed') {
       return (
         <Badge className="bg-success text-success-foreground gap-1">
           <CheckCircle2 className="h-3 w-3" />
@@ -459,6 +459,14 @@ const TeamAssignments = () => {
         teamCount={teams.length}
         assignedCount={assignments.length}
         assignedNames={assignedNames}
+        teamStats={teams.map(team => {
+          const teamAssignments = assignmentsByTeam.get(team.id) || [];
+          return {
+            teamName: team.name,
+            assigned: teamAssignments.length,
+            completed: teamAssignments.filter(a => a.entry_status === 'data_entry_complete' || a.typing_status === 'typing_completed').length,
+          };
+        })}
       />
 
       {/* Export History Accordion - At Top (collapsed by default) */}
@@ -844,7 +852,7 @@ const TeamAssignments = () => {
             teams.map((team) => {
               const teamAssignments = assignmentsByTeam.get(team.id) || [];
               const teamNames = teamAssignments.reduce((sum, a) => sum + (a.total_names || 0), 0);
-              const completedCount = teamAssignments.filter((a) => a.typing_status === 'typing_completed').length;
+              const completedCount = teamAssignments.filter((a) => a.entry_status === 'data_entry_complete' || a.typing_status === 'typing_completed').length;
               const isExpanded = expandedTeams.has(team.id);
 
               return (
@@ -911,7 +919,7 @@ const TeamAssignments = () => {
                                   {(assignment.total_names || 0).toLocaleString()}
                                 </TableCell>
                                 <TableCell>
-                                  {getTypingStatusBadge(assignment.typing_status)}
+                                  {getTypingStatusBadge(assignment)}
                                 </TableCell>
                                 <TableCell className="text-sm">
                                   {assignment.assigned_at &&

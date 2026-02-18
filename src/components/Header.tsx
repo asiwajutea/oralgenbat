@@ -1,4 +1,4 @@
-import { FileText, Megaphone } from "lucide-react";
+import { FileText } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import UserMenu from "@/components/UserMenu";
 import MobileNav from "@/components/MobileNav";
@@ -16,19 +16,38 @@ const Header = () => {
   const activeContractorId = profile?.active_contractor_id || profile?.contractor_id;
   const isAuditor = userRole === 'auditor';
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-  const isReviewsActive = location.pathname.startsWith('/admin/review-history') || location.pathname.startsWith('/admin/team-assignments');
-  const isCommunicationsActive = location.pathname.startsWith('/notices');
-  const isAnalyticsActive = location.pathname === '/analytics' || location.pathname === '/my-analytics' || location.pathname === '/fraud-analytics' || location.pathname.startsWith('/role-analytics');
 
-  // Roles that see Fraud Analytics
+  // Active state helpers
+  const isOperationsActive = ['/interview-tracking', '/payment-tracking', '/data-entry'].some(p => location.pathname.startsWith(p));
+  const isTeamsActive = ['/team-management', '/subcontractor-team-management', '/admin/team-approvals'].some(p => location.pathname.startsWith(p));
+  const isAdminActive = ['/admin'].some(p => location.pathname.startsWith(p)) && !location.pathname.startsWith('/admin/team-approvals');
+  const isAnalyticsActive = location.pathname === '/analytics' || location.pathname === '/my-analytics' || location.pathname === '/fraud-analytics' || location.pathname.startsWith('/role-analytics');
+  const isCommunicationsActive = location.pathname.startsWith('/notices');
+
+  // Role checks
   const canSeeFraudAnalytics = userRole && ['field_manager', 'contractor', 'admin', 'super_admin', 'sub_contractor'].includes(userRole);
-  // Roles that see Analytics/My Analytics
   const canSeeAnalytics = userRole && ['contractor', 'admin', 'super_admin', 'data_entry_clerk', 'quality_assurance_manager', 'sub_contractor'].includes(userRole);
-  // Should we group under Analytics dropdown?
   const showAnalyticsDropdown = canSeeAnalytics && canSeeFraudAnalytics;
 
   const analyticsLink = userRole === 'super_admin' ? '/analytics' : '/my-analytics';
   const analyticsLabel = userRole === 'super_admin' ? 'Analytics' : 'My Analytics';
+
+  // Operations items based on role
+  const operationsItems = [
+    ...(userRole && ['field_manager', 'contractor', 'admin', 'super_admin', 'sub_contractor'].includes(userRole)
+      ? [{ to: '/interview-tracking', label: 'Tracking' }, { to: '/payment-tracking', label: 'Payments' }]
+      : []),
+    ...(userRole && ['data_entry_clerk', 'quality_assurance_manager', 'admin', 'super_admin'].includes(userRole)
+      ? [{ to: '/data-entry', label: 'Data Entry' }]
+      : []),
+  ];
+
+  // Teams items based on role
+  const teamsItems = [
+    ...(userRole === 'field_manager' ? [{ to: '/team-management', label: 'Team Management' }] : []),
+    ...(userRole === 'sub_contractor' ? [{ to: '/subcontractor-team-management', label: 'Team Management' }] : []),
+    ...((userRole === 'contractor' || isAdmin) ? [{ to: '/admin/team-approvals', label: 'Team Approvals' }] : []),
+  ];
 
   return (
     <header className="border-b bg-card sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-card/95">
@@ -46,21 +65,16 @@ const Header = () => {
             Home
           </NavLink>
 
-          {(userRole === 'auditor' || isAdmin) && (
+          {(isAuditor || isAdmin) && (
             <NavLink to="/interviews" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               Interviews
             </NavLink>
           )}
 
           {userRole === 'field_manager' && (
-            <>
-              <NavLink to="/field-manager-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-                My Dashboard
-              </NavLink>
-              <NavLink to="/team-management" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-                Team Management
-              </NavLink>
-            </>
+            <NavLink to="/field-manager-dashboard" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
+              My Dashboard
+            </NavLink>
           )}
 
           {userRole === 'contractor' && (
@@ -69,34 +83,52 @@ const Header = () => {
             </NavLink>
           )}
 
-          {(userRole === 'contractor' || isAdmin) && (
-            <NavLink to="/admin/team-approvals" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-              Team Approvals
-            </NavLink>
+          {/* Operations dropdown */}
+          {operationsItems.length > 0 && (
+            <NavigationMenu>
+              <NavigationMenuList>
+                <NavigationMenuItem>
+                  <NavigationMenuTrigger className={cn("h-auto px-0 py-0 bg-transparent hover:bg-transparent focus:bg-transparent data-[state=open]:bg-transparent text-sm font-medium", isOperationsActive ? "text-primary" : "text-foreground hover:text-primary")}>
+                    Operations
+                  </NavigationMenuTrigger>
+                  <NavigationMenuContent>
+                    <div className="w-48 p-2">
+                      {operationsItems.map(item => (
+                        <NavigationMenuLink key={item.to} asChild>
+                          <Link to={item.to} className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === item.to && "bg-accent text-accent-foreground")}>
+                            {item.label}
+                          </Link>
+                        </NavigationMenuLink>
+                      ))}
+                    </div>
+                  </NavigationMenuContent>
+                </NavigationMenuItem>
+              </NavigationMenuList>
+            </NavigationMenu>
           )}
 
-          {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || userRole === 'sub_contractor') && (
-            <NavLink to="/interview-tracking" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-              Tracking
-            </NavLink>
-          )}
-
-          {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || userRole === 'sub_contractor') && (
-            <NavLink to="/payment-tracking" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-              Payments
-            </NavLink>
-          )}
-
-          {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && (
-            <NavLink to="/data-entry" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-              Data Entry
-            </NavLink>
-          )}
-
-          {userRole === 'sub_contractor' && (
-            <NavLink to="/subcontractor-team-management" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-              Team Management
-            </NavLink>
+          {/* Teams dropdown */}
+          {teamsItems.length > 0 && (
+            <NavigationMenu>
+              <NavigationMenuList>
+                <NavigationMenuItem>
+                  <NavigationMenuTrigger className={cn("h-auto px-0 py-0 bg-transparent hover:bg-transparent focus:bg-transparent data-[state=open]:bg-transparent text-sm font-medium", isTeamsActive ? "text-primary" : "text-foreground hover:text-primary")}>
+                    Teams
+                  </NavigationMenuTrigger>
+                  <NavigationMenuContent>
+                    <div className="w-48 p-2">
+                      {teamsItems.map(item => (
+                        <NavigationMenuLink key={item.to} asChild>
+                          <Link to={item.to} className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === item.to && "bg-accent text-accent-foreground")}>
+                            {item.label}
+                          </Link>
+                        </NavigationMenuLink>
+                      ))}
+                    </div>
+                  </NavigationMenuContent>
+                </NavigationMenuItem>
+              </NavigationMenuList>
+            </NavigationMenu>
           )}
 
           {/* Analytics dropdown or standalone */}
@@ -159,51 +191,52 @@ const Header = () => {
             </NavigationMenuList>
           </NavigationMenu>
 
-          {userRole === 'auditor' && (
+          {isAuditor && (
             <NavLink to="/review-history" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
               My Reviews
             </NavLink>
           )}
 
+          {/* Admin dropdown */}
           {isAdmin && (
-            <>
-              <NavLink to="/admin" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-                Manage Users
-              </NavLink>
-
-              <NavigationMenu>
-                <NavigationMenuList>
-                  <NavigationMenuItem>
-                    <NavigationMenuTrigger className={cn("h-auto px-0 py-0 bg-transparent hover:bg-transparent focus:bg-transparent data-[state=open]:bg-transparent text-sm font-medium", isReviewsActive ? "text-primary" : "text-foreground hover:text-primary")}>
-                      All Reviews
-                    </NavigationMenuTrigger>
-                    <NavigationMenuContent>
-                      <div className="w-48 p-2">
-                        <NavigationMenuLink asChild>
-                          <Link to="/admin/review-history" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/review-history' && "bg-accent text-accent-foreground")}>
-                            Review History
-                          </Link>
-                        </NavigationMenuLink>
-                        <NavigationMenuLink asChild>
-                          <Link to="/admin/team-assignments" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/team-assignments' && "bg-accent text-accent-foreground")}>
-                            Team Assignments
-                          </Link>
-                        </NavigationMenuLink>
-                        <NavigationMenuLink asChild>
-                          <Link to="/admin/zip-diagnostics" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/zip-diagnostics' && "bg-accent text-accent-foreground")}>
-                            ZIP Diagnostics
-                          </Link>
-                        </NavigationMenuLink>
-                      </div>
-                    </NavigationMenuContent>
-                  </NavigationMenuItem>
-                </NavigationMenuList>
-              </NavigationMenu>
-              
-              <NavLink to="/admin/locked-interviews" className="text-sm font-medium transition-colors hover:text-primary" activeClassName="text-primary">
-                Locks
-              </NavLink>
-            </>
+            <NavigationMenu>
+              <NavigationMenuList>
+                <NavigationMenuItem>
+                  <NavigationMenuTrigger className={cn("h-auto px-0 py-0 bg-transparent hover:bg-transparent focus:bg-transparent data-[state=open]:bg-transparent text-sm font-medium", isAdminActive ? "text-primary" : "text-foreground hover:text-primary")}>
+                    Admin
+                  </NavigationMenuTrigger>
+                  <NavigationMenuContent>
+                    <div className="w-48 p-2">
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin' && "bg-accent text-accent-foreground")}>
+                          Manage Users
+                        </Link>
+                      </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin/review-history" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/review-history' && "bg-accent text-accent-foreground")}>
+                          Review History
+                        </Link>
+                      </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin/team-assignments" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/team-assignments' && "bg-accent text-accent-foreground")}>
+                          Team Assignments
+                        </Link>
+                      </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin/zip-diagnostics" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/zip-diagnostics' && "bg-accent text-accent-foreground")}>
+                          ZIP Diagnostics
+                        </Link>
+                      </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin/locked-interviews" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/locked-interviews' && "bg-accent text-accent-foreground")}>
+                          Locks
+                        </Link>
+                      </NavigationMenuLink>
+                    </div>
+                  </NavigationMenuContent>
+                </NavigationMenuItem>
+              </NavigationMenuList>
+            </NavigationMenu>
           )}
         </nav>
         
