@@ -16,6 +16,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
 import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown, Flag, MessageCircle, CheckCircle, Loader2, FileArchive } from "lucide-react";
 import { jsPDF } from "jspdf";
+import { fetchAllRows } from "@/utils/paginatedFetch";
 import JSZip from "jszip";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
@@ -178,15 +179,16 @@ const AdminReviewHistory = () => {
     },
   });
 
-  // Fetch summary stats with total names
+  // Fetch summary stats with total names (using paginated fetch to bypass 1000-row limit)
   const { data: stats } = useQuery({
     queryKey: ["admin-review-stats"],
     queryFn: async () => {
-      // Get all reviewed audits with metadata
-      const { data: allReviewed } = await supabase
-        .from("audits")
-        .select("status, reviewed_at, interview_metadata(total_names)")
-        .not("reviewed_at", "is", null);
+      // Get all reviewed audits with metadata using paginated fetch
+      const allReviewed = await fetchAllRows(
+        "audits",
+        "status, reviewed_at, interview_metadata(total_names)",
+        (q: any) => q.not("reviewed_at", "is", null)
+      );
 
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
@@ -201,7 +203,7 @@ const AdminReviewHistory = () => {
       let monthlyReviews = 0;
       let monthlyNames = 0;
 
-      allReviewed?.forEach((audit) => {
+      allReviewed.forEach((audit: any) => {
         const meta = audit.interview_metadata as { total_names: number | null }[] | null;
         const names = meta?.[0]?.total_names || 0;
 
@@ -552,6 +554,7 @@ const AdminReviewHistory = () => {
         .select(`
           id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, 
           is_re_audit, re_audit_count, review_duration_seconds, artifact_correction,
+          artifact_correction_resolved_at,
           interview_metadata(contractor_id, interviewee_name, total_names, interviewee_age, first_ancestor)
         `)
         .not("reviewed_at", "is", null)
@@ -691,7 +694,8 @@ const AdminReviewHistory = () => {
         y += 4.5;
         
         if (a.artifact_correction?.length) {
-          doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}`, margin, y);
+          const resolvedText = a.artifact_correction_resolved_at ? ' [RESOLVED]' : '';
+          doc.text(`Artifacts: ${a.artifact_correction.map(getArtifactLabel).join(", ")}${resolvedText}`, margin, y);
           y += 4;
         }
         

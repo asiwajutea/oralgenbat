@@ -10,9 +10,12 @@ const PaymentStatsCards = () => {
   const { data: paymentStats = { assigned: 0, paid: 0, assignedNotPaid: 0 } } = useQuery({
     queryKey: ["home-payment-stats"],
     queryFn: async () => {
-      const { count: paidCount } = await supabase
+      // Count unique paid interviews by distinct folder_name
+      const { data: paidFolders } = await supabase
         .from("payment_records")
-        .select("*", { count: "exact", head: true });
+        .select("folder_name");
+
+      const uniquePaidCount = new Set(paidFolders?.map(r => r.folder_name) || []).size;
 
       const { count: assignedCount } = await supabase
         .from("interview_assignments")
@@ -20,8 +23,8 @@ const PaymentStatsCards = () => {
 
       return {
         assigned: assignedCount || 0,
-        paid: paidCount || 0,
-        assignedNotPaid: Math.max(0, (assignedCount || 0) - (paidCount || 0)),
+        paid: uniquePaidCount,
+        assignedNotPaid: Math.max(0, (assignedCount || 0) - uniquePaidCount),
       };
     },
     enabled: !!user?.id,
