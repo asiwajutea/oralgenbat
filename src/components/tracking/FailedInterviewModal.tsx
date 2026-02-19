@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { 
   AlertTriangle, 
   FileText, 
@@ -466,6 +467,51 @@ export function FailedInterviewModal({
             <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (!interview || !session?.user?.id || !userRole) return;
+                    setIsUploading(true);
+                    try {
+                      const submissionComment = comment
+                        ? `Manual re-audit request: no correction needed. ${comment}`
+                        : "Manual re-audit request: no correction needed";
+                      const { error } = await supabase.rpc("mark_audit_for_reaudit", {
+                        _audit_id: interview.id,
+                        _submitted_by: session.user.id,
+                        _submitted_by_role: userRole as any,
+                        _comment: submissionComment,
+                      });
+                      if (error) throw error;
+                      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+                      toast({
+                        title: "Re-Audit Requested",
+                        description: "The interview has been resubmitted without corrections.",
+                      });
+                      onOpenChange(false);
+                      resetForm();
+                    } catch (err: any) {
+                      toast({
+                        title: "Request Failed",
+                        description: err.message || "Failed to request re-audit.",
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setIsUploading(false);
+                    }
+                  }}
+                  disabled={isUploading || submitMutation.isPending}
+                  className="w-full sm:w-auto"
+                >
+                  Request Re-Audit (No Correction)
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                Use this when an interview was failed erroneously and no correction is needed. The interview will be resubmitted for review without any file changes.
+              </TooltipContent>
+            </Tooltip>
             <Button 
               onClick={handleSubmit} 
               disabled={isUploading || submitMutation.isPending}

@@ -695,8 +695,10 @@ const ReviewInterview = () => {
                   {audit.status === "Audit Passed" ? "Passed" : "Failed"}
                 </Badge>
                 <span className="text-muted-foreground">
-                  Already reviewed {(audit.re_audit_count || 0) + 1} time(s) by{" "}
-                  <span className="font-medium text-foreground">{audit.reviewed_by || "Unknown"}</span>
+                  Already reviewed {(audit.re_audit_count || 0) + 1} time(s)
+                  {(userRole === 'auditor' || userRole === 'admin' || userRole === 'super_admin') && (
+                    <> by <span className="font-medium text-foreground">{audit.reviewed_by || "Unknown"}</span></>
+                  )}
                   {audit.review_duration_seconds &&
                   <span className="text-muted-foreground"> ({formatReviewDuration(audit.review_duration_seconds)})</span>
                   }
