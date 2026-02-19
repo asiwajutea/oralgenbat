@@ -1,188 +1,74 @@
-## Plan: Navigation Reorganization, Rich Text Feedback, Payment/Assignment Sync, Stats Fixes, and Team Stats
+## Plan: FM Dashboard Overhaul, Forgot Password, Manual Re-Audit Request
 
-This plan addresses 11 items across 5 areas: navigation, interview review feedback, payment-to-assignment sync, stat card accuracy, and team assignment stats.
-
----
-
-### 1. Reorganize Desktop Navigation Menu
-
-**File: `src/components/Header.tsx**`
-
-The current navigation has many top-level items. Group them into logical dropdowns:
-
-**Proposed groupings (role-aware):**
-
-- **Home** (standalone - all roles)
-- **Interviews** (standalone - auditor, admin)
-- **My Dashboard** (standalone - field_manager, contractor)
-- **Operations** (dropdown - roles that see tracking/payments/data-entry):
-  - Tracking (field_manager, contractor, admin, sub_contractor)
-  - Payments (field_manager, contractor, admin, sub_contractor)
-  - Data Entry (data_entry_clerk, quality_assurance_manager, admin)
-- **Teams** (dropdown - roles that see team management/approvals):
-  - Team Management (field_manager, sub_contractor)
-  - Team Approvals (contractor, admin)
-- **Analytics** (dropdown - existing, keep as-is)
-- **Communications** (dropdown - existing, keep as-is)
-- **My Reviews** (standalone - auditor only)
-- **Admin** (dropdown - admin only):
-  - Manage Users
-  - Review History
-  - Team Assignments
-  - ZIP Diagnostics
-  - Locks
-
-This reduces top-level items from ~12 to ~7-8, using NavigationMenu dropdowns for grouped items.
+This plan addresses items across 4 areas: Field Manager Dashboard improvements, Auth page forgot password, failed interview modal manual re-audit button, and hiding reviewer identity from FMs.
 
 ---
 
-### 2. Rich Text Format for Failure Comment Box
+### 1. Overhaul Field Manager Dashboard (`src/pages/FieldManagerDashboard.tsx`)
 
-**File: `src/components/review/ReviewActions.tsx**`
+The current FM dashboard page needs a complete mobile optimization to mirror the auditor's interview page style.
 
-The `Textarea` for "Reason for Failure" and "Action Plan" in the fail dialog (lines 439-456) does not preserve paragraph breaks when saved. The issue is that `\n` characters are stored but rendered without `whitespace-pre-wrap`.
+**Changes:**
 
-Changes:
+- **Add FilterSidebar integration with mobile filter icon**: Add a filter button (funnel icon) in the header that opens a sheet/drawer on mobile containing the FilterSidebar. On desktop, keep the existing sticky sidebar. Apply filters (status, interviewer ID, date range, interview ID) to the query.
+- **Stats should reflect results from Field Manager's team only (not overall)**: The stat cards (Total, Awaiting, Re-Audit, Passed, Failed, Missing) should compute from the currently logged in Field Manager team.
+- **Add correction-needed stat card**: When there are failed audits, show a stat card with counts for "PDF Only", "Metadata Only", and "Both" corrections needed. Derived from `artifact_correction` array on failed audits.
+- **Mobile accordion improvements**:
+  - Remove "Reviewed By" from the accordion (FM should not see who audited)
+  - Remove "Review Comment" from accordion; instead show "Artifacts" badges only for failed interviews (showing which artifacts need correction)
+  - The "View" button navigates to `/review/{id}` (already works)
+- **Re-audit from dashboard**: When FM clicks Re-Audit, open the same `FailedInterviewModal` component (from tracking page) which handles bulk artifact upload rules, instead of the simpler `ReAuditDialog`
 
-- The Textarea already captures newlines. The stored `review_comment` and `action_plan` text contains `\n` characters. No change needed to the input controls -- they already support multi-line text entry.
-- The real issue is on the **display** side. The `reviewComment` state is pre-populated with the parsed feedback which uses `\n\n` between items, so paragraphs are properly stored.
+### 2. Hide "Reviewed By" from Field Managers on Review Page (`src/pages/ReviewInterview.tsx`)
 
----
+**Changes:**
 
-### 3. Display Failure Feedback as Standard Text with Paragraphs
+- On the review page's "Already reviewed" status block (lines 690-706), wrap the "reviewed by {name}" text in a role check: only show it for auditors/admins, hide it for field_managers and contractors.
+- The review page already shows PDF + Metadata sections on mobile via the tab system, which matches the auditor view. Check the Mobile View for the Field MAnager's role to be sure it shows the PDF tab.
 
-**File: `src/components/review/ReviewCommentsPanel.tsx**` (lines 96, 102)
+### 3. Add Forgot Password to Auth Page
 
-The `<p>` tag already has `whitespace-pre-wrap` class, which should preserve line breaks. However, the raw `review_comment` from the database may not have clean paragraph breaks. Need to verify and ensure the display properly renders paragraphs.
+**Files: `src/pages/Auth.tsx`, new `src/pages/ResetPassword.tsx`, `src/App.tsx**`
 
-**File: `src/components/tracking/FailedInterviewModal.tsx**` (lines 339-343, 350-351)
+**Changes to Auth.tsx:**
 
-The failure reason and action plan display on the tracking page's FailedInterviewModal uses `<p className="text-sm">` without `whitespace-pre-wrap`. This means line breaks are collapsed.
+- Add a "Forgot Password?" link below the password field on the login tab
+- Add state and a simple dialog/inline form that accepts email and calls `supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' })`
+- Show a success toast after sending
 
-Changes:
+**New ResetPassword.tsx page:**
 
-- Add `whitespace-pre-wrap` to the review_comment display (line 341)
-- Add `whitespace-pre-wrap` to the action_plan display (line 351)
+- Create `/reset-password` route
+- Check for `type=recovery` in URL hash
+- Show a form to enter new password + confirm password
+- Call `supabase.auth.updateUser({ password })` on submit
+- Navigate to `/auth` on success
 
----
+**Changes to App.tsx:**
 
-### 4. Auto-Complete Assignments When Payment Journey is Marked
+- Add `<Route path="/reset-password" element={<ResetPassword />} />` as a public route (outside ProtectedRoute)
 
-**Approach:** Create a database trigger that automatically marks the `interview_assignments` entry as completed (and resolves any flagged issue) when a `payment_records` row is inserted or updated with `payment_type` in ('new_payment', 'addition', 'deduction').
+### 4. Add Manual Re-Audit Request Button to Failed Modal
 
-**Database migration:** Create a trigger function `auto_complete_on_payment()` that:
+**File: `src/components/tracking/FailedInterviewModal.tsx**`
 
-1. When a payment record is inserted/updated, look up the `audit_id` (or match by `folder_name` to `audits.file_name`)
-2. Find the corresponding `interview_assignments` row for that audit_id
-3. If `entry_status` is not already `data_entry_complete`, update it to `data_entry_complete` with `entry_completed_at = now()`
-4. If `is_flagged_for_issue = true`, auto-resolve by setting `issue_resolved_at = now()`, `is_flagged_for_issue = false`
+**Changes:**
 
-This handles the requirement that payment_received, deduction, and addition all mark assignments as completed. Fix the issue for all existing records.
-
----
-
-### 5. Fix Payment Stats Counter Accuracy
-
-**File: `src/components/home/PaymentStatsCards.tsx**`
-
-Current logic:
-
-- "Assigned to Data Entry": counts all `interview_assignments` rows
-- "Total Paid": counts all `payment_records` rows
-- "Assigned, Not Paid": assigned - paid
-
-**Problem**: `payment_records` may have multiple rows per interview (e.g., new_payment + addition + deduction). The count gives total payment records, not unique interviews paid. Also, the 1000-row default limit may truncate results.
-
-Fix:
-
-- For "Total Paid": count **unique folder_names** in payment_records (using a query that fetches distinct folder names or uses a custom approach)
-- Use `{ count: "exact", head: true }` which already bypasses the data limit issue (count queries are not limited)
-- Actually, the `count` with `head: true` should return the correct total. The issue is likely that multiple payment records exist per interview. Change to count distinct `folder_name` or `audit_id` values.
-
-Alternative: Use paginated fetch to get all payment_records, then count unique folder_names client-side. Or better, use an RPC or adjust the query:
-
-```sql
--- Count unique paid interviews
-SELECT COUNT(DISTINCT folder_name) FROM payment_records
-```
-
-Since we can't do `COUNT(DISTINCT)` via the JS client directly with head:true, we'll fetch all folder_names and deduplicate client-side, or use a simpler approach: fetch the `useAllInterviewsForPayment` data (already fetched on the page) and derive counts from it.
-
-Actually, the simplest fix for PaymentStatsCards: change the paid count to count unique audit_ids or folder_names from payment_records instead of total rows.
-
----
-
-### 6. Fix Admin Review History Stats (1000-Row Limit)
-
-**File: `src/pages/AdminReviewHistory.tsx**` (lines 182-236)
-
-The stats query uses `supabase.from("audits").select(...)` without pagination, which hits the 1000-row default limit.
-
-Fix: Use the `fetchAllRows` utility from `src/utils/paginatedFetch.ts` to fetch all reviewed audits for stats computation. This utility batches requests with `.range()` to bypass the 1000-row limit.
-
----
-
-### 7. Add Resolved Badge to PDF Export
-
-**File: `src/pages/AdminReviewHistory.tsx**` (exportToPDF function, lines 632-762)
-
-Currently the PDF export does not include resolution status. Need to:
-
-- Fetch `artifact_correction_resolved_at` and resolve_comment data in the export query (already partially fetched but not in the export query on line 552)
-- Add `artifact_correction_resolved_at` to the export query select
-- Also fetch the resolution comment from `artifact_correction_comments` or from the `resolve_comment` field
-- In the PDF rendering, after the artifacts line, add a compact "[RESOLVED]" badge text with the resolve comment if resolved
-- Keep it compact: render on the same line as artifacts or one additional line
-
-To get the resolution comment, we need to query `artifact_correction_comments` or check if there's a resolve field on the audit. Looking at the schema, `audits` has `artifact_correction_resolved_at` and `artifact_correction_resolved_by` but no resolve comment field. The resolution comments are in `artifact_correction_comments`. However, for compactness, we can just show "[RESOLVED]" as a text marker next to the artifacts line.
-
-For the resolve comment, we can fetch the latest comment from `artifact_correction_comments` for resolved audits or simply note it as resolved. To keep it space-efficient, show:
-
-- `Artifacts: Scanned PDF [RESOLVED] - Resolution: "comment text"` on one or two lines
-
----
-
-### 8. Add Team Stats Card to Team Assignments Page
-
-**File: `src/pages/TeamAssignments.tsx**`
-
-Add a new stat card (or modify `AssignmentSummaryCards`) showing per-team breakdown:
-
-- For each team: total interviews assigned, total completed
-- Display as a compact grid or within the existing summary section
-
-**File: `src/components/assignments/AssignmentSummaryCards.tsx**`
-
-Add a new prop for team-level stats and render an additional row of cards or a compact summary table showing each team's assigned/completed counts.
-
-The data is already available from the `assignments` array -- just need to group by team and count `entry_status === 'data_entry_complete'`.
-
----
-
-### 9. Mark Assignments as Completed from Any Source
-
-**Approach:** In addition to the payment trigger (item 4), ensure that when any user role marks an assignment as `data_entry_complete`, it reflects everywhere. This is already handled by the existing `useBulkMarkComplete` and `useUpdateTypingStatus` hooks which update `entry_status`. The `typing_status` field appears to be separate from `entry_status`.
-
-The `getTypingStatusBadge` function on the Team Assignments page (line 393) checks `typing_status`, not `entry_status`. Need to update the status display to also reflect `entry_status === 'data_entry_complete'` as "Completed" regardless of `typing_status`.
-
-Changes in `src/pages/TeamAssignments.tsx`:
-
-- Update status badge rendering to prioritize `entry_status === 'data_entry_complete'` over `typing_status`
-- Show "Completed" badge (green) when `entry_status === 'data_entry_complete'`
+- Add a new button "Request Re-Audit (No Correction)" next to or below the "Submit for Re-Audit" button
+- Add a tooltip explaining: "Use this when an interview was failed erroneously and no correction is needed. The interview will be resubmitted for review without any file changes."
+- On click, call `mark_audit_for_reaudit` RPC with no new PDF/ZIP URLs, just a comment like "Manual re-audit request: no correction needed" plus any user-entered comment
+- This skips the file validation requirement (`handleSubmit` currently requires at least one file)
 
 ---
 
 ### Technical Summary
 
 
-| File                                                    | Change                                                                                                                                  |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/components/Header.tsx`                             | Reorganize nav into grouped dropdowns: Operations, Teams, Admin                                                                         |
-| `src/components/review/ReviewActions.tsx`               | Ensure Textarea preserves paragraph breaks (already works; no change needed if whitespace-pre-wrap is on display)                       |
-| `src/components/review/ReviewCommentsPanel.tsx`         | Verify `whitespace-pre-wrap` is applied (already present)                                                                               |
-| `src/components/tracking/FailedInterviewModal.tsx`      | Add `whitespace-pre-wrap` to review_comment and action_plan display                                                                     |
-| `src/components/home/PaymentStatsCards.tsx`             | Fix "Total Paid" to count unique interviews (not total payment records)                                                                 |
-| `src/pages/AdminReviewHistory.tsx`                      | Use `fetchAllRows` for stats query to bypass 1000-row limit; add resolved badge + comment to PDF export                                 |
-| `src/pages/TeamAssignments.tsx`                         | Add per-team stats card; update status badge to reflect `entry_status` completion                                                       |
-| `src/components/assignments/AssignmentSummaryCards.tsx` | Add per-team assigned/completed stats display                                                                                           |
-| Database migration                                      | Create trigger `auto_complete_on_payment` on `payment_records` to auto-complete assignments and resolve issues when payment is recorded |
+| File                                               | Change                                                                                                                                                                                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/pages/FieldManagerDashboard.tsx`              | Complete overhaul: add mobile filter icon/sheet, stats from filtered data, correction stat card, remove reviewed_by/review_comment from accordion, show artifacts for failed only, use FailedInterviewModal for re-audit |
+| `src/pages/ReviewInterview.tsx`                    | Hide "reviewed by" text for field_manager/contractor roles                                                                                                                                                               |
+| `src/pages/Auth.tsx`                               | Add "Forgot Password?" link with email input and `resetPasswordForEmail` call                                                                                                                                            |
+| `src/pages/ResetPassword.tsx`                      | New page: password reset form using `updateUser({ password })`                                                                                                                                                           |
+| `src/App.tsx`                                      | Add `/reset-password` public route                                                                                                                                                                                       |
+| `src/components/tracking/FailedInterviewModal.tsx` | Add "Request Re-Audit (No Correction)" button with tooltip, calls `mark_audit_for_reaudit` RPC without file uploads                                                                                                      |
