@@ -49,6 +49,7 @@ import PaymentTracking from "./pages/PaymentTracking";
 import FraudAnalyticsDashboard from "./pages/FraudAnalyticsDashboard";
 import NoticeBoard from "./pages/NoticeBoard";
 import AccountSuspended from "./pages/AccountSuspended";
+import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -79,6 +80,7 @@ const App = () => (
               <Route path="/auth" element={<Auth />} />
             <Route path="/pending-approval" element={<PendingApproval />} />
             <Route path="/account-suspended" element={<AccountSuspended />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route
               path="/"
               element={

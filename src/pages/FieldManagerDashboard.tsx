@@ -6,13 +6,14 @@ import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditTable } from "@/components/AuditTable";
-import { FilterSidebar } from "@/components/FilterSidebar";
+import { FilterSidebar, FilterState } from "@/components/FilterSidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Users, FileCheck, AlertCircle, CheckCircle, XCircle, Loader2, FileText, Archive, RefreshCw, Search, Eye } from "lucide-react";
-import { ReAuditDialog } from "@/components/review/ReAuditDialog";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Users, FileCheck, AlertCircle, CheckCircle, XCircle, Loader2, FileText, Archive, RefreshCw, Search, Eye, Filter, FileWarning } from "lucide-react";
+import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format } from "date-fns";
 
@@ -35,23 +36,22 @@ const FieldManagerDashboard = () => {
   const { session } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const [filters, setFilters] = useState({});
+  const [filters, setFilters] = useState<Partial<FilterState>>({});
   const [selectedAudit, setSelectedAudit] = useState<any>(null);
-  const [reauditDialogOpen, setReauditDialogOpen] = useState(false);
+  const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [mobileSearch, setMobileSearch] = useState("");
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   // Fetch approved team members
   const { data: teamMembers, isLoading: loadingTeam } = useQuery({
     queryKey: ["field-manager-team", session?.user.id],
     queryFn: async () => {
       if (!session?.user.id) return [];
-
       const { data, error } = await supabase
         .from("team_assignments")
         .select("interviewer_code")
         .eq("field_manager_id", session.user.id)
         .eq("status", "approved");
-
       if (error) throw error;
       return data.map((t) => t.interviewer_code);
     },
@@ -78,9 +78,22 @@ const FieldManagerDashboard = () => {
         .in("interview_metadata.interviewer_code", teamMembers)
         .order("uploaded_at", { ascending: false });
 
-      // Apply filters
-      if ((filters as any).status && (filters as any).status !== "all") {
-        query = query.eq("status", (filters as any).status);
+      // Apply filters from FilterSidebar
+      const f = filters as FilterState;
+      if (f.statuses && f.statuses.length > 0) {
+        query = query.in("status", f.statuses as ("Pending" | "Audit Passed" | "Audit Failed" | "Awaiting Review")[]);
+      }
+      if (f.interviewId) {
+        query = query.ilike("file_name", `%${f.interviewId}%`);
+      }
+      if (f.interviewerId) {
+        query = query.ilike("interview_metadata.interviewer_code", `%${f.interviewerId}%`);
+      }
+      if (f.startDate) {
+        query = query.gte("uploaded_at", f.startDate);
+      }
+      if (f.endDate) {
+        query = query.lte("uploaded_at", f.endDate + "T23:59:59");
       }
 
       const { data, error } = await query;
@@ -90,7 +103,7 @@ const FieldManagerDashboard = () => {
     enabled: !!teamMembers && teamMembers.length > 0,
   });
 
-  // Calculate statistics
+  // Calculate statistics from team data
   const stats = {
     total: audits?.length || 0,
     awaiting: audits?.filter((a) => a.status === "Awaiting Review").length || 0,
@@ -100,9 +113,33 @@ const FieldManagerDashboard = () => {
     missingArtifacts: audits?.filter((a) => !a.file_url || !a.mobile_zip_url).length || 0,
   };
 
+  // Correction stats for failed audits
+  const failedAudits = audits?.filter((a) => a.status === "Audit Failed") || [];
+  const correctionStats = {
+    pdfOnly: failedAudits.filter((a) => {
+      const c = a.artifact_correction || [];
+      const hasPdf = c.includes("scanned_pdf") || c.includes("PDF");
+      const hasMetadata = c.includes("mobile_metadata") || c.includes("Metadata") || c.includes("ZIP") || c.includes("Photos");
+      return hasPdf && !hasMetadata;
+    }).length,
+    metadataOnly: failedAudits.filter((a) => {
+      const c = a.artifact_correction || [];
+      const hasPdf = c.includes("scanned_pdf") || c.includes("PDF");
+      const hasMetadata = c.includes("mobile_metadata") || c.includes("Metadata") || c.includes("ZIP") || c.includes("Photos");
+      return !hasPdf && hasMetadata;
+    }).length,
+    both: failedAudits.filter((a) => {
+      const c = a.artifact_correction || [];
+      const hasPdf = c.includes("scanned_pdf") || c.includes("PDF");
+      const hasMetadata = c.includes("mobile_metadata") || c.includes("Metadata") || c.includes("ZIP") || c.includes("Photos");
+      return hasPdf && hasMetadata;
+    }).length,
+  };
+  const showCorrectionStats = failedAudits.length > 0;
+
   const handleReaudit = (audit: any) => {
     setSelectedAudit(audit);
-    setReauditDialogOpen(true);
+    setFailedModalOpen(true);
   };
 
   // Filter audits for mobile search
@@ -115,6 +152,10 @@ const FieldManagerDashboard = () => {
       (a.interview_metadata as any)?.interviewer_name?.toLowerCase().includes(search)
     );
   }) || [];
+
+  const handleFilterChange = (newFilters: FilterState) => {
+    setFilters(newFilters);
+  };
 
   if (loadingTeam) {
     return (
@@ -152,11 +193,31 @@ const FieldManagerDashboard = () => {
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
           <div className="container mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold">Field Manager Dashboard</h1>
-              <p className="text-sm md:text-base text-muted-foreground">
-                Monitor your team's interview audits ({teamMembers.length} interviewer{teamMembers.length !== 1 ? 's' : ''})
-              </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold">Field Manager Dashboard</h1>
+                <p className="text-sm md:text-base text-muted-foreground">
+                  Monitor your team's interview audits ({teamMembers.length} interviewer{teamMembers.length !== 1 ? 's' : ''})
+                </p>
+              </div>
+              {/* Mobile filter button */}
+              {isMobile && (
+                <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="icon" className="relative">
+                      <Filter className="h-4 w-4" />
+                      {(filters as FilterState)?.statuses?.length > 0 && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
+                          {(filters as FilterState).statuses.length}
+                        </span>
+                      )}
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="p-0 w-full sm:w-[340px]">
+                    <FilterSidebar onFilterChange={handleFilterChange} onClose={() => setFilterSheetOpen(false)} />
+                  </SheetContent>
+                </Sheet>
+              )}
             </div>
 
             {/* Mobile: Compact horizontal scroll stats */}
@@ -263,6 +324,34 @@ const FieldManagerDashboard = () => {
               </Card>
             </div>
 
+            {/* Correction Stats Card - only when there are failed audits */}
+            {showCorrectionStats && (
+              <Card className="border-red-500/20">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <FileWarning className="h-4 w-4 text-red-500" />
+                    Corrections Needed
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs border-red-500/30">PDF Only</Badge>
+                      <span className="text-sm font-bold">{correctionStats.pdfOnly}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs border-orange-500/30">Metadata Only</Badge>
+                      <span className="text-sm font-bold">{correctionStats.metadataOnly}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs border-purple-500/30">Both</Badge>
+                      <span className="text-sm font-bold">{correctionStats.both}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Audits Table / Mobile Accordion */}
             <Card>
               <CardHeader>
@@ -296,6 +385,8 @@ const FieldManagerDashboard = () => {
                     <Accordion type="single" collapsible className="space-y-2">
                       {filteredAudits.map((audit) => {
                         const metadata = audit.interview_metadata as any;
+                        const isFailed = audit.status === "Audit Failed";
+                        const corrections = audit.artifact_correction || [];
                         return (
                           <AccordionItem
                             key={audit.id}
@@ -320,7 +411,7 @@ const FieldManagerDashboard = () => {
                             </AccordionTrigger>
                             <AccordionContent className="pb-3">
                               <div className="space-y-3">
-                                {/* Details */}
+                                {/* Details - no reviewed_by, no review_comment */}
                                 <div className="grid grid-cols-2 gap-2 text-sm">
                                   <div>
                                     <p className="text-muted-foreground text-xs">Interviewer</p>
@@ -343,37 +434,20 @@ const FieldManagerDashboard = () => {
                                     <p className="text-muted-foreground text-xs">Last Modified</p>
                                     <p className="font-medium">{format(new Date(audit.last_modified || audit.uploaded_at), 'MMM dd, yyyy')}</p>
                                   </div>
-                                  {audit.reviewed_by && (
-                                    <div className="col-span-2">
-                                      <p className="text-muted-foreground text-xs">Reviewed By</p>
-                                      <p className="font-medium">{audit.reviewed_by}</p>
-                                    </div>
-                                  )}
-                                  {audit.review_comment && (
-                                    <div className="col-span-2">
-                                      <p className="text-muted-foreground text-xs">Review Comment</p>
-                                      <p className="font-medium text-sm">{audit.review_comment}</p>
-                                    </div>
-                                  )}
                                 </div>
 
-                                {/* Artifacts */}
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-muted-foreground">Artifacts:</span>
-                                  {audit.file_url && (
-                                    <Badge variant="outline" className="text-xs">
-                                      <FileText className="h-3 w-3 mr-1" />PDF
-                                    </Badge>
-                                  )}
-                                  {audit.mobile_zip_url && (
-                                    <Badge variant="outline" className="text-xs">
-                                      <Archive className="h-3 w-3 mr-1" />ZIP
-                                    </Badge>
-                                  )}
-                                  {!audit.file_url && !audit.mobile_zip_url && (
-                                    <span className="text-xs text-muted-foreground">None</span>
-                                  )}
-                                </div>
+                                {/* Artifacts badges - only for failed interviews */}
+                                {isFailed && corrections.length > 0 && (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs text-muted-foreground">Corrections:</span>
+                                    {corrections.map((c: string) => (
+                                      <Badge key={c} variant="outline" className="text-xs border-red-500/30 text-red-500">
+                                        <FileText className="h-3 w-3 mr-1" />
+                                        {c}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
 
                                 {/* Actions */}
                                 <div className="flex gap-2 pt-1">
@@ -388,7 +462,7 @@ const FieldManagerDashboard = () => {
                                       View
                                     </Button>
                                   )}
-                                  {(audit.status === "Audit Failed" || audit.status === "Audit Passed") && (
+                                  {audit.status === "Audit Failed" && (
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -420,22 +494,27 @@ const FieldManagerDashboard = () => {
           </div>
         </div>
 
-        {/* Sticky Filter Sidebar */}
+        {/* Sticky Filter Sidebar - Desktop */}
         <div className="hidden lg:block sticky top-0 h-screen">
-          <FilterSidebar onFilterChange={setFilters} />
+          <FilterSidebar onFilterChange={handleFilterChange} />
         </div>
       </div>
 
-      {/* Re-Audit Dialog */}
-      {selectedAudit && (
-        <ReAuditDialog
-          open={reauditDialogOpen}
-          onOpenChange={setReauditDialogOpen}
-          auditId={selectedAudit.id}
-          currentFileName={selectedAudit.file_name}
-          onSuccess={() => refetch()}
-        />
-      )}
+      {/* Failed Interview Modal for Re-Audit */}
+      <FailedInterviewModal
+        open={failedModalOpen}
+        onOpenChange={setFailedModalOpen}
+        interview={selectedAudit ? {
+          id: selectedAudit.id,
+          file_name: selectedAudit.file_name,
+          file_url: selectedAudit.file_url,
+          review_comment: selectedAudit.review_comment,
+          action_plan: selectedAudit.action_plan,
+          artifact_correction: selectedAudit.artifact_correction,
+          status: selectedAudit.status,
+        } : null}
+        onUploadProgress={() => {}}
+      />
     </Layout>
   );
 };
