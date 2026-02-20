@@ -232,6 +232,11 @@ const Header = () => {
                           Locks
                         </Link>
                       </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin/duplicates" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/duplicates' && "bg-accent text-accent-foreground")}>
+                          Duplicate Detection
+                        </Link>
+                      </NavigationMenuLink>
                     </div>
                   </NavigationMenuContent>
                 </NavigationMenuItem>

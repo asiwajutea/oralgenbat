@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { subWeeks, parseISO } from "date-fns";
+import { subWeeks, subDays, parseISO } from "date-fns";
+
+export type TimePeriod = '13weeks' | '365days' | 'lifetime';
 
 export interface InterviewData {
   id: string;
@@ -18,7 +20,7 @@ export interface InterviewData {
 
 export interface FraudIndicators {
   // Interview Interval Analysis
-  closeIntervals: { interview1: string; interview2: string; fileName1: string; fileName2: string; minutesApart: number; date1: Date; date2: Date }[];
+  closeIntervals: { interview1: string; interview2: string; fileName1: string; fileName2: string; minutesApart: number; date1: Date; date2: Date; totalNames1?: number | null; totalNames2?: number | null }[];
   intervalFraudScore: number;
   
   // Audio Duration Analysis
@@ -85,6 +87,8 @@ const calculateIntervalFraudScore = (interviews: InterviewData[]): {
         minutesApart: diff,
         date1: sorted[i].timestamp,
         date2: sorted[i + 1].timestamp,
+        totalNames1: sorted[i].total_names,
+        totalNames2: sorted[i + 1].total_names,
       });
     }
   }
@@ -141,13 +145,11 @@ const calculateNamesPatternFraudScore = (interviews: InterviewData[]): {
     return { namesPattern: [], repeatedNamesCount: 0, score: 0, mostCommonCount: null, mostCommonFrequency: 0 };
   }
   
-  // Count frequency of each value
   const frequency = namesPattern.reduce((acc, val) => {
     acc[val] = (acc[val] || 0) + 1;
     return acc;
   }, {} as Record<number, number>);
   
-  // Find most common value and its frequency
   let mostCommonCount: number | null = null;
   let mostCommonFrequency = 0;
   let repeatedNamesCount = 0;
@@ -162,17 +164,12 @@ const calculateNamesPatternFraudScore = (interviews: InterviewData[]): {
     }
   });
   
-  // Calculate standard deviation
   const mean = namesPattern.reduce((sum, n) => sum + n, 0) / namesPattern.length;
   const variance = namesPattern.reduce((sum, n) => sum + Math.pow(n - mean, 2), 0) / namesPattern.length;
   const stdDev = Math.sqrt(variance);
   
-  // Low standard deviation indicates suspicious uniformity
   const uniformityScore = stdDev < 10 ? 50 : stdDev < 20 ? 25 : 0;
-  
-  // Repetition score
   const repetitionScore = (repeatedNamesCount / Object.keys(frequency).length) * 50;
-  
   const score = uniformityScore + repetitionScore;
   
   return { namesPattern, repeatedNamesCount, score, mostCommonCount, mostCommonFrequency };
@@ -192,50 +189,25 @@ const calculatePageBoundaryFraudScore = (interviews: InterviewData[]): {
   
   if (totalInterviews === 0) {
     return {
-      boundaryHits: 0,
-      totalInterviews: 0,
-      expectedBoundaryRate: 0,
-      actualBoundaryRate: 0,
-      score: 0,
-      neverHitsBoundaries: false,
-      alwaysHitsBoundaries: false,
+      boundaryHits: 0, totalInterviews: 0, expectedBoundaryRate: 0,
+      actualBoundaryRate: 0, score: 0, neverHitsBoundaries: false, alwaysHitsBoundaries: false,
     };
   }
   
-  const boundaryHits = namesWithData.filter(i => 
-    PAGE_BOUNDARIES.includes(i.total_names!)
-  ).length;
-  
-  // Expected rate: ~3.8% (1 in 26 chance per page)
+  const boundaryHits = namesWithData.filter(i => PAGE_BOUNDARIES.includes(i.total_names!)).length;
   const expectedBoundaryRate = 3.8;
   const actualBoundaryRate = (boundaryHits / totalInterviews) * 100;
-  
   const neverHitsBoundaries = boundaryHits === 0 && totalInterviews >= 10;
   const alwaysHitsBoundaries = actualBoundaryRate > 50;
   
-  // Score based on deviation from expected
   const deviation = Math.abs(actualBoundaryRate - expectedBoundaryRate);
   let score = 0;
+  if (alwaysHitsBoundaries) score = 100;
+  else if (neverHitsBoundaries) score = 60;
+  else if (deviation > 20) score = 50;
+  else if (deviation > 10) score = 25;
   
-  if (alwaysHitsBoundaries) {
-    score = 100; // Maximum fraud score
-  } else if (neverHitsBoundaries) {
-    score = 60; // High suspicion
-  } else if (deviation > 20) {
-    score = 50;
-  } else if (deviation > 10) {
-    score = 25;
-  }
-  
-  return {
-    boundaryHits,
-    totalInterviews,
-    expectedBoundaryRate,
-    actualBoundaryRate,
-    score,
-    neverHitsBoundaries,
-    alwaysHitsBoundaries,
-  };
+  return { boundaryHits, totalInterviews, expectedBoundaryRate, actualBoundaryRate, score, neverHitsBoundaries, alwaysHitsBoundaries };
 };
 
 const calculateAnomalyScore = (
@@ -249,19 +221,12 @@ const calculateAnomalyScore = (
 } => {
   const passed = interviews.filter(i => i.status === 'Audit Passed').length;
   const passRate = interviews.length > 0 ? (passed / interviews.length) * 100 : 0;
-  
-  // Simplified audio quality (would need actual data from interview_metadata)
-  const avgAudioQuality = 85; // Placeholder
-  
-  const reAudits = 0; // Would need to check is_re_audit from audits table
+  const avgAudioQuality = 85;
   const reAuditRate = 0;
   
-  // Calculate deviations from population
   const passRateDeviation = Math.abs(passRate - populationAvg.passRate);
   const audioDeviation = Math.abs(avgAudioQuality - populationAvg.avgAudioQuality);
-  const reAuditDeviation = Math.abs(reAuditRate - populationAvg.reAuditRate);
   
-  // Score based on deviations
   let score = 0;
   if (passRateDeviation > 20) score += 30;
   if (audioDeviation > 15) score += 20;
@@ -270,13 +235,39 @@ const calculateAnomalyScore = (
   return { passRate, avgAudioQuality, reAuditRate, score };
 };
 
+const deduplicateInterviews = (interviews: InterviewData[]): InterviewData[] => {
+  const seen = new Map<string, InterviewData>();
+  for (const interview of interviews) {
+    const existing = seen.get(interview.file_name);
+    if (!existing || interview.timestamp < existing.timestamp) {
+      seen.set(interview.file_name, interview);
+    }
+  }
+  return Array.from(seen.values());
+};
+
+const getDateCutoff = (period: TimePeriod): Date | null => {
+  switch (period) {
+    case '13weeks': return subWeeks(new Date(), 13);
+    case '365days': return subDays(new Date(), 365);
+    case 'lifetime': return null;
+  }
+};
+
+export const getPeriodLabel = (period: TimePeriod): string => {
+  switch (period) {
+    case '13weeks': return '13 weeks';
+    case '365days': return '365 days';
+    case 'lifetime': return 'lifetime';
+  }
+};
+
 export const useCriticalAgentsFraud = () => {
   return useQuery({
     queryKey: ['critical-agents-fraud'],
     queryFn: async () => {
       const thirteenWeeksAgo = subWeeks(new Date(), 13);
       
-      // Fetch all unique interviewer codes with recent activity
       const { data: allInterviewers, error } = await supabase
         .from('interview_metadata')
         .select('interviewer_code, interviewer_name, contractor_id')
@@ -285,17 +276,14 @@ export const useCriticalAgentsFraud = () => {
       if (error) throw error;
       if (!allInterviewers) return [];
       
-      // Get unique interviewers
       const uniqueInterviewers = Array.from(
         new Map(allInterviewers.map(i => [i.interviewer_code, i])).values()
       );
       
-      // Calculate fraud scores for each agent
       const criticalAgents: Array<AgentFraudProfile> = [];
       
       for (const interviewer of uniqueInterviewers) {
         try {
-          // Fetch interviews for this agent
           const { data: metadata } = await supabase
             .from('interview_metadata')
             .select('*, audits!inner(*)')
@@ -304,43 +292,33 @@ export const useCriticalAgentsFraud = () => {
           
           if (!metadata || metadata.length === 0) continue;
           
-          // Filter out interviews without proper metadata (audio or names data)
           const validMetadata = metadata.filter(m => 
-            m.total_names !== null || 
-            m.family_story_duration !== null || 
-            m.pedigree_segment_duration !== null
+            m.total_names !== null || m.family_story_duration !== null || m.pedigree_segment_duration !== null
           );
           
           if (validMetadata.length === 0) continue;
           
-          // Transform data
-          const interviews: InterviewData[] = validMetadata.map(m => {
-            const dateTimeStr = `${m.interview_date}T${m.interview_time}`;
-            return {
-              id: m.id,
-              audit_id: m.audit_id!,
-              file_name: (m.audits as any).file_name,
-              interview_date: m.interview_date,
-              interview_time: m.interview_time,
-              total_names: m.total_names,
-              family_story_duration: m.family_story_duration,
-              pedigree_segment_duration: m.pedigree_segment_duration,
-              interviewer_code: m.interviewer_code,
-              status: (m.audits as any).status,
-              timestamp: parseISO(`${m.interview_date}T${m.interview_time}`),
-            };
-          });
+          let interviews: InterviewData[] = validMetadata.map(m => ({
+            id: m.id,
+            audit_id: m.audit_id!,
+            file_name: (m.audits as any).file_name,
+            interview_date: m.interview_date,
+            interview_time: m.interview_time,
+            total_names: m.total_names,
+            family_story_duration: m.family_story_duration,
+            pedigree_segment_duration: m.pedigree_segment_duration,
+            interviewer_code: m.interviewer_code,
+            status: (m.audits as any).status,
+            timestamp: parseISO(`${m.interview_date}T${m.interview_time}`),
+          }));
           
-          // Calculate fraud indicators
+          interviews = deduplicateInterviews(interviews);
+          
           const intervalAnalysis = calculateIntervalFraudScore(interviews);
           const audioAnalysis = calculateAudioDurationFraudScore(interviews);
           const namesAnalysis = calculateNamesPatternFraudScore(interviews);
           const boundaryAnalysis = calculatePageBoundaryFraudScore(interviews);
-          const anomalyAnalysis = calculateAnomalyScore(interviews, {
-            passRate: 75,
-            avgAudioQuality: 85,
-            reAuditRate: 15,
-          });
+          const anomalyAnalysis = calculateAnomalyScore(interviews, { passRate: 75, avgAudioQuality: 85, reAuditRate: 15 });
           
           const indicators: FraudIndicators = {
             closeIntervals: intervalAnalysis.closeIntervals,
@@ -366,7 +344,6 @@ export const useCriticalAgentsFraud = () => {
             anomalyScore: anomalyAnalysis.score,
           };
           
-          // Calculate overall fraud score
           const overallFraudScore = 
             (indicators.intervalFraudScore * 0.25) +
             (indicators.audioDurationFraudScore * 0.20) +
@@ -374,36 +351,21 @@ export const useCriticalAgentsFraud = () => {
             (indicators.pageBoundaryFraudScore * 0.20) +
             (indicators.anomalyScore * 0.15);
           
-          // Determine grade
           let fraudGrade: 'A' | 'B' | 'C' | 'D';
           let classification: 'Safe' | 'Caution' | 'High Risk' | 'Fire Immediately';
           
-          if (overallFraudScore < 20) {
-            fraudGrade = 'A';
-            classification = 'Safe';
-          } else if (overallFraudScore < 40) {
-            fraudGrade = 'B';
-            classification = 'Caution';
-          } else if (overallFraudScore < 70) {
-            fraudGrade = 'C';
-            classification = 'High Risk';
-          } else {
-            fraudGrade = 'D';
-            classification = 'Fire Immediately';
-          }
+          if (overallFraudScore < 20) { fraudGrade = 'A'; classification = 'Safe'; }
+          else if (overallFraudScore < 40) { fraudGrade = 'B'; classification = 'Caution'; }
+          else if (overallFraudScore < 70) { fraudGrade = 'C'; classification = 'High Risk'; }
+          else { fraudGrade = 'D'; classification = 'Fire Immediately'; }
           
-          // Only include grades C and D (critical)
           if (fraudGrade === 'C' || fraudGrade === 'D') {
             criticalAgents.push({
               interviewer_code: interviewer.interviewer_code,
               interviewer_name: metadata[0].interviewer_name,
               contractor_id: metadata[0].contractor_id,
               total_interviews: interviews.length,
-              indicators,
-              overallFraudScore,
-              fraudGrade,
-              classification,
-              interviews,
+              indicators, overallFraudScore, fraudGrade, classification, interviews,
             });
           }
         } catch (err) {
@@ -411,70 +373,64 @@ export const useCriticalAgentsFraud = () => {
         }
       }
       
-      // Sort by fraud score descending (most urgent first)
       return criticalAgents.sort((a, b) => b.overallFraudScore - a.overallFraudScore);
     },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes to reduce load
+    staleTime: 5 * 60 * 1000,
   });
 };
 
-export const useFraudAnalytics = (interviewerCode: string) => {
+export const useFraudAnalytics = (interviewerCode: string, period: TimePeriod = '13weeks') => {
   return useQuery({
-    queryKey: ['fraud-analytics', interviewerCode],
+    queryKey: ['fraud-analytics', interviewerCode, period],
     queryFn: async (): Promise<AgentFraudProfile> => {
-      const thirteenWeeksAgo = subWeeks(new Date(), 13);
+      const dateCutoff = getDateCutoff(period);
       
-      // Fetch interviews for this agent in 13-week window
-      const { data: metadata, error } = await supabase
+      let query = supabase
         .from('interview_metadata')
         .select('*, audits!inner(*)')
-        .eq('interviewer_code', interviewerCode)
-        .gte('interview_date', thirteenWeeksAgo.toISOString().split('T')[0]);
+        .eq('interviewer_code', interviewerCode);
+      
+      if (dateCutoff) {
+        query = query.gte('interview_date', dateCutoff.toISOString().split('T')[0]);
+      }
+      
+      const { data: metadata, error } = await query;
       
       if (error) throw error;
       if (!metadata || metadata.length === 0) {
         throw new Error('No data found for this agent');
       }
       
-      // Filter out interviews without proper metadata (audio or names data)
       const validMetadata = metadata.filter(m => 
-        m.total_names !== null || 
-        m.family_story_duration !== null || 
-        m.pedigree_segment_duration !== null
+        m.total_names !== null || m.family_story_duration !== null || m.pedigree_segment_duration !== null
       );
       
       if (validMetadata.length === 0) {
         throw new Error('No interviews with parsed metadata found for this agent');
       }
       
-      // Transform data
-      const interviews: InterviewData[] = validMetadata.map(m => {
-        const dateTimeStr = `${m.interview_date}T${m.interview_time}`;
-        return {
-          id: m.id,
-          audit_id: m.audit_id!,
-          file_name: (m.audits as any).file_name,
-          interview_date: m.interview_date,
-          interview_time: m.interview_time,
-          total_names: m.total_names,
-          family_story_duration: m.family_story_duration,
-          pedigree_segment_duration: m.pedigree_segment_duration,
-          interviewer_code: m.interviewer_code,
-          status: (m.audits as any).status,
-          timestamp: parseISO(dateTimeStr),
-        };
-      });
+      let interviews: InterviewData[] = validMetadata.map(m => ({
+        id: m.id,
+        audit_id: m.audit_id!,
+        file_name: (m.audits as any).file_name,
+        interview_date: m.interview_date,
+        interview_time: m.interview_time,
+        total_names: m.total_names,
+        family_story_duration: m.family_story_duration,
+        pedigree_segment_duration: m.pedigree_segment_duration,
+        interviewer_code: m.interviewer_code,
+        status: (m.audits as any).status,
+        timestamp: parseISO(`${m.interview_date}T${m.interview_time}`),
+      }));
       
-      // Calculate all fraud indicators
+      // Deduplicate by file_name
+      interviews = deduplicateInterviews(interviews);
+      
       const intervalAnalysis = calculateIntervalFraudScore(interviews);
       const audioAnalysis = calculateAudioDurationFraudScore(interviews);
       const namesAnalysis = calculateNamesPatternFraudScore(interviews);
       const boundaryAnalysis = calculatePageBoundaryFraudScore(interviews);
-      const anomalyAnalysis = calculateAnomalyScore(interviews, {
-        passRate: 75,
-        avgAudioQuality: 85,
-        reAuditRate: 15,
-      });
+      const anomalyAnalysis = calculateAnomalyScore(interviews, { passRate: 75, avgAudioQuality: 85, reAuditRate: 15 });
       
       const indicators: FraudIndicators = {
         closeIntervals: intervalAnalysis.closeIntervals,
@@ -500,7 +456,6 @@ export const useFraudAnalytics = (interviewerCode: string) => {
         anomalyScore: anomalyAnalysis.score,
       };
       
-      // Calculate overall fraud score
       const overallFraudScore = 
         (indicators.intervalFraudScore * 0.25) +
         (indicators.audioDurationFraudScore * 0.20) +
@@ -508,34 +463,20 @@ export const useFraudAnalytics = (interviewerCode: string) => {
         (indicators.pageBoundaryFraudScore * 0.20) +
         (indicators.anomalyScore * 0.15);
       
-      // Assign grade
       let fraudGrade: 'A' | 'B' | 'C' | 'D';
       let classification: 'Safe' | 'Caution' | 'High Risk' | 'Fire Immediately';
       
-      if (overallFraudScore < 20) {
-        fraudGrade = 'A';
-        classification = 'Safe';
-      } else if (overallFraudScore < 40) {
-        fraudGrade = 'B';
-        classification = 'Caution';
-      } else if (overallFraudScore < 70) {
-        fraudGrade = 'C';
-        classification = 'High Risk';
-      } else {
-        fraudGrade = 'D';
-        classification = 'Fire Immediately';
-      }
+      if (overallFraudScore < 20) { fraudGrade = 'A'; classification = 'Safe'; }
+      else if (overallFraudScore < 40) { fraudGrade = 'B'; classification = 'Caution'; }
+      else if (overallFraudScore < 70) { fraudGrade = 'C'; classification = 'High Risk'; }
+      else { fraudGrade = 'D'; classification = 'Fire Immediately'; }
       
       return {
         interviewer_code: interviewerCode,
         interviewer_name: metadata[0].interviewer_name,
         contractor_id: metadata[0].contractor_id,
         total_interviews: interviews.length,
-        indicators,
-        overallFraudScore,
-        fraudGrade,
-        classification,
-        interviews,
+        indicators, overallFraudScore, fraudGrade, classification, interviews,
       };
     },
   });

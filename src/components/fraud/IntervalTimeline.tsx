@@ -13,6 +13,8 @@ interface IntervalTimelineProps {
     minutesApart: number;
     date1: Date;
     date2: Date;
+    totalNames1?: number | null;
+    totalNames2?: number | null;
   }[];
   score: number;
 }
@@ -22,6 +24,14 @@ export const IntervalTimeline = ({ closeIntervals, score }: IntervalTimelineProp
     if (score === 0) return 'text-green-600';
     if (score < 10) return 'text-yellow-600';
     return 'text-red-600';
+  };
+
+  const formatNameWithTotal = (fileName: string, totalNames?: number | null) => {
+    const name = fileName?.replace('.pdf', '') || 'Unknown';
+    if (totalNames != null) {
+      return `${name} (${totalNames} names)`;
+    }
+    return name;
   };
 
   return (
@@ -61,15 +71,15 @@ export const IntervalTimeline = ({ closeIntervals, score }: IntervalTimelineProp
                     <TableRow key={idx}>
                       <TableCell>
                         <div className="space-y-1">
-                          <div className="text-sm font-medium truncate max-w-[200px]" title={interval.fileName1}>
-                            {interval.fileName1?.replace('.pdf', '') || 'Unknown'}
+                          <div className="text-sm font-medium truncate max-w-[250px]" title={interval.fileName1}>
+                            {formatNameWithTotal(interval.fileName1, interval.totalNames1)}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {format(interval.date1, 'MMM d')} @ {format(interval.date1, 'HH:mm')}
                           </div>
                           <div className="text-xs text-muted-foreground">↓</div>
-                          <div className="text-sm font-medium truncate max-w-[200px]" title={interval.fileName2}>
-                            {interval.fileName2?.replace('.pdf', '') || 'Unknown'}
+                          <div className="text-sm font-medium truncate max-w-[250px]" title={interval.fileName2}>
+                            {formatNameWithTotal(interval.fileName2, interval.totalNames2)}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {format(interval.date2, 'MMM d')} @ {format(interval.date2, 'HH:mm')}

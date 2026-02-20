@@ -189,10 +189,10 @@ const FieldManagerDashboard = () => {
 
   return (
     <Layout>
-      <div className="flex min-h-screen w-full">
+      <div className="flex min-h-screen w-full overflow-x-hidden">
         {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          <div className="container mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="w-full px-3 md:px-6 py-4 md:py-6 max-w-full overflow-hidden space-y-4 md:space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl md:text-3xl font-bold">Field Manager Dashboard</h1>
@@ -221,7 +221,7 @@ const FieldManagerDashboard = () => {
             </div>
 
             {/* Mobile: Compact horizontal scroll stats */}
-            <div className="flex gap-2 overflow-x-auto pb-2 md:hidden -mx-2 px-2">
+            <div className="flex gap-2 overflow-x-auto pb-2 md:hidden -mx-3 px-3">
               <div className="flex-shrink-0 flex items-center gap-1.5 bg-card border rounded-lg px-3 py-2">
                 <FileCheck className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">{stats.total}</span>
@@ -391,7 +391,7 @@ const FieldManagerDashboard = () => {
                           <AccordionItem
                             key={audit.id}
                             value={audit.id}
-                            className="border rounded-lg px-3"
+                            className="border rounded-lg px-3 overflow-hidden"
                           >
                             <AccordionTrigger className="hover:no-underline py-3">
                               <div className="flex flex-col items-start gap-1 text-left flex-1 min-w-0 mr-2">
