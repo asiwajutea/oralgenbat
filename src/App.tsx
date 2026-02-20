@@ -50,6 +50,7 @@ import FraudAnalyticsDashboard from "./pages/FraudAnalyticsDashboard";
 import NoticeBoard from "./pages/NoticeBoard";
 import AccountSuspended from "./pages/AccountSuspended";
 import ResetPassword from "./pages/ResetPassword";
+import DuplicateInterviews from "./pages/DuplicateInterviews";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -349,6 +350,16 @@ const App = () => (
                     </Layout>
                   </FraudAnalyticsRoute>
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/duplicates"
+              element={
+                <FullAdminRoute>
+                  <Layout>
+                    <DuplicateInterviews />
+                  </Layout>
+                </FullAdminRoute>
               }
             />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
