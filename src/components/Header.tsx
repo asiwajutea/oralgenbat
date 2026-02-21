@@ -233,6 +233,11 @@ const Header = () => {
                         </Link>
                       </NavigationMenuLink>
                       <NavigationMenuLink asChild>
+                        <Link to="/admin/sms-logs" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/sms-logs' && "bg-accent text-accent-foreground")}>
+                          SMS Logs
+                        </Link>
+                      </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
                         <Link to="/admin/duplicates" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/duplicates' && "bg-accent text-accent-foreground")}>
                           Duplicate Detection
                         </Link>

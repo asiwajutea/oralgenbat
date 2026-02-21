@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Users, 
   CheckCircle2, 
@@ -14,16 +15,20 @@ import {
   ArrowRight,
   TrendingUp,
   Clock,
-  Plus
+  Plus,
+  ListChecks
 } from "lucide-react";
 import { format, subDays } from "date-fns";
+import { useState } from "react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import PaymentStatsCards from "@/components/home/PaymentStatsCards";
+import { useChecklistSummary, type ChecklistPeriod } from "@/hooks/useChecklistAnalytics";
 
 const FieldManagerDashboard = () => {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
+  const [checklistPeriod, setChecklistPeriod] = useState<ChecklistPeriod>('13weeks');
 
   // Get team interviewer codes
   const { data: teamData } = useQuery({
@@ -122,6 +127,9 @@ const FieldManagerDashboard = () => {
     ? Math.round((teamStats.passed / (teamStats.passed + teamStats.failed)) * 100)
     : 0;
 
+  const checklistScope = { type: 'team_codes' as const, teamCodes: teamCodes };
+  const { data: checklistSummary } = useChecklistSummary(checklistPeriod, checklistScope);
+
   return (
     <div className="space-y-6">
       {/* Welcome Card */}
@@ -189,6 +197,49 @@ const FieldManagerDashboard = () => {
 
       {/* Payment Stats */}
       <PaymentStatsCards />
+
+      {/* Checklist Performance */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ListChecks className="h-5 w-5" />
+              Checklist Performance
+            </CardTitle>
+            <Select value={checklistPeriod} onValueChange={(v) => setChecklistPeriod(v as ChecklistPeriod)}>
+              <SelectTrigger className="w-28 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1week">1 Week</SelectItem>
+                <SelectItem value="13weeks">13 Weeks</SelectItem>
+                <SelectItem value="1year">1 Year</SelectItem>
+                <SelectItem value="lifetime">Lifetime</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="text-center p-2 bg-muted/50 rounded-lg">
+              <p className="text-xl font-bold">{checklistSummary?.totalQuestions.toLocaleString() || 0}</p>
+              <p className="text-xs text-muted-foreground">Total</p>
+            </div>
+            <div className="text-center p-2 bg-muted/50 rounded-lg">
+              <p className="text-xl font-bold text-green-600">{checklistSummary?.totalPassed.toLocaleString() || 0}</p>
+              <p className="text-xs text-muted-foreground">Passed</p>
+            </div>
+            <div className="text-center p-2 bg-muted/50 rounded-lg">
+              <p className="text-xl font-bold text-red-600">{checklistSummary?.totalFailed.toLocaleString() || 0}</p>
+              <p className="text-xs text-muted-foreground">Failed</p>
+            </div>
+            <div className="text-center p-2 bg-muted/50 rounded-lg">
+              <p className="text-xl font-bold text-primary">{checklistSummary?.passPercentage || 0}%</p>
+              <p className="text-xs text-muted-foreground">Pass Rate</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Critical Fraud Alerts */}
       <CriticalAgentsCard />

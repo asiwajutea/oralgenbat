@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell } from "lucide-react";
+import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -65,6 +65,13 @@ const MobileNav = () => {
       {children}
     </Link>;
 
+  const SectionHeader = ({ children }: { children: React.ReactNode }) => (
+    <>
+      <Separator className="my-3" />
+      <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{children}</p>
+    </>
+  );
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -91,64 +98,84 @@ const MobileNav = () => {
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+            {/* Home */}
             <NavItem to="/" icon={Home}>Home</NavItem>
+
+            {/* Interviews (auditor, admin) */}
             {(userRole === 'auditor' || isAdmin) && <NavItem to="/interviews" icon={ClipboardList}>Interviews</NavItem>}
             
-            {userRole === 'field_manager' && <>
-              <NavItem to="/field-manager-dashboard" icon={BarChart3}>My Dashboard</NavItem>
-              <NavItem to="/team-management" icon={Users}>Team Management</NavItem>
-            </>}
-            
-            {userRole === 'contractor' && <>
-              <NavItem to="/contractor-dashboard" icon={BarChart3}>My Dashboard</NavItem>
-            </>}
-            
-            {(userRole === 'contractor' || isAdmin) && <NavItem to="/admin/team-approvals" icon={Shield}>Team Approvals</NavItem>}
-            
-            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>}
-            
-            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && <NavItem to="/payment-tracking" icon={DollarSign}>Payments</NavItem>}
-            
-            {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && <NavItem to="/data-entry" icon={Database}>Data Entry</NavItem>}
-            
-            {userRole === 'auditor' && <NavItem to="/review-history" icon={History}>My Reviews</NavItem>}
-            
-            {isSubContractor && <>
-              <Separator className="my-3" />
-              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sub-contractor</p>
-              <NavItem to="/subcontractor-team-management" icon={Users}>Team Management</NavItem>
-            </>}
+            {/* My Dashboard */}
+            {userRole === 'field_manager' && <NavItem to="/field-manager-dashboard" icon={BarChart3}>My Dashboard</NavItem>}
+            {userRole === 'contractor' && <NavItem to="/contractor-dashboard" icon={BarChart3}>My Dashboard</NavItem>}
 
-            {/* Analytics Section */}
-            {(canSeeFraudAnalytics || userRole === 'contractor' || userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isSubContractor || isAdmin) && <>
-              <Separator className="my-3" />
-              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Analytics</p>
-              {(userRole === 'contractor' || userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isSubContractor) && <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>}
-              {isAdmin && (
-                userRole === 'super_admin'
-                  ? <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
-                  : <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
-              )}
-              {canSeeFraudAnalytics && <NavItem to="/fraud-analytics" icon={Shield}>Fraud Analytics</NavItem>}
-            </>
-}
+            {/* Operations */}
+            {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor || userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager') && (
+              <>
+                <SectionHeader>Operations</SectionHeader>
+                {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
+                  <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>
+                )}
+                {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
+                  <NavItem to="/payment-tracking" icon={DollarSign}>Payments</NavItem>
+                )}
+                {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && (
+                  <NavItem to="/data-entry" icon={Database}>Data Entry</NavItem>
+                )}
+              </>
+            )}
 
-            {/* Communications Section */}
-            <Separator className="my-3" />
-            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Communications</p>
+            {/* Teams */}
+            {(userRole === 'field_manager' || isSubContractor || userRole === 'contractor' || isAdmin) && (
+              <>
+                <SectionHeader>Teams</SectionHeader>
+                {userRole === 'field_manager' && <NavItem to="/team-management" icon={Users}>Team Management</NavItem>}
+                {isSubContractor && <NavItem to="/subcontractor-team-management" icon={Users}>Team Management</NavItem>}
+                {(userRole === 'contractor' || isAdmin) && <NavItem to="/admin/team-approvals" icon={Shield}>Team Approvals</NavItem>}
+              </>
+            )}
+
+            {/* Analytics */}
+            {(canSeeFraudAnalytics || userRole === 'contractor' || userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isSubContractor || isAdmin) && (
+              <>
+                <SectionHeader>Analytics</SectionHeader>
+                {(userRole === 'contractor' || userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isSubContractor) && (
+                  <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
+                )}
+                {isAdmin && (
+                  userRole === 'super_admin'
+                    ? <NavItem to="/analytics" icon={BarChart3}>Analytics</NavItem>
+                    : <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
+                )}
+                {canSeeFraudAnalytics && <NavItem to="/fraud-analytics" icon={Shield}>Fraud Analytics</NavItem>}
+              </>
+            )}
+
+            {/* Communications */}
+            <SectionHeader>Communications</SectionHeader>
             <NavItem to="/notices" icon={Megaphone}>Notice Board</NavItem>
             <NavItem to="/notices?tab=push" icon={Bell}>Push Notifications</NavItem>
-            
-            {isAdmin && <>
-              <Separator className="my-3" />
-              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Admin</p>
-              <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
-              <NavItem to="/admin/review-history" icon={History}>Review History</NavItem>
-              <NavItem to="/admin/team-assignments" icon={FolderOpen}>Team Assignments</NavItem>
-              <NavItem to="/admin/zip-diagnostics" icon={FileText}>ZIP Diagnostics</NavItem>
-              <NavItem to="/admin/locked-interviews" icon={Lock}>Locks</NavItem>
-            </>
-}
+
+            {/* My Reviews (auditor only) */}
+            {userRole === 'auditor' && (
+              <>
+                <SectionHeader>Reviews</SectionHeader>
+                <NavItem to="/review-history" icon={History}>My Reviews</NavItem>
+              </>
+            )}
+
+            {/* Admin */}
+            {isAdmin && (
+              <>
+                <SectionHeader>Admin</SectionHeader>
+                <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
+                <NavItem to="/admin/review-history" icon={History}>Review History</NavItem>
+                <NavItem to="/admin/team-assignments" icon={FolderOpen}>Team Assignments</NavItem>
+                <NavItem to="/admin/zip-diagnostics" icon={FileText}>ZIP Diagnostics</NavItem>
+                <NavItem to="/admin/locked-interviews" icon={Lock}>Locks</NavItem>
+                <NavItem to="/admin/sms-logs" icon={MessageSquare}>SMS Logs</NavItem>
+                <NavItem to="/admin/duplicates" icon={Copy}>Duplicate Detection</NavItem>
+              </>
+            )}
           </nav>
 
           {/* Footer */}

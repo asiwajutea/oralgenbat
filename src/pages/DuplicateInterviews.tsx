@@ -75,7 +75,10 @@ const DuplicateInterviews = () => {
   const deleteMutation = useMutation({
     mutationFn: async (auditIds: string[]) => {
       for (const id of auditIds) {
-        // Delete related data
+        // Delete related data in correct order (child tables first)
+        await supabase.from('audit_checklist_progress').delete().eq('audit_id', id);
+        await supabase.from('artifact_correction_comments').delete().eq('audit_id', id);
+        await supabase.from('interview_assignments').delete().eq('audit_id', id);
         await supabase.from('interview_metadata').delete().eq('audit_id', id);
         await supabase.from('interview_photos').delete().eq('audit_id', id);
         await supabase.from('re_audit_submissions').delete().eq('audit_id', id);
