@@ -100,23 +100,22 @@ export const useUnassignedInterviews = () => {
   return useQuery({
     queryKey: ["unassigned-interviews"],
     queryFn: async () => {
-      // Get all passed audits
-      const { data: passedAudits, error: auditsError } = await supabase
-        .from("audits")
-        .select("id, file_name, reviewed_at")
-        .eq("status", "Audit Passed")
-        .order("reviewed_at", { ascending: false });
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
 
-      if (auditsError) throw auditsError;
+      // Get all passed audits using paginated fetch to avoid 1000-row limit
+      const passedAudits = await fetchAllRows(
+        "audits",
+        "id, file_name, reviewed_at",
+        (q: any) => q.eq("status", "Audit Passed").order("reviewed_at", { ascending: false })
+      );
 
-      // Get all already assigned audit IDs
-      const { data: assignments, error: assignError } = await supabase
-        .from("interview_assignments")
-        .select("audit_id");
+      // Get all already assigned audit IDs using paginated fetch
+      const assignments = await fetchAllRows(
+        "interview_assignments",
+        "audit_id"
+      );
 
-      if (assignError) throw assignError;
-
-      const assignedIds = new Set(assignments?.map((a) => a.audit_id) || []);
+      const assignedIds = new Set(assignments?.map((a: any) => a.audit_id) || []);
 
       // Filter unassigned
       const unassignedAuditIds = passedAudits

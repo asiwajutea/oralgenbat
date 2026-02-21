@@ -9,6 +9,7 @@ import { LeaderboardTab } from "@/components/fraud-dashboard/LeaderboardTab";
 import { FraudBreakdownTab } from "@/components/fraud-dashboard/FraudBreakdownTab";
 import { TrendsTab } from "@/components/fraud-dashboard/TrendsTab";
 import { AuditReportTab } from "@/components/fraud-dashboard/AuditReportTab";
+import { ChecklistAnalyticsTab } from "@/components/fraud-dashboard/ChecklistAnalyticsTab";
 
 const FraudAnalyticsDashboard = () => {
   const [period, setPeriod] = useState<TimePeriod>('13weeks');
@@ -53,12 +54,13 @@ const FraudAnalyticsDashboard = () => {
       ) : (
         <Tabs defaultValue="overview" className="space-y-4">
           <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-            <TabsList className="inline-flex w-auto min-w-full sm:min-w-0 sm:grid sm:w-full sm:grid-cols-5 lg:w-auto lg:inline-grid">
+            <TabsList className="inline-flex w-auto min-w-full sm:min-w-0 sm:grid sm:w-full sm:grid-cols-6 lg:w-auto lg:inline-grid">
               <TabsTrigger value="overview" className="text-xs sm:text-sm px-3 sm:px-4">Overview</TabsTrigger>
               <TabsTrigger value="leaderboard" className="text-xs sm:text-sm px-3 sm:px-4">Leaderboard</TabsTrigger>
               <TabsTrigger value="fraud" className="text-xs sm:text-sm px-3 sm:px-4">Fraud Analysis</TabsTrigger>
               <TabsTrigger value="trends" className="text-xs sm:text-sm px-3 sm:px-4">Trends</TabsTrigger>
               <TabsTrigger value="audit" className="text-xs sm:text-sm px-3 sm:px-4">Audit Report</TabsTrigger>
+              <TabsTrigger value="checklist" className="text-xs sm:text-sm px-3 sm:px-4">Checklist</TabsTrigger>
             </TabsList>
           </div>
 
@@ -80,6 +82,10 @@ const FraudAnalyticsDashboard = () => {
 
           <TabsContent value="audit">
             <AuditReportTab profiles={profiles || []} />
+          </TabsContent>
+
+          <TabsContent value="checklist">
+            <ChecklistAnalyticsTab />
           </TabsContent>
         </Tabs>
       )}
