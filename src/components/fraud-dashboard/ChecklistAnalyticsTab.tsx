@@ -5,29 +5,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle2, XCircle, ListChecks, TrendingUp, Users } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from "recharts";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CheckCircle2, XCircle, ListChecks, TrendingUp, Users, Info } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import {
   useChecklistQuestionStats,
   useChecklistAgentRanking,
   useChecklistSummary,
   useChecklistScope,
   type ChecklistPeriod,
+  type ChecklistAuditType,
 } from "@/hooks/useChecklistAnalytics";
-
-const CATEGORY_COLORS: Record<string, string> = {
-  'A': 'hsl(var(--primary))',
-  'B': 'hsl(var(--chart-2))',
-  'C': 'hsl(var(--chart-3))',
-};
 
 export const ChecklistAnalyticsTab = () => {
   const [period, setPeriod] = useState<ChecklistPeriod>('13weeks');
+  const [auditType, setAuditType] = useState<ChecklistAuditType>('first');
   const scope = useChecklistScope();
 
-  const { data: summary, isLoading: summaryLoading } = useChecklistSummary(period, scope);
-  const { data: questionStats, isLoading: questionsLoading } = useChecklistQuestionStats(period, scope);
-  const { data: agentRanking, isLoading: agentsLoading } = useChecklistAgentRanking(period, scope);
+  const { data: summary, isLoading: summaryLoading } = useChecklistSummary(period, scope, auditType);
+  const { data: questionStats, isLoading: questionsLoading } = useChecklistQuestionStats(period, scope, auditType);
+  const { data: agentRanking, isLoading: agentsLoading } = useChecklistAgentRanking(period, scope, auditType);
 
   const isLoading = summaryLoading || questionsLoading || agentsLoading;
 
@@ -61,8 +58,14 @@ export const ChecklistAnalyticsTab = () => {
 
   return (
     <div className="space-y-6">
-      {/* Period Filter */}
-      <div className="flex justify-end">
+      {/* Filters Row */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <Tabs value={auditType} onValueChange={(v) => setAuditType(v as ChecklistAuditType)}>
+          <TabsList>
+            <TabsTrigger value="first">First Audit</TabsTrigger>
+            <TabsTrigger value="reaudit">Re-Audit</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <Select value={period} onValueChange={(v) => setPeriod(v as ChecklistPeriod)}>
           <SelectTrigger className="w-36">
             <SelectValue />
@@ -74,6 +77,16 @@ export const ChecklistAnalyticsTab = () => {
             <SelectItem value="lifetime">Lifetime</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Info text */}
+      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        <p>
+          {auditType === 'first'
+            ? "First Audit shows results from the initial review before any corrections. This reveals the true reasons why interviews fail."
+            : "Re-Audit shows results after corrections were submitted. Pass rates here are typically higher as issues have been resolved."}
+        </p>
       </div>
 
       {/* Summary Cards */}

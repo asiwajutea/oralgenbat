@@ -5,6 +5,7 @@ import { subWeeks, subDays } from "date-fns";
 import { fetchAllRows } from "@/utils/paginatedFetch";
 
 export type ChecklistPeriod = '1week' | '13weeks' | '1year' | 'lifetime';
+export type ChecklistAuditType = 'first' | 'reaudit' | 'all';
 
 export interface ChecklistQuestionStat {
   id: number;
@@ -54,9 +55,9 @@ interface ChecklistScope {
   teamCodes?: string[];
 }
 
-function useChecklistRawData(period: ChecklistPeriod, scope: ChecklistScope) {
+function useChecklistRawData(period: ChecklistPeriod, scope: ChecklistScope, auditType: ChecklistAuditType = 'all') {
   return useQuery({
-    queryKey: ["checklist-raw-data", period, scope],
+    queryKey: ["checklist-raw-data", period, scope, auditType],
     queryFn: async () => {
       const dateCutoff = getDateCutoff(period);
 
@@ -75,11 +76,34 @@ function useChecklistRawData(period: ChecklistPeriod, scope: ChecklistScope) {
 
       if (!checklists || checklists.length === 0) return [];
 
-      // If scope is 'all', return all checklists without filtering
-      if (scope.type === 'all') return checklists;
+      // If we need auditType filtering or scope filtering, we need audit metadata
+      const needsAuditData = auditType !== 'all' || scope.type !== 'all';
 
-      // Get audit IDs to fetch metadata for scoping
+      if (!needsAuditData) return checklists;
+
       const auditIds = checklists.map((c: any) => c.audit_id);
+
+      // Fetch audits for is_re_audit status
+      const audits = await fetchAllRows(
+        "audits",
+        "id, is_re_audit",
+      );
+      const auditMap = new Map(audits.map((a: any) => [a.id, a]));
+
+      // Filter by auditType
+      let filtered = checklists;
+      if (auditType !== 'all') {
+        filtered = filtered.filter((c: any) => {
+          const audit = auditMap.get(c.audit_id);
+          if (!audit) return false;
+          if (auditType === 'first') return !audit.is_re_audit;
+          if (auditType === 'reaudit') return !!audit.is_re_audit;
+          return true;
+        });
+      }
+
+      // If scope is 'all', return filtered results
+      if (scope.type === 'all') return filtered;
 
       // Fetch metadata for scoping
       const metadata = await fetchAllRows(
@@ -90,7 +114,7 @@ function useChecklistRawData(period: ChecklistPeriod, scope: ChecklistScope) {
       const metaMap = new Map(metadata.map((m: any) => [m.audit_id, m]));
 
       // Filter by scope
-      return checklists.filter((c: any) => {
+      return filtered.filter((c: any) => {
         const meta = metaMap.get(c.audit_id);
         if (!meta) return false;
 
@@ -107,8 +131,8 @@ function useChecklistRawData(period: ChecklistPeriod, scope: ChecklistScope) {
   });
 }
 
-export function useChecklistSummary(period: ChecklistPeriod, scope: ChecklistScope) {
-  const { data: rawData, isLoading } = useChecklistRawData(period, scope);
+export function useChecklistSummary(period: ChecklistPeriod, scope: ChecklistScope, auditType: ChecklistAuditType = 'all') {
+  const { data: rawData, isLoading } = useChecklistRawData(period, scope, auditType);
 
   const summary: ChecklistSummary = (() => {
     if (!rawData || rawData.length === 0) {
@@ -136,8 +160,8 @@ export function useChecklistSummary(period: ChecklistPeriod, scope: ChecklistSco
   return { data: summary, isLoading };
 }
 
-export function useChecklistQuestionStats(period: ChecklistPeriod, scope: ChecklistScope) {
-  const { data: rawData, isLoading } = useChecklistRawData(period, scope);
+export function useChecklistQuestionStats(period: ChecklistPeriod, scope: ChecklistScope, auditType: ChecklistAuditType = 'all') {
+  const { data: rawData, isLoading } = useChecklistRawData(period, scope, auditType);
 
   const stats: ChecklistQuestionStat[] = (() => {
     if (!rawData || rawData.length === 0) return [];
@@ -178,19 +202,12 @@ export function useChecklistQuestionStats(period: ChecklistPeriod, scope: Checkl
   return { data: stats, isLoading };
 }
 
-export function useChecklistAgentRanking(period: ChecklistPeriod, scope: ChecklistScope) {
-  const { data: rawData, isLoading } = useChecklistRawData(period, scope);
-
-  const ranking: ChecklistAgentRanking[] = (() => {
-    if (!rawData || rawData.length === 0) return [];
-
-    // Need to fetch metadata to get interviewer_code per audit
-    return []; // Will be populated via a separate query below
-  })();
+export function useChecklistAgentRanking(period: ChecklistPeriod, scope: ChecklistScope, auditType: ChecklistAuditType = 'all') {
+  const { data: rawData, isLoading } = useChecklistRawData(period, scope, auditType);
 
   // Use a dedicated query that includes metadata joining
   const { data: agentRanking = [], isLoading: isRankingLoading } = useQuery({
-    queryKey: ["checklist-agent-ranking", period, scope],
+    queryKey: ["checklist-agent-ranking", period, scope, auditType],
     queryFn: async () => {
       const dateCutoff = getDateCutoff(period);
 
@@ -206,6 +223,10 @@ export function useChecklistAgentRanking(period: ChecklistPeriod, scope: Checkli
 
       if (!checklists || checklists.length === 0) return [];
 
+      // Fetch audits for is_re_audit filtering
+      const audits = await fetchAllRows("audits", "id, is_re_audit");
+      const auditMap = new Map(audits.map((a: any) => [a.id, a]));
+
       const metadata = await fetchAllRows(
         "interview_metadata",
         "audit_id, interviewer_code, contractor_id"
@@ -216,6 +237,14 @@ export function useChecklistAgentRanking(period: ChecklistPeriod, scope: Checkli
       const agentMap = new Map<string, { passed: number; failed: number }>();
 
       checklists.forEach((c: any) => {
+        // Filter by auditType
+        if (auditType !== 'all') {
+          const audit = auditMap.get(c.audit_id);
+          if (!audit) return;
+          if (auditType === 'first' && audit.is_re_audit) return;
+          if (auditType === 'reaudit' && !audit.is_re_audit) return;
+        }
+
         const meta = metaMap.get(c.audit_id);
         if (!meta) return;
 
@@ -266,7 +295,6 @@ export function useChecklistScope(): ChecklistScope {
       if (userRole === 'super_admin') return { type: 'all' };
 
       if (userRole === 'admin') {
-        // Admin scoped to assigned FMs
         const { data: assignments } = await supabase
           .from("field_manager_admin_assignments")
           .select("field_manager_id")
