@@ -1,13 +1,14 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, XCircle, MessageCircle, Flag, ShieldCheck, ShieldOff } from "lucide-react";
+import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, XCircle, MessageCircle, Flag, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { MetadataPanel } from "@/components/review/MetadataPanel";
 import { PhotosPanel } from "@/components/review/PhotosPanel";
 import { AudioAnalysisPanel } from "@/components/review/AudioAnalysisPanel";
@@ -63,6 +64,7 @@ const ReviewInterview = () => {
   const [isAbandoning, setIsAbandoning] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [completionResult, setCompletionResult] = useState<"passed" | "failed" | null>(null);
+  const [showDeletePdfDialog, setShowDeletePdfDialog] = useState(false);
 
   // Resolution modal state
   const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
@@ -418,6 +420,36 @@ const ReviewInterview = () => {
       setIsAnalyzingPDF(false);
     }
   };
+
+  // Delete PDF mutation
+  const deletePdfMutation = useMutation({
+    mutationFn: async () => {
+      if (!audit?.file_url || !auditId) throw new Error("No PDF to delete");
+      
+      // Remove from storage
+      const pdfPath = audit.file_url.split("/audit-pdfs/")[1];
+      if (pdfPath) {
+        await supabase.storage.from("audit-pdfs").remove([decodeURIComponent(pdfPath)]);
+      }
+      
+      // Clear file_url in database
+      const { error } = await supabase
+        .from("audits")
+        .update({ file_url: "" })
+        .eq("id", auditId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("PDF deleted successfully");
+      setShowDeletePdfDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+    },
+    onError: (err: any) => {
+      toast.error("Failed to delete PDF: " + err.message);
+    },
+  });
+
+  const canDeletePdf = userRole === 'admin' || userRole === 'super_admin' || userRole === 'field_manager' || userRole === 'contractor';
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -804,10 +836,45 @@ const ReviewInterview = () => {
       </div>
 
       {/* Right Panel - PDF Viewer */}
-      <div className={`w-full lg:w-1/2 h-[calc(100vh-49px)] lg:h-screen overflow-hidden bg-muted/5 ${
-        mobileTab === "details" ? "hidden lg:block" : "block"}`
+      <div className={`w-full lg:w-1/2 h-[calc(100vh-49px)] lg:h-screen overflow-hidden bg-muted/5 flex flex-col ${
+        mobileTab === "details" ? "hidden lg:flex" : "flex"}`
         }>
-        <PDFViewer pdfUrl={audit.file_url} />
+        {/* PDF Header with delete button */}
+        {canDeletePdf && audit.file_url && (
+          <div className="flex items-center justify-end p-2 border-b border-border bg-background flex-shrink-0">
+            <AlertDialog open={showDeletePdfDialog} onOpenChange={setShowDeletePdfDialog}>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="gap-1.5">
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete PDF
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete PDF?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete the uploaded PDF for "{audit.file_name}". This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deletePdfMutation.mutate()}
+                    disabled={deletePdfMutation.isPending}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deletePdfMutation.isPending ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</>
+                    ) : "Delete PDF"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden">
+          <PDFViewer pdfUrl={audit.file_url} />
+        </div>
       </div>
     </div>
 

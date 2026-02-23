@@ -240,16 +240,39 @@ export const useNotifications = () => {
     if (permission === "granted") {
       if ("serviceWorker" in navigator && "PushManager" in window) {
         try {
-          const registration = await navigator.serviceWorker.ready;
+          // Register push service worker
+          const registration = await navigator.serviceWorker.register("/sw-push.js", {
+            scope: "/",
+          });
+          
+          // Wait for service worker to be ready
+          await navigator.serviceWorker.ready;
+          
+          // Get VAPID public key from the existing subscription or use default
+          const vapidPublicKey = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
+          
+          // Convert VAPID key to Uint8Array
+          const urlBase64ToUint8Array = (base64String: string) => {
+            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+              outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+          };
+          
           const subscription = await (registration as any).pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
           });
           
           await updateSettings.mutateAsync({
             push_subscription: subscription.toJSON(),
           });
           
+          console.log("Push subscription saved successfully");
           return true;
         } catch (err) {
           console.error("Failed to subscribe to push notifications:", err);
