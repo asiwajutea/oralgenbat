@@ -60,6 +60,7 @@ function getSettingsKeyForType(type: string): keyof NotificationSettings | null 
     comment_reply: "notify_comments",
     resolution_comment: "notify_comments",
     announcement: "notify_new_interviews", // announcements always show
+    push_notification: "notify_new_interviews", // push notifications always show
   };
   return map[type] || null;
 }

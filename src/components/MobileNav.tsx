@@ -170,7 +170,7 @@ const MobileNav = () => {
                 <NavItem to="/admin" icon={Users}>Manage Users</NavItem>
                 <NavItem to="/admin/review-history" icon={History}>Review History</NavItem>
                 <NavItem to="/admin/team-assignments" icon={FolderOpen}>Team Assignments</NavItem>
-                <NavItem to="/admin/zip-diagnostics" icon={FileText}>ZIP Diagnostics</NavItem>
+                <NavItem to="/admin/zip-diagnostics" icon={FileText}>ZIP/PDF Diagnostics</NavItem>
                 <NavItem to="/admin/locked-interviews" icon={Lock}>Locks</NavItem>
                 <NavItem to="/admin/sms-logs" icon={MessageSquare}>SMS Logs</NavItem>
                 <NavItem to="/admin/duplicates" icon={Copy}>Duplicate Detection</NavItem>

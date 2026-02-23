@@ -224,7 +224,7 @@ const Header = () => {
                       </NavigationMenuLink>
                       <NavigationMenuLink asChild>
                         <Link to="/admin/zip-diagnostics" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/zip-diagnostics' && "bg-accent text-accent-foreground")}>
-                          ZIP Diagnostics
+                          ZIP/PDF Diagnostics
                         </Link>
                       </NavigationMenuLink>
                       <NavigationMenuLink asChild>
