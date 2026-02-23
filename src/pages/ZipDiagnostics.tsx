@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/utils/paginatedFetch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -91,16 +92,15 @@ const ZipDiagnostics = () => {
     queryKey: ["zip-diagnostics"],
     queryFn: async () => {
       // Get all audits with ZIP files
-      const { data: audits, error: auditsError } = await supabase
-        .from("audits")
-        .select("id, file_name, mobile_zip_url, mobile_zip_uploaded_at")
-        .not("mobile_zip_url", "is", null)
-        .order("mobile_zip_uploaded_at", { ascending: false });
+      const audits = await fetchAllRows(
+        "audits",
+        "id, file_name, mobile_zip_url, mobile_zip_uploaded_at",
+        (q: any) => q.not("mobile_zip_url", "is", null).order("mobile_zip_uploaded_at", { ascending: false })
+      );
 
-      if (auditsError) throw auditsError;
       if (!audits || audits.length === 0) return [];
 
-      const auditIds = audits.map((a) => a.id);
+      const auditIds = audits.map((a: any) => a.id);
 
       // Batch queries to avoid "Bad Request" errors with large arrays
       const BATCH_SIZE = 200;

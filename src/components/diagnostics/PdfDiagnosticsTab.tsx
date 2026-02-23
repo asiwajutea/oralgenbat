@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchAllRows } from "@/utils/paginatedFetch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,12 +66,12 @@ const PdfDiagnosticsTab = () => {
   } = useQuery({
     queryKey: ["pdf-diagnostics"],
     queryFn: async () => {
-      const { data: audits, error } = await supabase
-        .from("audits")
-        .select("id, file_name, file_url, uploaded_at")
-        .order("uploaded_at", { ascending: false });
+      const audits = await fetchAllRows(
+        "audits",
+        "id, file_name, file_url, uploaded_at",
+        (q: any) => q.order("uploaded_at", { ascending: false })
+      );
 
-      if (error) throw error;
       if (!audits || audits.length === 0) return [];
 
       // Check each PDF URL with HEAD requests in batches
