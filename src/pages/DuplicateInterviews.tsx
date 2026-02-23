@@ -82,6 +82,7 @@ const DuplicateInterviews = () => {
         await supabase.from('interview_metadata').delete().eq('audit_id', id);
         await supabase.from('interview_photos').delete().eq('audit_id', id);
         await supabase.from('re_audit_submissions').delete().eq('audit_id', id);
+        await supabase.from('sms_notification_logs').delete().eq('audit_id', id);
         // Delete audit
         const { error } = await supabase.from('audits').delete().eq('id', id);
         if (error) throw error;

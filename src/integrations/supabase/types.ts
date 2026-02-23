@@ -132,6 +132,7 @@ export type Database = {
           style: string | null
           target_contractor_id: string | null
           target_role: Database["public"]["Enums"]["app_role"] | null
+          target_roles: string[] | null
           target_type: string | null
           target_user_ids: string[] | null
           title: string
@@ -152,6 +153,7 @@ export type Database = {
           style?: string | null
           target_contractor_id?: string | null
           target_role?: Database["public"]["Enums"]["app_role"] | null
+          target_roles?: string[] | null
           target_type?: string | null
           target_user_ids?: string[] | null
           title: string
@@ -172,6 +174,7 @@ export type Database = {
           style?: string | null
           target_contractor_id?: string | null
           target_role?: Database["public"]["Enums"]["app_role"] | null
+          target_roles?: string[] | null
           target_type?: string | null
           target_user_ids?: string[] | null
           title?: string
@@ -909,6 +912,74 @@ export type Database = {
           is_approved?: boolean
           phone?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      push_notification_deliveries: {
+        Row: {
+          delivered_at: string
+          id: string
+          interacted_at: string | null
+          push_notification_id: string
+          read_at: string | null
+          user_id: string
+        }
+        Insert: {
+          delivered_at?: string
+          id?: string
+          interacted_at?: string | null
+          push_notification_id: string
+          read_at?: string | null
+          user_id: string
+        }
+        Update: {
+          delivered_at?: string
+          id?: string
+          interacted_at?: string | null
+          push_notification_id?: string
+          read_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_notification_deliveries_push_notification_id_fkey"
+            columns: ["push_notification_id"]
+            isOneToOne: false
+            referencedRelation: "push_notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_notifications: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          message: string
+          target_roles: string[] | null
+          target_type: string
+          target_user_ids: string[] | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          message: string
+          target_roles?: string[] | null
+          target_type?: string
+          target_user_ids?: string[] | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          message?: string
+          target_roles?: string[] | null
+          target_type?: string
+          target_user_ids?: string[] | null
+          title?: string
         }
         Relationships: []
       }

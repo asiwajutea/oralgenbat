@@ -8,11 +8,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle,
   CheckCircle2,
   Trash2,
   FileArchive,
+  FileText,
   Loader2,
   RefreshCw,
   Filter,
@@ -24,6 +26,7 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import PdfDiagnosticsTab from "@/components/diagnostics/PdfDiagnosticsTab";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -398,407 +401,289 @@ const ZipDiagnostics = () => {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-bold">ZIP File Diagnostics</h1>
-            <p className="text-muted-foreground mt-1">Scan and identify corrupted ZIP files that need re-uploading</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2">
-              <Filter className="h-4 w-4" />
-              Filters
-              {hasActiveFilters && (
-                <Badge variant="secondary" className="ml-1">
-                  Active
-                </Badge>
-              )}
-            </Button>
-            <Button onClick={() => refetch()} disabled={isLoading} className="gap-2">
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Refresh Scan
-            </Button>
+            <h1 className="text-3xl font-bold">ZIP/PDF Diagnostics</h1>
+            <p className="text-muted-foreground mt-1">Scan and identify corrupted ZIP and PDF files</p>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <FileArchive className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total ZIPs</p>
-                <p className="text-2xl font-bold">{diagnosticResults.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Valid</p>
-                <p className="text-2xl font-bold">{validCount}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <AlertTriangle className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Corrupted</p>
-                <p className="text-2xl font-bold">{corruptedCount}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <AlertTriangle className="h-5 w-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Missing Data</p>
-                <p className="text-2xl font-bold">{missingDataCount}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <Tabs defaultValue="zip" className="w-full">
+          <TabsList>
+            <TabsTrigger value="zip" className="gap-1.5">
+              <FileArchive className="h-3.5 w-3.5" />
+              ZIP Diagnostics
+            </TabsTrigger>
+            <TabsTrigger value="pdf" className="gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
+              PDF Diagnostics
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Filter Panel */}
-        {showFilters && (
-          <Card>
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Filters</CardTitle>
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
-                <X className="h-4 w-4" />
-                Clear All
+          <TabsContent value="zip" className="space-y-6">
+            {/* Existing ZIP diagnostics content */}
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2">
+                <Filter className="h-4 w-4" />
+                Filters
+                {hasActiveFilters && (
+                  <Badge variant="secondary" className="ml-1">Active</Badge>
+                )}
               </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                {/* Search */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Search</Label>
-                  <Input
-                    placeholder="Interview ID..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                  />
-                </div>
-                {/* Status */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Status</Label>
-                  <Select
-                    value={statusFilter || "all"}
-                    onValueChange={(v) => {
-                      setStatusFilter(v === "all" ? "" : v);
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="corrupted">Corrupted</SelectItem>
-                      <SelectItem value="missing_data">Missing Data</SelectItem>
-                      <SelectItem value="valid">Valid</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Metadata */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Metadata</Label>
-                  <Select
-                    value={metadataFilter || "all"}
-                    onValueChange={(v) => {
-                      setMetadataFilter(v === "all" ? "" : v);
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="with">Has Metadata</SelectItem>
-                      <SelectItem value="without">No Metadata</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Photos */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Photos</Label>
-                  <Select
-                    value={photosFilter || "all"}
-                    onValueChange={(v) => {
-                      setPhotosFilter(v === "all" ? "" : v);
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="with">Has Photos</SelectItem>
-                      <SelectItem value="without">No Photos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Date Range */}
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Start Date</Label>
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => {
-                      setStartDate(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm">End Date</Label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => {
-                      setEndDate(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Bulk Actions Bar */}
-        {selectedItems.size > 0 && (
-          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
-            <span className="text-sm font-medium">{selectedItems.size} item(s) selected</span>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setSelectedItems(new Set())}>
-                Clear Selection
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteDialog(true)} className="gap-2">
-                <Trash2 className="h-4 w-4" />
-                Delete Selected
+              <Button onClick={() => refetch()} disabled={isLoading} className="gap-2">
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Refresh Scan
               </Button>
             </div>
-          </div>
-        )}
 
-        {/* Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Diagnostic Results</CardTitle>
-            <CardDescription>
-              {hasActiveFilters
-                ? `Showing ${sortedResults.length} of ${diagnosticResults.length} ZIPs (filtered)`
-                : `ZIPs marked as "Corrupted" have no extracted data and should be re-uploaded. "Missing Data" may have partial extraction issues.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!isOnline ? (
-              <OfflineTablePlaceholder />
-            ) : isLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : sortedResults.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <FileArchive className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">
-                  {hasActiveFilters ? "No results match filters" : "No ZIP files found"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {hasActiveFilters ? "Try adjusting your filter criteria" : "No interviews have ZIP files uploaded"}
-                </p>
-                {hasActiveFilters && (
-                  <Button variant="outline" onClick={clearFilters} className="mt-4">
-                    Clear Filters
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <FileArchive className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total ZIPs</p>
+                    <p className="text-2xl font-bold">{diagnosticResults.length}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valid</p>
+                    <p className="text-2xl font-bold">{validCount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="p-2 bg-red-100 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Corrupted</p>
+                    <p className="text-2xl font-bold">{corruptedCount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="p-2 bg-yellow-100 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Missing Data</p>
+                    <p className="text-2xl font-bold">{missingDataCount}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Filter Panel */}
+            {showFilters && (
+              <Card>
+                <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                  <CardTitle className="text-lg">Filters</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
+                    <X className="h-4 w-4" />
+                    Clear All
                   </Button>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">
-                          <Checkbox
-                            checked={allSelectableSelected}
-                            onCheckedChange={handleSelectAll}
-                            aria-label="Select all"
-                            disabled={selectableInPage.length === 0}
-                          />
-                        </TableHead>
-                        <TableHead className="w-12">SN</TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("file_name")}>
-                          <div className="flex items-center gap-1">
-                            Interview ID
-                            {getSortIcon("file_name")}
-                          </div>
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleSort("mobile_zip_uploaded_at")}
-                        >
-                          <div className="flex items-center gap-1">
-                            Uploaded At
-                            {getSortIcon("mobile_zip_uploaded_at")}
-                          </div>
-                        </TableHead>
-                        <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("status")}>
-                          <div className="flex items-center gap-1">
-                            Status
-                            {getSortIcon("status")}
-                          </div>
-                        </TableHead>
-                        <TableHead>Has Metadata</TableHead>
-                        <TableHead
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => handleSort("photo_count")}
-                        >
-                          <div className="flex items-center gap-1">
-                            Photos
-                            {getSortIcon("photo_count")}
-                          </div>
-                        </TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paginatedResults.map((result, index) => (
-                        <TableRow
-                          key={result.id}
-                          className={result.status === "corrupted" ? "bg-red-50 dark:bg-red-950/20" : ""}
-                        >
-                          <TableCell>
-                            {result.status !== "valid" && (
-                              <Checkbox
-                                checked={selectedItems.has(result.id)}
-                                onCheckedChange={(checked) => handleSelectItem(result.id, checked as boolean)}
-                                aria-label={`Select ${result.file_name}`}
-                              />
-                            )}
-                          </TableCell>
-                          <TableCell className="font-medium">{(currentPage - 1) * itemsPerPage + index + 1}</TableCell>
-                          <TableCell className="font-medium">{result.file_name}</TableCell>
-                          <TableCell>
-                            {result.mobile_zip_uploaded_at
-                              ? format(new Date(result.mobile_zip_uploaded_at), "PPp")
-                              : "-"}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(result.status)}</TableCell>
-                          <TableCell>
-                            {result.has_metadata ? (
-                              <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            ) : (
-                              <AlertTriangle className="h-4 w-4 text-red-600" />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {result.has_photos ? (
-                              <span className="text-green-600">{result.photo_count}</span>
-                            ) : (
-                              <span className="text-red-600">0</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {result.status !== "valid" && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedAudit(result);
-                                  setShowDeleteDialog(true);
-                                }}
-                                disabled={deleteZipMutation.isPending}
-                                className="gap-1"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {/* Pagination */}
-                <div className="mt-4">
-                  <AuditPagination
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    totalCount={sortedResults.length}
-                    itemsPerPage={itemsPerPage}
-                    onPageChange={handlePageChange}
-                    onItemsPerPageChange={handleItemsPerPageChange}
-                  />
-                </div>
-              </>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Search</Label>
+                      <Input placeholder="Interview ID..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Status</Label>
+                      <Select value={statusFilter || "all"} onValueChange={(v) => { setStatusFilter(v === "all" ? "" : v); setCurrentPage(1); }}>
+                        <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Statuses</SelectItem>
+                          <SelectItem value="corrupted">Corrupted</SelectItem>
+                          <SelectItem value="missing_data">Missing Data</SelectItem>
+                          <SelectItem value="valid">Valid</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Metadata</Label>
+                      <Select value={metadataFilter || "all"} onValueChange={(v) => { setMetadataFilter(v === "all" ? "" : v); setCurrentPage(1); }}>
+                        <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="with">Has Metadata</SelectItem>
+                          <SelectItem value="without">No Metadata</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Photos</Label>
+                      <Select value={photosFilter || "all"} onValueChange={(v) => { setPhotosFilter(v === "all" ? "" : v); setCurrentPage(1); }}>
+                        <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="with">Has Photos</SelectItem>
+                          <SelectItem value="without">No Photos</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Start Date</Label>
+                      <Input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">End Date</Label>
+                      <Input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
 
-        {/* Single Delete Dialog */}
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Corrupted ZIP?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will delete the corrupted ZIP file for <strong>{selectedAudit?.file_name}</strong> along with any
-                partial data. The interview record will remain but you'll need to re-upload the mobile data.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => selectedAudit && deleteZipMutation.mutate(selectedAudit)}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={deleteZipMutation.isPending}
-              >
-                {deleteZipMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            {/* Bulk Actions Bar */}
+            {selectedItems.size > 0 && (
+              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+                <span className="text-sm font-medium">{selectedItems.size} item(s) selected</span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedItems(new Set())}>Clear Selection</Button>
+                  <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteDialog(true)} className="gap-2">
+                    <Trash2 className="h-4 w-4" /> Delete Selected
+                  </Button>
+                </div>
+              </div>
+            )}
 
-        {/* Bulk Delete Dialog */}
-        <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete {selectedItems.size} Corrupted ZIPs?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will delete the selected corrupted ZIP files and their partial data. Interview records will remain
-                but mobile data will need to be re-uploaded.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleBulkDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={bulkDeleteMutation.isPending}
-              >
-                {bulkDeleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Delete {selectedItems.size} Files
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            {/* Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Diagnostic Results</CardTitle>
+                <CardDescription>
+                  {hasActiveFilters
+                    ? `Showing ${sortedResults.length} of ${diagnosticResults.length} ZIPs (filtered)`
+                    : `ZIPs marked as "Corrupted" have no extracted data and should be re-uploaded.`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!isOnline ? (
+                  <OfflineTablePlaceholder />
+                ) : isLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                ) : sortedResults.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <FileArchive className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-lg font-medium">{hasActiveFilters ? "No results match filters" : "No ZIP files found"}</p>
+                    {hasActiveFilters && <Button variant="outline" onClick={clearFilters} className="mt-4">Clear Filters</Button>}
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-12">
+                              <Checkbox checked={allSelectableSelected} onCheckedChange={handleSelectAll} disabled={selectableInPage.length === 0} />
+                            </TableHead>
+                            <TableHead className="w-12">SN</TableHead>
+                            <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("file_name")}>
+                              <div className="flex items-center gap-1">Interview ID {getSortIcon("file_name")}</div>
+                            </TableHead>
+                            <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("mobile_zip_uploaded_at")}>
+                              <div className="flex items-center gap-1">Uploaded At {getSortIcon("mobile_zip_uploaded_at")}</div>
+                            </TableHead>
+                            <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("status")}>
+                              <div className="flex items-center gap-1">Status {getSortIcon("status")}</div>
+                            </TableHead>
+                            <TableHead>Has Metadata</TableHead>
+                            <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("photo_count")}>
+                              <div className="flex items-center gap-1">Photos {getSortIcon("photo_count")}</div>
+                            </TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedResults.map((result, index) => (
+                            <TableRow key={result.id} className={result.status === "corrupted" ? "bg-red-50 dark:bg-red-950/20" : ""}>
+                              <TableCell>
+                                {result.status !== "valid" && (
+                                  <Checkbox checked={selectedItems.has(result.id)} onCheckedChange={(checked) => handleSelectItem(result.id, checked as boolean)} />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">{(currentPage - 1) * itemsPerPage + index + 1}</TableCell>
+                              <TableCell className="font-medium">{result.file_name}</TableCell>
+                              <TableCell>{result.mobile_zip_uploaded_at ? format(new Date(result.mobile_zip_uploaded_at), "PPp") : "-"}</TableCell>
+                              <TableCell>{getStatusBadge(result.status)}</TableCell>
+                              <TableCell>{result.has_metadata ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertTriangle className="h-4 w-4 text-red-600" />}</TableCell>
+                              <TableCell>{result.has_photos ? <span className="text-green-600">{result.photo_count}</span> : <span className="text-red-600">0</span>}</TableCell>
+                              <TableCell className="text-right">
+                                {result.status !== "valid" && (
+                                  <Button variant="destructive" size="sm" onClick={() => { setSelectedAudit(result); setShowDeleteDialog(true); }} disabled={deleteZipMutation.isPending} className="gap-1">
+                                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div className="mt-4">
+                      <AuditPagination currentPage={currentPage} totalPages={totalPages} totalCount={sortedResults.length} itemsPerPage={itemsPerPage} onPageChange={handlePageChange} onItemsPerPageChange={handleItemsPerPageChange} />
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Single Delete Dialog */}
+            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Corrupted ZIP?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will delete the corrupted ZIP file for <strong>{selectedAudit?.file_name}</strong> along with any partial data.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => selectedAudit && deleteZipMutation.mutate(selectedAudit)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={deleteZipMutation.isPending}>
+                    {deleteZipMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Bulk Delete Dialog */}
+            <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {selectedItems.size} Corrupted ZIPs?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will delete the selected corrupted ZIP files and their partial data.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" disabled={bulkDeleteMutation.isPending}>
+                    {bulkDeleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                    Delete {selectedItems.size} Files
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </TabsContent>
+
+          <TabsContent value="pdf">
+            <PdfDiagnosticsTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
