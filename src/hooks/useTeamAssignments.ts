@@ -163,19 +163,19 @@ export const useAssignments = () => {
   return useQuery({
     queryKey: ["interview-assignments"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("interview_assignments")
-        .select(`
-          *,
-          data_entry_teams (id, name, description, is_active)
-        `)
-        .order("assigned_at", { ascending: false });
+      const { fetchAllRows } = await import("@/utils/paginatedFetch");
 
-      if (error) throw error;
+      // Use paginated fetch to bypass the 1000-row limit
+      const allAssignments = await fetchAllRows(
+        "interview_assignments",
+        "*, data_entry_teams (id, name, description, is_active)",
+        (q: any) => q.order("assigned_at", { ascending: false })
+      );
+
+      if (!allAssignments || allAssignments.length === 0) return [];
 
       // Get audit details for each assignment using batched queries
-      const auditIds = data?.map((a) => a.audit_id) || [];
-      if (auditIds.length === 0) return [];
+      const auditIds = allAssignments.map((a: any) => a.audit_id);
 
       const audits = await batchedInQuery<{ id: string; file_name: string }>(
         auditIds,
@@ -188,7 +188,7 @@ export const useAssignments = () => {
 
       const auditMap = new Map(audits.map((a) => [a.id, a]));
 
-      return data?.map((assignment) => ({
+      return allAssignments.map((assignment: any) => ({
         ...assignment,
         typing_status: assignment.typing_status || 'typing_in_progress',
         audit: auditMap.get(assignment.audit_id),

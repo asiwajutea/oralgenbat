@@ -1,4 +1,5 @@
-import { Bell, BellOff, Check } from "lucide-react";
+import { useState } from "react";
+import { Bell, BellOff, Check, RotateCcw, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -6,9 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useNotifications } from "@/hooks/useNotifications";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 const NotificationSettings = () => {
+  const { user } = useAuth();
   const { 
     settings, 
     permissionStatus, 
@@ -16,6 +20,43 @@ const NotificationSettings = () => {
     requestPermission,
     settingsLoading 
   } = useNotifications();
+  const [resettingPush, setResettingPush] = useState(false);
+
+  const handleResetPushSubscription = async () => {
+    setResettingPush(true);
+    try {
+      // Unregister push service worker
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          if (reg.active?.scriptURL?.includes("sw-push")) {
+            const subscription = await (reg as any).pushManager?.getSubscription();
+            if (subscription) await subscription.unsubscribe();
+            await reg.unregister();
+          }
+        }
+      }
+
+      // Clear push_subscription from database
+      if (user?.id) {
+        await supabase
+          .from("user_notification_settings")
+          .update({ push_subscription: null })
+          .eq("user_id", user.id);
+      }
+
+      // Reset local storage flags
+      localStorage.removeItem("push_notification_prompt_dismissed");
+
+      toast.success("Push subscription reset. You can re-enable push notifications.");
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to reset push subscription:", err);
+      toast.error("Failed to reset push subscription");
+    } finally {
+      setResettingPush(false);
+    }
+  };
 
   const handleRequestPermission = async () => {
     const granted = await requestPermission();
@@ -82,11 +123,20 @@ const NotificationSettings = () => {
             </p>
           </div>
         {permissionStatus === "granted" ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                 <Check className="h-3 w-3 mr-1" />
                 Enabled
               </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetPushSubscription}
+                disabled={resettingPush}
+              >
+                {resettingPush ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RotateCcw className="h-3 w-3 mr-1" />}
+                Reset Subscription
+              </Button>
             </div>
           ) : permissionStatus === "denied" ? (
             <div className="space-y-2">
