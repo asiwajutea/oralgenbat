@@ -265,11 +265,6 @@ export const CreateAnnouncementDialog = ({
                 <Switch checked={requireAcknowledgment} onCheckedChange={setRequireAcknowledgment} />
               </div>
 
-              <div className="flex justify-end">
-                <Button onClick={() => setActiveTab("targeting")} className="gap-1">
-                  Next <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
             </TabsContent>
 
             <TabsContent value="targeting" className="space-y-4 mt-4">
@@ -353,14 +348,6 @@ export const CreateAnnouncementDialog = ({
                 <Input type="number" min={0} max={100} value={priority} onChange={(e) => setPriority(parseInt(e.target.value) || 0)} />
               </div>
 
-              <div className="flex justify-between">
-                <Button variant="outline" onClick={() => setActiveTab("content")} className="gap-1">
-                  <ChevronLeft className="h-4 w-4" /> Back
-                </Button>
-                <Button onClick={() => setActiveTab("scheduling")} className="gap-1">
-                  Next <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
             </TabsContent>
 
             <TabsContent value="scheduling" className="space-y-4 mt-4">
@@ -396,21 +383,33 @@ export const CreateAnnouncementDialog = ({
                 </Popover>
               </div>
 
-              <div className="flex justify-between">
-                <Button variant="outline" onClick={() => setActiveTab("targeting")} className="gap-1">
-                  <ChevronLeft className="h-4 w-4" /> Back
-                </Button>
-              </div>
             </TabsContent>
           </Tabs>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            {editingAnnouncement ? "Update" : "Create"} Announcement
-          </Button>
+        <DialogFooter className="flex-row justify-between sm:justify-between gap-2">
+          <div>
+            {canGoBack && (
+              <Button variant="outline" onClick={() => setActiveTab(tabs[currentTabIndex - 1])} className="gap-1">
+                <ChevronLeft className="h-4 w-4" /> Back
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground mr-2">
+              Step {currentTabIndex + 1} of {tabs.length}
+            </span>
+            {canGoNext ? (
+              <Button onClick={() => setActiveTab(tabs[currentTabIndex + 1])} className="gap-1">
+                Next <ChevronRight className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button onClick={handleSave} disabled={isSaving}>
+                {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {editingAnnouncement ? "Update" : "Create"} Announcement
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

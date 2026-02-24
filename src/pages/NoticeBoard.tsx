@@ -71,21 +71,61 @@ const NoticeBoard = () => {
   const canCreate = userRole && 
     ["super_admin", "contractor", "sub_contractor", "quality_assurance_manager"].includes(userRole);
 
-  // Fetch push subscription stats
-  const { data: subscriptionStats } = useQuery({
-    queryKey: ["push-subscription-stats"],
+  // Fetch push subscription stats with subscriber details
+  const { data: pushDashboardData } = useQuery({
+    queryKey: ["push-dashboard-stats"],
     queryFn: async () => {
+      // Get all notification settings with push subscriptions
       const { data: allSettings } = await supabase
         .from("user_notification_settings")
-        .select("user_id, push_subscription");
+        .select("user_id, push_subscription, updated_at");
       
       const { count: totalUsers } = await supabase
         .from("profiles")
         .select("id", { count: "exact", head: true })
         .eq("is_approved", true);
 
-      const subscribedCount = (allSettings || []).filter(s => s.push_subscription !== null).length;
-      return { total: totalUsers || 0, subscribed: subscribedCount };
+      const subscribedSettings = (allSettings || []).filter(s => s.push_subscription !== null);
+      const subscribedUserIds = subscribedSettings.map(s => s.user_id);
+
+      // Get subscriber profiles
+      let subscribers: { id: string; full_name: string; email: string; subscribed_at: string }[] = [];
+      if (subscribedUserIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", subscribedUserIds);
+        
+        const settingsMap = new Map(subscribedSettings.map(s => [s.user_id, s.updated_at]));
+        subscribers = (profiles || []).map(p => ({
+          ...p,
+          subscribed_at: settingsMap.get(p.id) || "",
+        }));
+      }
+
+      // Get aggregate delivery stats
+      const { data: allDeliveries } = await supabase
+        .from("push_notification_deliveries")
+        .select("id, read_at, interacted_at");
+
+      const totalDelivered = allDeliveries?.length || 0;
+      const totalRead = allDeliveries?.filter(d => d.read_at).length || 0;
+      const totalInteracted = allDeliveries?.filter(d => d.interacted_at).length || 0;
+
+      // Total sent notifications
+      const { count: totalSent } = await supabase
+        .from("push_notifications")
+        .select("id", { count: "exact", head: true });
+
+      return {
+        totalUsers: totalUsers || 0,
+        subscribedCount: subscribedSettings.length,
+        totalSent: totalSent || 0,
+        totalDelivered,
+        totalRead,
+        totalInteracted,
+        subscribers,
+      };
     },
     enabled: !!canCreate,
   });
@@ -332,38 +372,95 @@ const NoticeBoard = () => {
         <TabsContent value="push">
           <div className="space-y-6">
             {/* Subscription Stats */}
-            {canCreate && subscriptionStats && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {canCreate && pushDashboardData && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <Card>
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="p-2 bg-primary/10 rounded-lg"><Users className="h-5 w-5 text-primary" /></div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Total Users</p>
-                      <p className="text-2xl font-bold">{subscriptionStats.total}</p>
+                  <CardContent className="p-4 text-center">
+                    <Users className="h-5 w-5 text-primary mx-auto mb-1" />
+                    <p className="text-2xl font-bold">{pushDashboardData.totalUsers}</p>
+                    <p className="text-xs text-muted-foreground">Total Users</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <Bell className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                    <p className="text-2xl font-bold">{pushDashboardData.subscribedCount}</p>
+                    <p className="text-xs text-muted-foreground">Subscribed</p>
+                    <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-green-500 rounded-full transition-all"
+                        style={{ width: `${pushDashboardData.totalUsers > 0 ? (pushDashboardData.subscribedCount / pushDashboardData.totalUsers) * 100 : 0}%` }}
+                      />
                     </div>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="p-2 bg-green-100 dark:bg-green-950 rounded-lg"><Bell className="h-5 w-5 text-green-600" /></div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Subscribed</p>
-                      <p className="text-2xl font-bold">{subscriptionStats.subscribed}</p>
-                    </div>
+                  <CardContent className="p-4 text-center">
+                    <Send className="h-5 w-5 text-primary mx-auto mb-1" />
+                    <p className="text-2xl font-bold">{pushDashboardData.totalSent}</p>
+                    <p className="text-xs text-muted-foreground">Total Sent</p>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="p-2 bg-muted rounded-lg"><Bell className="h-5 w-5 text-muted-foreground" /></div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Subscription Rate</p>
-                      <p className="text-2xl font-bold">
-                        {subscriptionStats.total > 0 ? Math.round((subscriptionStats.subscribed / subscriptionStats.total) * 100) : 0}%
-                      </p>
-                    </div>
+                  <CardContent className="p-4 text-center">
+                    <Send className="h-5 w-5 text-blue-500 mx-auto mb-1" />
+                    <p className="text-2xl font-bold">{pushDashboardData.totalDelivered}</p>
+                    <p className="text-xs text-muted-foreground">Delivered</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <Eye className="h-5 w-5 text-amber-500 mx-auto mb-1" />
+                    <p className="text-2xl font-bold">{pushDashboardData.totalRead}</p>
+                    <p className="text-xs text-muted-foreground">Read</p>
+                    {pushDashboardData.totalDelivered > 0 && (
+                      <p className="text-xs text-green-600 font-medium">{Math.round((pushDashboardData.totalRead / pushDashboardData.totalDelivered) * 100)}%</p>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4 text-center">
+                    <MousePointerClick className="h-5 w-5 text-purple-500 mx-auto mb-1" />
+                    <p className="text-2xl font-bold">{pushDashboardData.totalInteracted}</p>
+                    <p className="text-xs text-muted-foreground">Clicked</p>
+                    {pushDashboardData.totalDelivered > 0 && (
+                      <p className="text-xs text-green-600 font-medium">{Math.round((pushDashboardData.totalInteracted / pushDashboardData.totalDelivered) * 100)}%</p>
+                    )}
                   </CardContent>
                 </Card>
               </div>
+            )}
+
+            {/* Subscribers Table */}
+            {canCreate && pushDashboardData && pushDashboardData.subscribers.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Subscribed Users ({pushDashboardData.subscribers.length})</CardTitle>
+                  <CardDescription>Users with active push notification subscriptions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[200px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Subscribed</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pushDashboardData.subscribers.map(sub => (
+                          <TableRow key={sub.id}>
+                            <TableCell className="font-medium text-sm">{sub.full_name}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{sub.email}</TableCell>
+                            <TableCell className="text-sm">{sub.subscribed_at ? format(new Date(sub.subscribed_at), "MMM d, yyyy") : "—"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
             )}
 
             {/* Your Status */}
@@ -374,9 +471,28 @@ const NoticeBoard = () => {
                   Your Notification Status
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 {permissionStatus === "granted" ? (
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">Push notifications enabled</Badge>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">Push notifications enabled</Badge>
+                    <Button size="sm" variant="outline" onClick={async () => {
+                      if (!user?.id) return;
+                      try {
+                        await supabase.from("push_notifications").insert({
+                          title: "🔔 Test Notification",
+                          message: "This is a test push notification from the PWA Web Push system.",
+                          created_by: user.id,
+                          target_type: "users",
+                          target_user_ids: [user.id],
+                        });
+                        toast.success("Test notification sent! You should receive it shortly.");
+                      } catch {
+                        toast.error("Failed to send test notification");
+                      }
+                    }}>
+                      Test Push
+                    </Button>
+                  </div>
                 ) : permissionStatus === "denied" ? (
                   <div className="space-y-2">
                     <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800">Push notifications blocked</Badge>
