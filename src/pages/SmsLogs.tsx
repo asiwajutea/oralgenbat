@@ -341,12 +341,12 @@ export default function SmsLogs() {
                   {/* Contractor Filter */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Contractor</label>
-                    <Select value={contractorFilter} onValueChange={setContractorFilter}>
+                    <Select value={contractorFilter || "all"} onValueChange={(v) => setContractorFilter(v === "all" ? "" : v)}>
                       <SelectTrigger>
                         <SelectValue placeholder="All contractors" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All contractors</SelectItem>
+                        <SelectItem value="all">All contractors</SelectItem>
                         {contractorIds.map(id => (
                           <SelectItem key={id} value={id}>{id}</SelectItem>
                         ))}
