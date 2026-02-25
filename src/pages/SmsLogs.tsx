@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,9 +51,15 @@ import {
   Filter,
   CalendarIcon,
   ArrowUpDown,
-  X
+  X,
+  FileDown,
+  Loader2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { AuditPagination } from "@/components/AuditPagination";
+import { fetchAllRows } from "@/utils/paginatedFetch";
+import jsPDF from "jspdf";
+import { toast } from "sonner";
 
 interface SmsLog {
   id: string;
@@ -81,6 +87,14 @@ export default function SmsLogs() {
   const [sortField, setSortField] = useState<"created_at" | "recipients_count">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [contractorFilter, setContractorFilter] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Reset page on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, searchQuery, dateFrom, dateTo, contractorFilter, sortField, sortOrder]);
 
   // Count active filters
   const activeFilterCount = useMemo(() => {
@@ -102,36 +116,56 @@ export default function SmsLogs() {
     setContractorFilter("");
   };
 
-  const { data: logs, isLoading, refetch } = useQuery({
-    queryKey: ["sms-logs", statusFilter, searchQuery, dateFrom, dateTo, contractorFilter, sortField, sortOrder],
+  // Build filter function for reuse
+  const applyFilters = (query: any) => {
+    if (statusFilter !== "all") {
+      query = query.eq("status", statusFilter);
+    }
+    if (dateFrom) {
+      query = query.gte("created_at", dateFrom.toISOString());
+    }
+    if (dateTo) {
+      const endOfDay = new Date(dateTo);
+      endOfDay.setHours(23, 59, 59, 999);
+      query = query.lte("created_at", endOfDay.toISOString());
+    }
+    if (contractorFilter) {
+      query = query.eq("contractor_id", contractorFilter);
+    }
+    if (searchQuery) {
+      query = query.or(`file_name.ilike.%${searchQuery}%,interviewer_code.ilike.%${searchQuery}%,contractor_id.ilike.%${searchQuery}%`);
+    }
+    return query;
+  };
+
+  // Count query for pagination
+  const { data: totalCount = 0 } = useQuery({
+    queryKey: ["sms-logs-count", statusFilter, searchQuery, dateFrom, dateTo, contractorFilter],
     queryFn: async () => {
+      let query = supabase
+        .from("sms_notification_logs")
+        .select("id", { count: "exact", head: true });
+      query = applyFilters(query);
+      const { count, error } = await query;
+      if (error) throw error;
+      return count || 0;
+    },
+  });
+
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+
+  const { data: logs, isLoading, refetch } = useQuery({
+    queryKey: ["sms-logs", statusFilter, searchQuery, dateFrom, dateTo, contractorFilter, sortField, sortOrder, currentPage, itemsPerPage],
+    queryFn: async () => {
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
       let query = supabase
         .from("sms_notification_logs")
         .select("*")
         .order(sortField, { ascending: sortOrder === "asc" })
-        .limit(100);
+        .range(from, to);
 
-      if (statusFilter !== "all") {
-        query = query.eq("status", statusFilter);
-      }
-      
-      if (dateFrom) {
-        query = query.gte("created_at", dateFrom.toISOString());
-      }
-      
-      if (dateTo) {
-        const endOfDay = new Date(dateTo);
-        endOfDay.setHours(23, 59, 59, 999);
-        query = query.lte("created_at", endOfDay.toISOString());
-      }
-      
-      if (contractorFilter) {
-        query = query.eq("contractor_id", contractorFilter);
-      }
-
-      if (searchQuery) {
-        query = query.or(`file_name.ilike.%${searchQuery}%,interviewer_code.ilike.%${searchQuery}%,contractor_id.ilike.%${searchQuery}%`);
-      }
+      query = applyFilters(query);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -186,6 +220,195 @@ export default function SmsLogs() {
     }
   };
 
+  // PDF report generation
+  const generatePdfReport = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const allLogs = await fetchAllRows(
+        "sms_notification_logs",
+        "*",
+        (q: any) => {
+          let query = applyFilters(q);
+          return query.order("created_at", { ascending: false });
+        }
+      ) as SmsLog[];
+
+      if (allLogs.length === 0) {
+        toast.error("No SMS logs to include in the report");
+        return;
+      }
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const usable = pageWidth - margin * 2;
+      let y = 20;
+
+      const checkPage = (needed: number) => {
+        if (y + needed > doc.internal.pageSize.getHeight() - 15) {
+          doc.addPage();
+          y = 15;
+        }
+      };
+
+      // Header
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("SMS Notification Report", margin, y);
+      y += 8;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      const filterParts: string[] = [];
+      if (dateFrom) filterParts.push(`From: ${format(dateFrom, "PP")}`);
+      if (dateTo) filterParts.push(`To: ${format(dateTo, "PP")}`);
+      if (contractorFilter) filterParts.push(`Contractor: ${contractorFilter}`);
+      if (statusFilter !== "all") filterParts.push(`Status: ${statusFilter}`);
+      if (searchQuery) filterParts.push(`Search: ${searchQuery}`);
+      doc.text(`Generated: ${format(new Date(), "PPpp")}${filterParts.length ? " | " + filterParts.join(", ") : ""}`, margin, y);
+      y += 4;
+      doc.text(`Total Records: ${allLogs.length}`, margin, y);
+      y += 10;
+
+      // --- Section 1: Contractor Summary ---
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text("1. Contractor Summary", margin, y);
+      y += 7;
+
+      const byContractor = new Map<string, { total: number; sent: number; failed: number }>();
+      allLogs.forEach(log => {
+        const cid = log.contractor_id || "Unknown";
+        const entry = byContractor.get(cid) || { total: 0, sent: 0, failed: 0 };
+        entry.total++;
+        if (log.status === "sent") entry.sent++;
+        if (log.status === "failed" || log.status === "error") entry.failed++;
+        byContractor.set(cid, entry);
+      });
+
+      // Table header
+      const cols1 = [margin, margin + usable * 0.4, margin + usable * 0.6, margin + usable * 0.8];
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, y - 4, usable, 6, "F");
+      doc.text("Contractor", cols1[0] + 2, y);
+      doc.text("Total", cols1[1] + 2, y);
+      doc.text("Sent", cols1[2] + 2, y);
+      doc.text("Failed", cols1[3] + 2, y);
+      y += 5;
+      doc.setFont("helvetica", "normal");
+
+      let grandTotal = 0, grandSent = 0, grandFailed = 0;
+      byContractor.forEach((val, key) => {
+        checkPage(6);
+        doc.text(key, cols1[0] + 2, y);
+        doc.text(String(val.total), cols1[1] + 2, y);
+        doc.text(String(val.sent), cols1[2] + 2, y);
+        doc.text(String(val.failed), cols1[3] + 2, y);
+        grandTotal += val.total;
+        grandSent += val.sent;
+        grandFailed += val.failed;
+        y += 5;
+      });
+
+      // Grand total row
+      checkPage(6);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(230, 230, 230);
+      doc.rect(margin, y - 4, usable, 6, "F");
+      doc.text("ALL", cols1[0] + 2, y);
+      doc.text(String(grandTotal), cols1[1] + 2, y);
+      doc.text(String(grandSent), cols1[2] + 2, y);
+      doc.text(String(grandFailed), cols1[3] + 2, y);
+      y += 12;
+
+      // --- Section 2: Interviewer Summary ---
+      checkPage(20);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text("2. Interviewer Summary", margin, y);
+      y += 7;
+
+      const byInterviewer = new Map<string, number>();
+      allLogs.forEach(log => {
+        const code = log.interviewer_code || "Unknown";
+        byInterviewer.set(code, (byInterviewer.get(code) || 0) + 1);
+      });
+
+      const cols2 = [margin, margin + usable * 0.6];
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, y - 4, usable, 6, "F");
+      doc.text("Interviewer Code", cols2[0] + 2, y);
+      doc.text("Total SMS", cols2[1] + 2, y);
+      y += 5;
+      doc.setFont("helvetica", "normal");
+
+      const sortedInterviewers = [...byInterviewer.entries()].sort((a, b) => b[1] - a[1]);
+      sortedInterviewers.forEach(([code, count]) => {
+        checkPage(6);
+        doc.text(code, cols2[0] + 2, y);
+        doc.text(String(count), cols2[1] + 2, y);
+        y += 5;
+      });
+      y += 8;
+
+      // --- Section 3: Detailed Breakdown ---
+      checkPage(20);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text("3. Detailed Breakdown by Interviewer", margin, y);
+      y += 7;
+
+      // Group by interviewer
+      const detailByInterviewer = new Map<string, SmsLog[]>();
+      allLogs.forEach(log => {
+        const code = log.interviewer_code || "Unknown";
+        if (!detailByInterviewer.has(code)) detailByInterviewer.set(code, []);
+        detailByInterviewer.get(code)!.push(log);
+      });
+
+      const cols3 = [margin, margin + usable * 0.5, margin + usable * 0.8];
+      detailByInterviewer.forEach((interviewerLogs, code) => {
+        checkPage(14);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Interviewer: ${code} (${interviewerLogs.length} SMS)`, margin, y);
+        y += 5;
+
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.setFillColor(245, 245, 245);
+        doc.rect(margin, y - 3.5, usable, 5, "F");
+        doc.text("Interview (File Name)", cols3[0] + 2, y);
+        doc.text("Date/Time", cols3[1] + 2, y);
+        doc.text("Status", cols3[2] + 2, y);
+        y += 4.5;
+        doc.setFont("helvetica", "normal");
+
+        interviewerLogs.forEach(log => {
+          checkPage(5);
+          const fileName = log.file_name || "-";
+          const truncatedName = fileName.length > 35 ? fileName.substring(0, 32) + "..." : fileName;
+          doc.text(truncatedName, cols3[0] + 2, y);
+          doc.text(format(new Date(log.created_at), "MMM d, yyyy HH:mm"), cols3[1] + 2, y);
+          doc.text(log.status, cols3[2] + 2, y);
+          y += 4.5;
+        });
+        y += 4;
+      });
+
+      doc.save(`sms-report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+      toast.success("PDF report downloaded");
+    } catch (err) {
+      console.error("PDF generation error:", err);
+      toast.error("Failed to generate PDF report");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -193,10 +416,16 @@ export default function SmsLogs() {
           <h1 className="text-2xl font-bold">SMS Notification Logs</h1>
           <p className="text-muted-foreground">Track all SMS notifications sent for failed audits</p>
         </div>
-        <Button onClick={() => refetch()} variant="outline" size="sm">
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={generatePdfReport} variant="outline" size="sm" disabled={isGeneratingPdf}>
+            {isGeneratingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
+            PDF Report
+          </Button>
+          <Button onClick={() => refetch()} variant="outline" size="sm">
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -507,6 +736,21 @@ export default function SmsLogs() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {totalPages > 0 && (
+        <AuditPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={(val) => {
+            setItemsPerPage(val);
+            setCurrentPage(1);
+          }}
+        />
+      )}
     </div>
   );
 }
