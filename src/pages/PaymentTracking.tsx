@@ -306,12 +306,12 @@ const PaymentTracking = () => {
                   {/* Journey Status */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Journey Status</label>
-                    <Select value={journeyStatusFilter} onValueChange={setJourneyStatusFilter}>
+                    <Select value={journeyStatusFilter || "all"} onValueChange={(v) => setJourneyStatusFilter(v === "all" ? "" : v)}>
                       <SelectTrigger>
                         <SelectValue placeholder="All statuses" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All statuses</SelectItem>
+                        <SelectItem value="all">All statuses</SelectItem>
                         {JOURNEY_STATUSES.map((status) => (
                           <SelectItem key={status} value={status}>
                             {status}
@@ -324,12 +324,12 @@ const PaymentTracking = () => {
                   {/* Payment Status */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Payment</label>
-                    <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                    <Select value={paymentFilter || "all"} onValueChange={(v) => setPaymentFilter(v === "all" ? "" : v)}>
                       <SelectTrigger>
                         <SelectValue placeholder="All payments" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All payments</SelectItem>
+                        <SelectItem value="all">All payments</SelectItem>
                         {PAYMENT_TYPES.map((pt) => (
                           <SelectItem key={pt.value} value={pt.value}>
                             {pt.label}
@@ -342,12 +342,12 @@ const PaymentTracking = () => {
                   {/* Entry Status */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Entry Status</label>
-                    <Select value={entryStatusFilter} onValueChange={setEntryStatusFilter}>
+                    <Select value={entryStatusFilter || "all"} onValueChange={(v) => setEntryStatusFilter(v === "all" ? "" : v)}>
                       <SelectTrigger>
                         <SelectValue placeholder="All entry statuses" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All statuses</SelectItem>
+                        <SelectItem value="all">All statuses</SelectItem>
                         <SelectItem value="not_assigned">Not Assigned</SelectItem>
                         <SelectItem value="typing_in_progress">Typing In Progress</SelectItem>
                         <SelectItem value="data_entry_complete">Data Entry Complete</SelectItem>
