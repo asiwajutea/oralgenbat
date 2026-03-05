@@ -123,6 +123,7 @@ const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false, isI
 
 export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hideReviewButton = false }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [uploadingAudits, setUploadingAudits] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
