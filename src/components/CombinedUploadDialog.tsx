@@ -348,6 +348,7 @@ export const CombinedUploadDialog = ({
           progress: 100,
           status: "success",
         });
+        queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
         onUploadComplete();
       } else if (errorCount > 0) {
         onUploadProgress?.({

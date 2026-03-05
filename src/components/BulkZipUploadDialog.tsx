@@ -249,6 +249,7 @@ export const BulkZipUploadDialog = ({
     }
 
     if (successCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
       onUploadComplete();
     }
   };

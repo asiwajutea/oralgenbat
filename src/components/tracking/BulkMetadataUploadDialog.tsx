@@ -363,6 +363,7 @@ export const BulkMetadataUploadDialog = ({
     }
 
     if (successCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
       onUploadComplete();
     }
   };
