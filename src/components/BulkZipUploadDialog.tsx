@@ -43,6 +43,7 @@ export const BulkZipUploadDialog = ({
   onOpenChange: controlledOnOpenChange
 }: BulkZipUploadDialogProps) => {
   const [internalOpen, setInternalOpen] = useState(false);
+  const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
   const [zipFiles, setZipFiles] = useState<ZipFile[]>([]);
   const [visibleCount, setVisibleCount] = useState(5);
