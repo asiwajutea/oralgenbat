@@ -1,76 +1,34 @@
 
 
-## Plan: SMS Logs PDF Report + Pagination, and Fix Push Notification Delivery
+## Plan: Fix Metadata Not Updating on Re-upload
 
-This plan addresses two areas: adding a PDF report and pagination to the SMS Logs page, and fixing the web push notification delivery issue.
+### Root Cause
 
----
+Two issues prevent metadata from updating when re-uploaded:
 
-### 1. SMS Logs: PDF Report Download (Filtered)
+1. **Wrong parameter name in InterviewTracking.tsx** (line 827): Passes `zipUrl` instead of `mobileZipUrl` to the `process-mobile-zip` edge function. The edge function requires `mobileZipUrl`, so it throws "Missing required parameters" and metadata is never re-processed. This affects single metadata uploads from the Interview Tracking page.
 
-**File: `src/pages/SmsLogs.tsx`**
+2. **Stale React Query cache**: After metadata is re-processed by the edge function from other upload components (FailedInterviewModal, BulkMetadataUploadDialog, etc.), none of them invalidate the `["interview-metadata", auditId]` cache. When an auditor navigates to the review page, they may see stale cached data until the next hard refresh.
 
-Add a "Download PDF Report" button next to the Refresh button. The report will use the current filters and contain:
+### Changes
 
-**Report structure (using jsPDF, already installed):**
-- **Header**: "SMS Notification Report" + date range + filter info
-- **Section 1 - Contractor Summary Table**: For each contractor (and an "All" total row): contractor ID, total SMS count, successful count, failed count
-- **Section 2 - Interviewer Summary Table**: Each unique interviewer code with their total SMS count
-- **Section 3 - Detailed Breakdown**: Grouped by interviewer code, listing each interview (file_name) with the date/time the failure SMS was triggered and status
+**File: `src/pages/InterviewTracking.tsx`** (line 827)
+- Fix parameter name: change `zipUrl` to `mobileZipUrl` in the edge function invocation body
 
-**Data source**: The report will fetch ALL matching records (not just the paginated view) using `fetchAllRows` from `@/utils/paginatedFetch`, applying the same filters currently active.
+**File: `src/components/tracking/FailedInterviewModal.tsx`**
+- In the `submitMutation` `onSuccess` callback (line 241): add `queryClient.invalidateQueries({ queryKey: ["interview-metadata"] })` to clear all cached metadata
 
-**Changes:**
-- Import `jsPDF` and `fetchAllRows`
-- Add `generatePdfReport()` function that:
-  1. Fetches all filtered SMS logs (bypassing the current 100-row limit)
-  2. Groups data by contractor, then by interviewer
-  3. Renders tables using jsPDF's text/line drawing (similar to the existing `generateFraudReportPdf.ts` pattern)
-- Add download button in the header area
+**File: `src/components/tracking/BulkMetadataUploadDialog.tsx`**
+- After bulk upload completes: add metadata cache invalidation
 
----
+**File: `src/components/BulkZipUploadDialog.tsx`**
+- After bulk upload completes: add metadata cache invalidation
 
-### 2. SMS Logs: Pagination
+**File: `src/components/CombinedUploadDialog.tsx`**
+- After upload completes: add metadata cache invalidation
 
-**File: `src/pages/SmsLogs.tsx`**
+**File: `src/components/AuditTable.tsx`**
+- After ZIP upload handler completes: add metadata cache invalidation
 
-Currently the page fetches 100 rows with `.limit(100)` and shows all in one table. Convert to server-side pagination using the existing `AuditPagination` component pattern.
-
-**Changes:**
-- Add `currentPage` and `itemsPerPage` state variables
-- Replace the `.limit(100)` with proper `.range()` pagination
-- Add a count query to get `totalCount` for the current filters
-- Import and render `AuditPagination` below the table
-- Reset page to 1 when filters change
-
----
-
-### 3. Fix Push Notification: Web Push Encryption
-
-The test push button inserts a record into `push_notifications`, which triggers `notify_push_notification()` → calls the `send-web-push` edge function. The edge function currently sends the payload as **plain unencrypted JSON** to the push endpoint. This violates the Web Push protocol (RFC 8291) which **requires** content encryption using the subscription's `p256dh` and `auth` keys.
-
-All major push services (Google FCM, Mozilla autopush, Apple) reject unencrypted payloads, returning 400 or similar errors. This is why the push appears to succeed (the DB insert works, the edge function is called) but no actual browser notification arrives.
-
-**File: `supabase/functions/send-web-push/index.ts`**
-
-Complete rewrite of the `sendPush` function to implement proper RFC 8291 (aes128gcm) encryption:
-
-1. **ECDH key agreement**: Generate an ephemeral ECDH P-256 key pair, derive shared secret using the subscription's `p256dh` public key
-2. **HKDF key derivation**: Derive content encryption key (CEK) and nonce from the shared secret, the subscription's `auth` secret, and the ephemeral public key
-3. **AES-128-GCM encryption**: Encrypt the payload with the derived CEK and nonce
-4. **Proper headers**: Set `Content-Encoding: aes128gcm` and `Content-Type: application/octet-stream` instead of `application/json`
-
-The VAPID JWT signing (already implemented) will remain unchanged. Only the payload delivery mechanism changes.
-
-Additionally, simplify the `importVapidPrivateKey` function - the current approach of parsing the public key to extract x/y coordinates has potential byte-offset bugs. Instead, import the private key as a raw JWK using only the `d` parameter and derive x/y from the VAPID public key stored as a separate secret.
-
----
-
-### Technical Summary
-
-| Area | File | Change |
-|------|------|--------|
-| SMS PDF Report | `src/pages/SmsLogs.tsx` | Add PDF generation with contractor/interviewer/interview breakdown using jsPDF |
-| SMS Pagination | `src/pages/SmsLogs.tsx` | Add server-side pagination with AuditPagination component, count query |
-| Push Fix | `supabase/functions/send-web-push/index.ts` | Implement RFC 8291 aes128gcm encryption for Web Push payloads |
+All invalidations will use a broad `queryKey: ["interview-metadata"]` (without specific auditId) to ensure any cached metadata is refreshed, since bulk uploads affect multiple audits.
 
