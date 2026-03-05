@@ -832,6 +832,7 @@ const InterviewTracking = () => {
       }
 
       setActiveUpload(prev => prev ? { ...prev, progress: 100, status: "success" } : prev);
+      queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
 
       toast({
         title: "Metadata uploaded successfully",
