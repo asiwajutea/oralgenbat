@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { isValidInterviewName } from "@/lib/utils";
 
 interface BulkZipUploadDialogProps {
