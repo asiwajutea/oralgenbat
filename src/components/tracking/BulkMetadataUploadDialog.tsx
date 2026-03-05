@@ -60,6 +60,7 @@ export const BulkMetadataUploadDialog = ({
   onOpenChange: controlledOnOpenChange
 }: BulkMetadataUploadDialogProps) => {
   const { user, userRole } = useAuth();
+  const queryClient = useQueryClient();
   const [internalOpen, setInternalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [zipFiles, setZipFiles] = useState<ZipFile[]>([]);
