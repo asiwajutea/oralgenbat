@@ -45,6 +45,7 @@ export const CombinedUploadDialog = ({
   onUploadProgress,
 }: CombinedUploadDialogProps) => {
   const [internalOpen, setInternalOpen] = useState(false);
+  const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [zipFiles, setZipFiles] = useState<File[]>([]);
