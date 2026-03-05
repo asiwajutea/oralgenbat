@@ -411,6 +411,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
         }
 
         onRefresh();
+        queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
       } catch (error) {
         console.error("Upload error:", error);
         toast({
