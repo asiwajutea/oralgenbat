@@ -824,7 +824,7 @@ const InterviewTracking = () => {
       setActiveUpload(prev => prev ? { ...prev, progress: 90 } : prev);
 
       const { error: processError } = await supabase.functions.invoke("process-mobile-zip", {
-        body: { auditId: interviewId, zipUrl: urlData.publicUrl },
+        body: { auditId: interviewId, mobileZipUrl: urlData.publicUrl },
       });
 
       if (processError) {
@@ -832,6 +832,7 @@ const InterviewTracking = () => {
       }
 
       setActiveUpload(prev => prev ? { ...prev, progress: 100, status: "success" } : prev);
+      queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
 
       toast({
         title: "Metadata uploaded successfully",

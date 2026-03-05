@@ -240,6 +240,7 @@ export function FailedInterviewModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
       toast({
         title: "Submitted for Re-Audit",
         description: "The interview has been submitted for re-review.",

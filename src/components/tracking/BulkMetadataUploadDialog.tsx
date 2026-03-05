@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { isValidInterviewName } from "@/lib/utils";
 
@@ -59,6 +60,7 @@ export const BulkMetadataUploadDialog = ({
   onOpenChange: controlledOnOpenChange
 }: BulkMetadataUploadDialogProps) => {
   const { user, userRole } = useAuth();
+  const queryClient = useQueryClient();
   const [internalOpen, setInternalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [zipFiles, setZipFiles] = useState<ZipFile[]>([]);
@@ -361,6 +363,7 @@ export const BulkMetadataUploadDialog = ({
     }
 
     if (successCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
       onUploadComplete();
     }
   };

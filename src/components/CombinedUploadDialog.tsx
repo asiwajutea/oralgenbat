@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { isValidInterviewName } from "@/lib/utils";
 
 interface CombinedUploadDialogProps {
@@ -44,6 +45,7 @@ export const CombinedUploadDialog = ({
   onUploadProgress,
 }: CombinedUploadDialogProps) => {
   const [internalOpen, setInternalOpen] = useState(false);
+  const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [zipFiles, setZipFiles] = useState<File[]>([]);
@@ -346,6 +348,7 @@ export const CombinedUploadDialog = ({
           progress: 100,
           status: "success",
         });
+        queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
         onUploadComplete();
       } else if (errorCount > 0) {
         onUploadProgress?.({

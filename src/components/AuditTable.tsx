@@ -17,7 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import JSZip from "jszip";
 
 interface Audit {
@@ -123,6 +123,7 @@ const getStatusBadge = (status: Audit["status"], isReAudit: boolean = false, isI
 
 export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hideReviewButton = false }: AuditTableProps) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [uploadingAudits, setUploadingAudits] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
@@ -410,6 +411,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
         }
 
         onRefresh();
+        queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
       } catch (error) {
         console.error("Upload error:", error);
         toast({
