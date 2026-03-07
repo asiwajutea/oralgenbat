@@ -542,6 +542,17 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
     }
 
     try {
+      // Delete related records first to avoid foreign key constraint errors
+      await supabase.from('audit_checklist_progress').delete().eq('audit_id', auditId);
+      await supabase.from('artifact_correction_comments').delete().eq('audit_id', auditId);
+      await supabase.from('re_audit_submissions').delete().eq('audit_id', auditId);
+      await supabase.from('interview_assignments').delete().eq('audit_id', auditId);
+      await supabase.from('sms_notification_logs').delete().eq('audit_id', auditId);
+      await supabase.from('payment_records').delete().eq('audit_id', auditId);
+      await supabase.from('audit_file_cleanup_log').delete().eq('audit_id', auditId);
+      await supabase.from('interview_photos').delete().eq('audit_id', auditId);
+      await supabase.from('interview_metadata').delete().eq('audit_id', auditId);
+
       const { error } = await supabase
         .from('audits')
         .delete()
@@ -555,6 +566,7 @@ export const AuditTable = ({ audits, onRefresh, onReaudit, showReauditAction, hi
         description: "Interview deleted successfully",
       });
     } catch (error) {
+      console.error('Delete error:', error);
       toast({
         title: "Error",
         description: "Failed to delete interview",
