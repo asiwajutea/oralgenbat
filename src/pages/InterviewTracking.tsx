@@ -419,11 +419,29 @@ const InterviewTracking = () => {
     enabled: !!user?.id,
   });
 
+  // Fetch burned audit IDs to exclude from listing
+  const { data: burnedAuditIds = new Set<string>() } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return new Set((data || []).map((b) => b.audit_id));
+    },
+  });
+
+  // Filter out burned interviews
+  const nonBurnedInterviews = useMemo(() => {
+    if (burnedAuditIds.size === 0) return interviews;
+    return interviews.filter((i) => !burnedAuditIds.has(i.id));
+  }, [interviews, burnedAuditIds]);
+
 
   // Fetch unread comment counts for all interviews with comments (not just resolved)
   const auditIdsWithComments = useMemo(() => 
-    interviews.map(i => i.id),
-    [interviews]
+    nonBurnedInterviews.map(i => i.id),
+    [nonBurnedInterviews]
   );
 
   const { data: unreadCommentCounts = {} } = useQuery({
