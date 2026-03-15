@@ -31,7 +31,8 @@ import {
   AlertTriangle,
   Flag,
   FileArchive,
-  MessageCircle
+  MessageCircle,
+  Flame
 } from "lucide-react";
 import { format } from "date-fns";
 import {
