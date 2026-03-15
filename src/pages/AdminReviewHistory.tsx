@@ -14,12 +14,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
-import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown, Flag, MessageCircle, CheckCircle, Loader2, FileArchive } from "lucide-react";
+import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown, Flag, MessageCircle, CheckCircle, Loader2, FileArchive, Flame } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { fetchAllRows } from "@/utils/paginatedFetch";
 import JSZip from "jszip";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
+import SendToBurnDialog from "@/components/SendToBurnDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 type SortField = "file_name" | "reviewed_by" | "status" | "reviewed_at" | "review_duration_seconds" | "re_audit_count";
 type SortDirection = "asc" | "desc";
