@@ -51,6 +51,7 @@ import NoticeBoard from "./pages/NoticeBoard";
 import AccountSuspended from "./pages/AccountSuspended";
 import ResetPassword from "./pages/ResetPassword";
 import DuplicateInterviews from "./pages/DuplicateInterviews";
+import BurnQueue from "./pages/BurnQueue";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
