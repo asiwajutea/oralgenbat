@@ -1552,6 +1552,17 @@ const InterviewTracking = () => {
                                 </Button>
                               </>
                             )}
+                            {interview.status !== "Audit Passed" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => { setBurnInterview(interview); setShowBurnDialog(true); }}
+                                className="gap-1 text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-900/20"
+                              >
+                                <Flame className="h-3 w-3" />
+                                Burn
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
