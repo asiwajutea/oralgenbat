@@ -1257,6 +1257,16 @@ const AdminReviewHistory = () => {
           resolvedBy={selectedAudit.artifact_correction_resolved_by}
         />
       )}
+
+      {/* Send to Burn Dialog */}
+      {burnAudit && (
+        <SendToBurnDialog
+          open={showBurnDialog}
+          onOpenChange={setShowBurnDialog}
+          auditId={burnAudit.id}
+          fileName={burnAudit.file_name}
+        />
+      )}
     </>
   );
 };
