@@ -1198,7 +1198,20 @@ const AdminReviewHistory = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex items-center gap-1">
+                          <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                          {audit.status !== "Audit Passed" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); setBurnAudit(audit); setShowBurnDialog(true); }}
+                              className="h-7 w-7 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                              title="Send to Burn"
+                            >
+                              <Flame className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
