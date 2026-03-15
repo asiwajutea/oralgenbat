@@ -490,11 +490,11 @@ const InterviewTracking = () => {
 
   // Merge unread counts into interviews
   const interviewsWithUnreadCounts = useMemo(() => {
-    return interviews.map(i => ({
+    return nonBurnedInterviews.map(i => ({
       ...i,
       unread_comment_count: unreadCommentCounts[i.id] || 0,
     }));
-  }, [interviews, unreadCommentCounts]);
+  }, [nonBurnedInterviews, unreadCommentCounts]);
 
   // Get unique values for filter dropdowns
   const filterOptions = useMemo(() => {
