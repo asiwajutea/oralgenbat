@@ -46,6 +46,7 @@ const Home = () => {
           </p>
         </div>
 
+        <LoginWelcomeModal />
         {renderDashboard()}
       </div>
     </div>

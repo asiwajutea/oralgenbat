@@ -363,6 +363,18 @@ const App = () => (
                 </FullAdminRoute>
               }
             />
+            <Route
+              path="/burn-queue"
+              element={
+                <ProtectedRoute>
+                  <TrackingRoute>
+                    <Layout>
+                      <BurnQueue />
+                    </Layout>
+                  </TrackingRoute>
+                </ProtectedRoute>
+              }
+            />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

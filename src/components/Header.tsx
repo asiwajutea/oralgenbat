@@ -35,7 +35,7 @@ const Header = () => {
   // Operations items based on role
   const operationsItems = [
     ...(userRole && ['field_manager', 'contractor', 'admin', 'super_admin', 'sub_contractor'].includes(userRole)
-      ? [{ to: '/interview-tracking', label: 'Tracking' }, { to: '/payment-tracking', label: 'Payments' }]
+      ? [{ to: '/interview-tracking', label: 'Tracking' }, { to: '/payment-tracking', label: 'Payments' }, { to: '/burn-queue', label: 'Burn Queue' }]
       : []),
     ...(userRole && ['data_entry_clerk', 'quality_assurance_manager', 'admin', 'super_admin'].includes(userRole)
       ? [{ to: '/data-entry', label: 'Data Entry' }]
