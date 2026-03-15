@@ -196,6 +196,12 @@ const Index = () => {
         query = query.lte("uploaded_at", filters.endDate);
       }
 
+      // Exclude burned audits from direct query
+      if (burnedIds.size > 0) {
+        const burnedArr = Array.from(burnedIds);
+        query = query.not("id", "in", `(${burnedArr.join(",")})`);
+      }
+
       const to = from + itemsPerPage - 1;
       
       if (shouldSortByArtifacts) {
