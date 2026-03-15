@@ -1645,6 +1645,16 @@ const InterviewTracking = () => {
           onClose={() => setActiveUpload(null)}
         />
       )}
+
+      {/* Send to Burn Dialog */}
+      {burnInterview && (
+        <SendToBurnDialog
+          open={showBurnDialog}
+          onOpenChange={setShowBurnDialog}
+          auditId={burnInterview.id}
+          fileName={burnInterview.file_name}
+        />
+      )}
     </div>
   );
 };
