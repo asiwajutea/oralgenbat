@@ -18,7 +18,7 @@ const Header = () => {
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
 
   // Active state helpers
-  const isOperationsActive = ['/interview-tracking', '/payment-tracking', '/data-entry'].some(p => location.pathname.startsWith(p));
+  const isOperationsActive = ['/interview-tracking', '/payment-tracking', '/data-entry', '/burn-queue'].some(p => location.pathname.startsWith(p));
   const isTeamsActive = ['/team-management', '/subcontractor-team-management', '/admin/team-approvals'].some(p => location.pathname.startsWith(p));
   const isAdminActive = ['/admin'].some(p => location.pathname.startsWith(p)) && !location.pathname.startsWith('/admin/team-approvals');
   const isAnalyticsActive = location.pathname === '/analytics' || location.pathname === '/my-analytics' || location.pathname === '/fraud-analytics' || location.pathname.startsWith('/role-analytics');
