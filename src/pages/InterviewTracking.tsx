@@ -57,6 +57,7 @@ import { BulkPdfUploadDialog } from "@/components/tracking/BulkPdfUploadDialog";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
+import SendToBurnDialog from "@/components/SendToBurnDialog";
 import { toast } from "@/hooks/use-toast";
 import {
   Accordion,
