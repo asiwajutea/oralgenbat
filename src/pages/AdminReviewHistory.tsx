@@ -61,6 +61,12 @@ const STORAGE_KEYS = {
 const AdminReviewHistory = () => {
   const isOnline = useOnlineStatus();
   const queryClient = useQueryClient();
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "admin" || userRole === "super_admin";
+  
+  // Burn dialog state
+  const [showBurnDialog, setShowBurnDialog] = useState(false);
+  const [burnAudit, setBurnAudit] = useState<ReviewedAudit | null>(null);
   
   // Resolution dialog state
   const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
