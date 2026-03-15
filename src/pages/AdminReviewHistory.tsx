@@ -245,14 +245,31 @@ const AdminReviewHistory = () => {
     },
   });
 
+  // Fetch burned audit IDs to exclude
+  const { data: burnedAuditIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids-admin"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b) => b.audit_id);
+    },
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-review-history", currentPage, itemsPerPage, statusFilter, reviewerFilter, searchTerm, sortField, sortDirection],
+    queryKey: ["admin-review-history", currentPage, itemsPerPage, statusFilter, reviewerFilter, searchTerm, sortField, sortDirection, burnedAuditIds],
     queryFn: async () => {
       let query = supabase
         .from("audits")
         .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction, artifact_correction_resolved_at, artifact_correction_resolved_by", { count: "exact" })
         .not("reviewed_at", "is", null)
         .order(sortField, { ascending: sortDirection === "asc" });
+
+      // Exclude burned audits
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       if (statusFilter !== "all") {
         if (statusFilter === "failed_pdf") {
