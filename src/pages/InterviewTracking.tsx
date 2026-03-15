@@ -160,6 +160,10 @@ const InterviewTracking = () => {
   const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
   const [resolvedCommentsInterview, setResolvedCommentsInterview] = useState<TrackingInterview | null>(null);
 
+  // Send to Burn dialog state
+  const [showBurnDialog, setShowBurnDialog] = useState(false);
+  const [burnInterview, setBurnInterview] = useState<TrackingInterview | null>(null);
+
   // File upload refs and progress tracking
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   
