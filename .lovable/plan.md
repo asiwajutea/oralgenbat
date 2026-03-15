@@ -1,101 +1,76 @@
-## Plan: Login Welcome Modal + "Send to Burn" Feature
 
-### Feature 1: Login Welcome Modal for FM/Contractor/Sub-Contractor
 
-**New file: `src/components/LoginWelcomeModal.tsx**`
+## Plan: SMS Logs PDF Report + Pagination, and Fix Push Notification Delivery
 
-A modal that shows on login for `field_manager`, `contractor`, and `sub_contractor` roles. It will:
-
-- Fetch the user's scoped audits that are NOT "Audit Passed" and group them by status category (Audit Failed, No metadata, Re-Audit)
-- Display a greeting with the user's first name
-- Show total count of non-passed interviews
-- Show a breakdown table by status category with counts
-- Include an "Acknowledged" button to dismiss
-- Use `sessionStorage` to only show once per session (key: `login_welcome_shown`)
-
-**Modified file: `src/pages/Home.tsx**`
-
-- Import and render `LoginWelcomeModal` for the relevant roles
-
-Data scoping will follow existing patterns:
-
-- **Field Manager**: filter audits by team codes from `team_assignments`
-- **Contractor**: filter by `contractor_id` via `interview_metadata`
-- **Sub-Contractor**: filter by assigned field managers' team codes
+This plan addresses two areas: adding a PDF report and pagination to the SMS Logs page, and fixing the web push notification delivery issue.
 
 ---
 
-### Feature 2: "Send to Burn" System
+### 1. SMS Logs: PDF Report Download (Filtered)
 
-#### Database changes (migration):
+**File: `src/pages/SmsLogs.tsx`**
 
-1. **New table: `burn_queue**`
-  - `id` (uuid, PK)
-  - `audit_id` (uuid, NOT NULL, references nothing explicitly but maps to audits)
-  - `file_name` (text, NOT NULL)
-  - `sent_by` (uuid, NOT NULL)
-  - `reason` (text, NOT NULL)
-  - `sent_at` (timestamptz, default now())
-  - `restored_at` (timestamptz, nullable)
-  - `restored_by` (uuid, nullable)
-  - RLS: approved users can SELECT; admin/super_admin/contractor/sub_contractor/field_manager can INSERT; admin/super_admin can UPDATE (for restore); admin/super_admin can DELETE
-2. **Scheduled cleanup**: A pg_cron job that deletes audits (with full cascade) that have been in the burn queue for 190+ days and are not restored.
+Add a "Download PDF Report" button next to the Refresh button. The report will use the current filters and contain:
 
-#### New files:
+**Report structure (using jsPDF, already installed):**
+- **Header**: "SMS Notification Report" + date range + filter info
+- **Section 1 - Contractor Summary Table**: For each contractor (and an "All" total row): contractor ID, total SMS count, successful count, failed count
+- **Section 2 - Interviewer Summary Table**: Each unique interviewer code with their total SMS count
+- **Section 3 - Detailed Breakdown**: Grouped by interviewer code, listing each interview (file_name) with the date/time the failure SMS was triggered and status
 
-`**src/components/SendToBurnDialog.tsx**`
+**Data source**: The report will fetch ALL matching records (not just the paginated view) using `fetchAllRows` from `@/utils/paginatedFetch`, applying the same filters currently active.
 
-- Dialog with a textarea for the reason (required)
-- Accepts `auditId`, `fileName`, `onSuccess` props
-- Inserts into `burn_queue` table on submit
+**Changes:**
+- Import `jsPDF` and `fetchAllRows`
+- Add `generatePdfReport()` function that:
+  1. Fetches all filtered SMS logs (bypassing the current 100-row limit)
+  2. Groups data by contractor, then by interviewer
+  3. Renders tables using jsPDF's text/line drawing (similar to the existing `generateFraudReportPdf.ts` pattern)
+- Add download button in the header area
 
-`**src/pages/BurnQueue.tsx**`
+---
 
-- Full page showing all "Ready to Burn" interviews
-- Table columns: File Name, Status (at time of burn), Sent By (resolved name), Reason, Sent At, Days Remaining (190 - days since sent), Actions
-- "Restore" button per row (updates `restored_at` and `restored_by`)
-- Pagination using `AuditPagination`
-- Filter by restored/active status
+### 2. SMS Logs: Pagination
 
-#### Modified files:
+**File: `src/pages/SmsLogs.tsx`**
 
-`**src/pages/InterviewTracking.tsx**`
+Currently the page fetches 100 rows with `.limit(100)` and shows all in one table. Convert to server-side pagination using the existing `AuditPagination` component pattern.
 
-- Add a "Send to Burn" action button/icon on each row where status is NOT "Audit Passed"
-- Opens `SendToBurnDialog`
+**Changes:**
+- Add `currentPage` and `itemsPerPage` state variables
+- Replace the `.limit(100)` with proper `.range()` pagination
+- Add a count query to get `totalCount` for the current filters
+- Import and render `AuditPagination` below the table
+- Reset page to 1 when filters change
 
-`**src/pages/AdminReviewHistory.tsx**`
+---
 
-- Add a "Send to Burn" action button on each row where status is NOT "Audit Passed"
-- Opens `SendToBurnDialog`
+### 3. Fix Push Notification: Web Push Encryption
 
-`**src/App.tsx**`
+The test push button inserts a record into `push_notifications`, which triggers `notify_push_notification()` → calls the `send-web-push` edge function. The edge function currently sends the payload as **plain unencrypted JSON** to the push endpoint. This violates the Web Push protocol (RFC 8291) which **requires** content encryption using the subscription's `p256dh` and `auth` keys.
 
-- Add route `/burn-queue` wrapped in `TrackingRoute` + `Layout`
+All major push services (Google FCM, Mozilla autopush, Apple) reject unencrypted payloads, returning 400 or similar errors. This is why the push appears to succeed (the DB insert works, the edge function is called) but no actual browser notification arrives.
 
-`**src/components/Header.tsx**`
+**File: `supabase/functions/send-web-push/index.ts`**
 
-- Add "Burn Queue" link under the Operations dropdown menu
+Complete rewrite of the `sendPush` function to implement proper RFC 8291 (aes128gcm) encryption:
 
-#### Auto-deletion edge function:
+1. **ECDH key agreement**: Generate an ephemeral ECDH P-256 key pair, derive shared secret using the subscription's `p256dh` public key
+2. **HKDF key derivation**: Derive content encryption key (CEK) and nonce from the shared secret, the subscription's `auth` secret, and the ephemeral public key
+3. **AES-128-GCM encryption**: Encrypt the payload with the derived CEK and nonce
+4. **Proper headers**: Set `Content-Encoding: aes128gcm` and `Content-Type: application/octet-stream` instead of `application/json`
 
-`**supabase/functions/cleanup-burn-queue/index.ts**`
+The VAPID JWT signing (already implemented) will remain unchanged. Only the payload delivery mechanism changes.
 
-- Queries `burn_queue` for items where `sent_at < now() - 190 days` and `restored_at IS NULL`
-- For each, performs the full cascade delete (same pattern as existing interview deletion) and removes from `burn_queue`
-- Scheduled via pg_cron to run daily  
-  
-Please Note: any interview sent to burn should be removed from the interviews on the interviews page, tracking page, admin review, and should not be part of the interview counts until it is restored. When it is send to burn it should act as if the interview had been temporarily deleted, so when report are generated, such interviews would not appear on the report.
+Additionally, simplify the `importVapidPrivateKey` function - the current approach of parsing the public key to extract x/y coordinates has potential byte-offset bugs. Instead, import the private key as a raw JWK using only the `d` parameter and derive x/y from the VAPID public key stored as a separate secret.
 
 ---
 
 ### Technical Summary
 
+| Area | File | Change |
+|------|------|--------|
+| SMS PDF Report | `src/pages/SmsLogs.tsx` | Add PDF generation with contractor/interviewer/interview breakdown using jsPDF |
+| SMS Pagination | `src/pages/SmsLogs.tsx` | Add server-side pagination with AuditPagination component, count query |
+| Push Fix | `supabase/functions/send-web-push/index.ts` | Implement RFC 8291 aes128gcm encryption for Web Push payloads |
 
-| Area            | Files                                                                              | Change                                                            |
-| --------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Welcome Modal   | New `LoginWelcomeModal.tsx`, edit `Home.tsx`                                       | Role-scoped modal showing non-passed interview counts by category |
-| Burn Queue DB   | Migration                                                                          | New `burn_queue` table with RLS                                   |
-| Send to Burn UI | New `SendToBurnDialog.tsx`, edit `InterviewTracking.tsx`, `AdminReviewHistory.tsx` | "Send to Burn" button with reason dialog                          |
-| Burn Queue Page | New `BurnQueue.tsx`, edit `App.tsx`, `Header.tsx`                                  | Full page with restore capability and pagination                  |
-| Auto-cleanup    | New edge function + pg_cron                                                        | Delete burned interviews after 190 days                           |

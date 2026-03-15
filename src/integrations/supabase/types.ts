@@ -425,6 +425,39 @@ export type Database = {
         }
         Relationships: []
       }
+      burn_queue: {
+        Row: {
+          audit_id: string
+          file_name: string
+          id: string
+          reason: string
+          restored_at: string | null
+          restored_by: string | null
+          sent_at: string
+          sent_by: string
+        }
+        Insert: {
+          audit_id: string
+          file_name: string
+          id?: string
+          reason: string
+          restored_at?: string | null
+          restored_by?: string | null
+          sent_at?: string
+          sent_by: string
+        }
+        Update: {
+          audit_id?: string
+          file_name?: string
+          id?: string
+          reason?: string
+          restored_at?: string | null
+          restored_by?: string | null
+          sent_at?: string
+          sent_by?: string
+        }
+        Relationships: []
+      }
       data_entry_teams: {
         Row: {
           created_at: string | null

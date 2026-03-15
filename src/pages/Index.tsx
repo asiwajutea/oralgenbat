@@ -93,6 +93,13 @@ const Index = () => {
   const fetchAudits = async () => {
     try {
       setIsLoading(true);
+
+      // Fetch burned audit IDs first
+      const { data: burnedData } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      const burnedIds = new Set((burnedData || []).map((b) => b.audit_id));
       
       const from = (currentPage - 1) * itemsPerPage;
       
@@ -113,17 +120,17 @@ const Index = () => {
           p_interviewer: filters.interviewerId || null,
           p_start_date: filters.startDate || null,
           p_end_date: filters.endDate || null,
-          p_limit: itemsPerPage,
+          p_limit: itemsPerPage + burnedIds.size, // fetch extra to account for filtering
           p_offset: from,
           p_sort_by_artifacts: shouldSortByArtifacts,
         });
 
         if (rpcError) throw rpcError;
 
-        const results = rpcData || [];
-        const total = results.length > 0 ? Number(results[0].total_count) : 0;
+        const results = (rpcData || []).filter((a: any) => !burnedIds.has(a.id));
+        const total = results.length > 0 ? Math.max(0, Number(results[0]?.total_count || 0) - burnedIds.size) : 0;
         
-        setAudits(results as unknown as Audit[]);
+        setAudits(results.slice(0, itemsPerPage) as unknown as Audit[]);
         setTotalCount(total);
         setIsLoading(false);
         return;
@@ -187,6 +194,12 @@ const Index = () => {
       }
       if (filters.endDate) {
         query = query.lte("uploaded_at", filters.endDate);
+      }
+
+      // Exclude burned audits from direct query
+      if (burnedIds.size > 0) {
+        const burnedArr = Array.from(burnedIds);
+        query = query.not("id", "in", `(${burnedArr.join(",")})`);
       }
 
       const to = from + itemsPerPage - 1;

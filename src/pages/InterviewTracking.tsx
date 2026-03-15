@@ -31,7 +31,8 @@ import {
   AlertTriangle,
   Flag,
   FileArchive,
-  MessageCircle
+  MessageCircle,
+  Flame
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -57,6 +58,7 @@ import { BulkPdfUploadDialog } from "@/components/tracking/BulkPdfUploadDialog";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
+import SendToBurnDialog from "@/components/SendToBurnDialog";
 import { toast } from "@/hooks/use-toast";
 import {
   Accordion,
@@ -158,6 +160,10 @@ const InterviewTracking = () => {
   // Resolved Comments modal state
   const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
   const [resolvedCommentsInterview, setResolvedCommentsInterview] = useState<TrackingInterview | null>(null);
+
+  // Send to Burn dialog state
+  const [showBurnDialog, setShowBurnDialog] = useState(false);
+  const [burnInterview, setBurnInterview] = useState<TrackingInterview | null>(null);
 
   // File upload refs and progress tracking
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -413,11 +419,29 @@ const InterviewTracking = () => {
     enabled: !!user?.id,
   });
 
+  // Fetch burned audit IDs to exclude from listing
+  const { data: burnedAuditIds = new Set<string>() } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return new Set((data || []).map((b) => b.audit_id));
+    },
+  });
+
+  // Filter out burned interviews
+  const nonBurnedInterviews = useMemo(() => {
+    if (burnedAuditIds.size === 0) return interviews;
+    return interviews.filter((i) => !burnedAuditIds.has(i.id));
+  }, [interviews, burnedAuditIds]);
+
 
   // Fetch unread comment counts for all interviews with comments (not just resolved)
   const auditIdsWithComments = useMemo(() => 
-    interviews.map(i => i.id),
-    [interviews]
+    nonBurnedInterviews.map(i => i.id),
+    [nonBurnedInterviews]
   );
 
   const { data: unreadCommentCounts = {} } = useQuery({
@@ -466,11 +490,11 @@ const InterviewTracking = () => {
 
   // Merge unread counts into interviews
   const interviewsWithUnreadCounts = useMemo(() => {
-    return interviews.map(i => ({
+    return nonBurnedInterviews.map(i => ({
       ...i,
       unread_comment_count: unreadCommentCounts[i.id] || 0,
     }));
-  }, [interviews, unreadCommentCounts]);
+  }, [nonBurnedInterviews, unreadCommentCounts]);
 
   // Get unique values for filter dropdowns
   const filterOptions = useMemo(() => {
@@ -1528,6 +1552,17 @@ const InterviewTracking = () => {
                                 </Button>
                               </>
                             )}
+                            {interview.status !== "Audit Passed" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => { setBurnInterview(interview); setShowBurnDialog(true); }}
+                                className="gap-1 text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-900/20"
+                              >
+                                <Flame className="h-3 w-3" />
+                                Burn
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1608,6 +1643,16 @@ const InterviewTracking = () => {
           status={activeUpload.status}
           errorMessage={activeUpload.errorMessage}
           onClose={() => setActiveUpload(null)}
+        />
+      )}
+
+      {/* Send to Burn Dialog */}
+      {burnInterview && (
+        <SendToBurnDialog
+          open={showBurnDialog}
+          onOpenChange={setShowBurnDialog}
+          auditId={burnInterview.id}
+          fileName={burnInterview.file_name}
         />
       )}
     </div>

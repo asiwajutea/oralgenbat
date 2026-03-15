@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.parse-invoice-pdf]
 verify_jwt = false
+
+[functions.cleanup-burn-queue]
+verify_jwt = false

@@ -6,6 +6,7 @@ import AdminDashboard from "@/components/home/AdminDashboard";
 import SubContractorDashboard from "@/components/home/SubContractorDashboard";
 import QAManagerDashboard from "@/components/home/QAManagerDashboard";
 import DataEntryClerkDashboard from "@/components/home/DataEntryClerkDashboard";
+import LoginWelcomeModal from "@/components/LoginWelcomeModal";
 
 const Home = () => {
   const { userRole, profile } = useAuth();
@@ -45,6 +46,7 @@ const Home = () => {
           </p>
         </div>
 
+        <LoginWelcomeModal />
         {renderDashboard()}
       </div>
     </div>

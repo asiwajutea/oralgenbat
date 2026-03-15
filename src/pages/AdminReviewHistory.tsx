@@ -14,12 +14,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
-import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown, Flag, MessageCircle, CheckCircle, Loader2, FileArchive } from "lucide-react";
+import { History, Search, Clock, User, ExternalLink, CheckCircle2, XCircle, Calendar, Users, ClipboardList, Download, FileText, Smartphone, X, ArrowUpDown, ArrowUp, ArrowDown, Flag, MessageCircle, CheckCircle, Loader2, FileArchive, Flame } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { fetchAllRows } from "@/utils/paginatedFetch";
 import JSZip from "jszip";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
+import SendToBurnDialog from "@/components/SendToBurnDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 type SortField = "file_name" | "reviewed_by" | "status" | "reviewed_at" | "review_duration_seconds" | "re_audit_count";
 type SortDirection = "asc" | "desc";
@@ -59,6 +61,12 @@ const STORAGE_KEYS = {
 const AdminReviewHistory = () => {
   const isOnline = useOnlineStatus();
   const queryClient = useQueryClient();
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "admin" || userRole === "super_admin";
+  
+  // Burn dialog state
+  const [showBurnDialog, setShowBurnDialog] = useState(false);
+  const [burnAudit, setBurnAudit] = useState<ReviewedAudit | null>(null);
   
   // Resolution dialog state
   const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
@@ -237,14 +245,31 @@ const AdminReviewHistory = () => {
     },
   });
 
+  // Fetch burned audit IDs to exclude
+  const { data: burnedAuditIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids-admin"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b) => b.audit_id);
+    },
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-review-history", currentPage, itemsPerPage, statusFilter, reviewerFilter, searchTerm, sortField, sortDirection],
+    queryKey: ["admin-review-history", currentPage, itemsPerPage, statusFilter, reviewerFilter, searchTerm, sortField, sortDirection, burnedAuditIds],
     queryFn: async () => {
       let query = supabase
         .from("audits")
         .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction, artifact_correction_resolved_at, artifact_correction_resolved_by", { count: "exact" })
         .not("reviewed_at", "is", null)
         .order(sortField, { ascending: sortDirection === "asc" });
+
+      // Exclude burned audits
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       if (statusFilter !== "all") {
         if (statusFilter === "failed_pdf") {
@@ -1173,7 +1198,20 @@ const AdminReviewHistory = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex items-center gap-1">
+                          <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                          {audit.status !== "Audit Passed" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); setBurnAudit(audit); setShowBurnDialog(true); }}
+                              className="h-7 w-7 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                              title="Send to Burn"
+                            >
+                              <Flame className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1217,6 +1255,16 @@ const AdminReviewHistory = () => {
           fileName={selectedAudit.file_name}
           resolvedAt={selectedAudit.artifact_correction_resolved_at}
           resolvedBy={selectedAudit.artifact_correction_resolved_by}
+        />
+      )}
+
+      {/* Send to Burn Dialog */}
+      {burnAudit && (
+        <SendToBurnDialog
+          open={showBurnDialog}
+          onOpenChange={setShowBurnDialog}
+          auditId={burnAudit.id}
+          fileName={burnAudit.file_name}
         />
       )}
     </>

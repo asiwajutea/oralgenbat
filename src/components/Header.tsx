@@ -18,7 +18,7 @@ const Header = () => {
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
 
   // Active state helpers
-  const isOperationsActive = ['/interview-tracking', '/payment-tracking', '/data-entry'].some(p => location.pathname.startsWith(p));
+  const isOperationsActive = ['/interview-tracking', '/payment-tracking', '/data-entry', '/burn-queue'].some(p => location.pathname.startsWith(p));
   const isTeamsActive = ['/team-management', '/subcontractor-team-management', '/admin/team-approvals'].some(p => location.pathname.startsWith(p));
   const isAdminActive = ['/admin'].some(p => location.pathname.startsWith(p)) && !location.pathname.startsWith('/admin/team-approvals');
   const isAnalyticsActive = location.pathname === '/analytics' || location.pathname === '/my-analytics' || location.pathname === '/fraud-analytics' || location.pathname.startsWith('/role-analytics');
@@ -35,7 +35,7 @@ const Header = () => {
   // Operations items based on role
   const operationsItems = [
     ...(userRole && ['field_manager', 'contractor', 'admin', 'super_admin', 'sub_contractor'].includes(userRole)
-      ? [{ to: '/interview-tracking', label: 'Tracking' }, { to: '/payment-tracking', label: 'Payments' }]
+      ? [{ to: '/interview-tracking', label: 'Tracking' }, { to: '/payment-tracking', label: 'Payments' }, { to: '/burn-queue', label: 'Burn Queue' }]
       : []),
     ...(userRole && ['data_entry_clerk', 'quality_assurance_manager', 'admin', 'super_admin'].includes(userRole)
       ? [{ to: '/data-entry', label: 'Data Entry' }]
