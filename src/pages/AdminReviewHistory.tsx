@@ -408,6 +408,10 @@ const AdminReviewHistory = () => {
       if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+      // Exclude burned audits from export
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       const { data: allAudits } = await query;
       if (!allAudits?.length) return;
@@ -451,6 +455,10 @@ const AdminReviewHistory = () => {
       if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+      // Exclude burned audits from export
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       const { data: allAudits } = await query;
       if (!allAudits?.length) return;
