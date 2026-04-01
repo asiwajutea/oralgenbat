@@ -1,68 +1,95 @@
 
 
-## Plan: SMS Logs PDF Report + Pagination, and Fix Push Notification Delivery
-
-This plan addresses two areas: adding a PDF report and pagination to the SMS Logs page, and fixing the web push notification delivery issue.
+## Plan: Burn Button Mobile Fix, Burn-Aware Exports/Stats, Tracking Export, Dropdown Actions, Performance Optimization
 
 ---
 
-### 1. SMS Logs: PDF Report Download (Filtered)
+### 1. Fix Burn Button Not Showing on Mobile
 
-**File: `src/pages/SmsLogs.tsx`**
+**File: `src/pages/InterviewTracking.tsx`** (mobile accordion actions section, ~line 1248-1349)
 
-Add a "Download PDF Report" button next to the Refresh button. The report will use the current filters and contain:
+The mobile accordion action buttons area does not include the "Send to Burn" button. The burn button only exists in the desktop table view (line 1555-1564).
 
-**Report structure (using jsPDF, already installed):**
-- **Header**: "SMS Notification Report" + date range + filter info
-- **Section 1 - Contractor Summary Table**: For each contractor (and an "All" total row): contractor ID, total SMS count, successful count, failed count
-- **Section 2 - Interviewer Summary Table**: Each unique interviewer code with their total SMS count
-- **Section 3 - Detailed Breakdown**: Grouped by interviewer code, listing each interview (file_name) with the date/time the failure SMS was triggered and status
-
-**Data source**: The report will fetch ALL matching records (not just the paginated view) using `fetchAllRows` from `@/utils/paginatedFetch`, applying the same filters currently active.
-
-**Changes:**
-- Import `jsPDF` and `fetchAllRows`
-- Add `generatePdfReport()` function that:
-  1. Fetches all filtered SMS logs (bypassing the current 100-row limit)
-  2. Groups data by contractor, then by interviewer
-  3. Renders tables using jsPDF's text/line drawing (similar to the existing `generateFraudReportPdf.ts` pattern)
-- Add download button in the header area
+**Fix:** Add the burn button to the mobile accordion action buttons section (after the Upload Metadata button, around line 1348), identical to the desktop version.
 
 ---
 
-### 2. SMS Logs: Pagination
+### 2. Exclude Burned Interviews from Admin Review History Exports
 
-**File: `src/pages/SmsLogs.tsx`**
+**File: `src/pages/AdminReviewHistory.tsx`**
 
-Currently the page fetches 100 rows with `.limit(100)` and shows all in one table. Convert to server-side pagination using the existing `AuditPagination` component pattern.
+The `exportToPDF`, `exportToCSV`, `exportToExcel`, and `downloadFilteredPDFs` functions (lines 434-846) all query audits directly without excluding burned audit IDs.
 
-**Changes:**
-- Add `currentPage` and `itemsPerPage` state variables
-- Replace the `.limit(100)` with proper `.range()` pagination
-- Add a count query to get `totalCount` for the current filters
-- Import and render `AuditPagination` below the table
-- Reset page to 1 when filters change
+**Fix:** In each export function, add the same `.not("id", "in", ...)` filter using `burnedAuditIds` to exclude burned interviews from all exports.
 
 ---
 
-### 3. Fix Push Notification: Web Push Encryption
+### 3. Add "Sent to Burn" Stat Card to Tracking Page and Review History
 
-The test push button inserts a record into `push_notifications`, which triggers `notify_push_notification()` → calls the `send-web-push` edge function. The edge function currently sends the payload as **plain unencrypted JSON** to the push endpoint. This violates the Web Push protocol (RFC 8291) which **requires** content encryption using the subscription's `p256dh` and `auth` keys.
+**File: `src/pages/InterviewTracking.tsx`**
 
-All major push services (Google FCM, Mozilla autopush, Apple) reject unencrypted payloads, returning 400 or similar errors. This is why the push appears to succeed (the DB insert works, the edge function is called) but no actual browser notification arrives.
+Add a new stat card (orange/flame themed) showing the count of burned interviews. The `burnedAuditIds` set already exists. The burned interviews should NOT be counted under "Failed" (they already aren't since they're filtered out by `nonBurnedInterviews`). Add a new card showing the burn count.
 
-**File: `supabase/functions/send-web-push/index.ts`**
+**File: `src/pages/AdminReviewHistory.tsx`**
 
-Complete rewrite of the `sendPush` function to implement proper RFC 8291 (aes128gcm) encryption:
+Similarly add a "Sent to Burn" stat card. The `burnedAuditIds` array already exists. Show the count.
 
-1. **ECDH key agreement**: Generate an ephemeral ECDH P-256 key pair, derive shared secret using the subscription's `p256dh` public key
-2. **HKDF key derivation**: Derive content encryption key (CEK) and nonce from the shared secret, the subscription's `auth` secret, and the ephemeral public key
-3. **AES-128-GCM encryption**: Encrypt the payload with the derived CEK and nonce
-4. **Proper headers**: Set `Content-Encoding: aes128gcm` and `Content-Type: application/octet-stream` instead of `application/json`
+**File: `src/pages/ReviewHistory.tsx`**
 
-The VAPID JWT signing (already implemented) will remain unchanged. Only the payload delivery mechanism changes.
+Add burn count stat card. Need to fetch burned audit IDs here too.
 
-Additionally, simplify the `importVapidPrivateKey` function - the current approach of parsing the public key to extract x/y coordinates has potential byte-offset bugs. Instead, import the private key as a raw JWK using only the `d` parameter and derive x/y from the VAPID public key stored as a separate secret.
+---
+
+### 4. Add Export Button to Tracking Page
+
+**File: `src/pages/InterviewTracking.tsx`**
+
+Currently only has "Export CSV". Add a dropdown Export button (like AdminReviewHistory) with CSV and PDF options. The PDF export will follow the same pattern as AdminReviewHistory's `exportToPDF` but scoped to the user's filtered interviews.
+
+---
+
+### 5. Convert Tracking Page Actions Column to Dropdown Menu
+
+**File: `src/pages/InterviewTracking.tsx`**
+
+**Desktop (lines 1453-1566):** Replace the `<div className="flex items-center gap-2">` containing multiple buttons with a `DropdownMenu`. The trigger will be a small "..." or kebab button. Menu items: View PDF, View Failed, Comment/Resolved, View Issue, Upload Metadata, Send to Burn.
+
+**Mobile accordion (lines 1248-1349):** Similarly convert the `flex flex-wrap` action buttons into a DropdownMenu for consistency and space saving.
+
+---
+
+### 6. Performance: Optimize Slow Data Loading
+
+The tracking page fetches ALL audits client-side in batches, then filters. This is inherently slow for large datasets.
+
+**File: `src/pages/InterviewTracking.tsx`**
+
+Key optimizations:
+- **Move to server-side pagination**: Instead of fetching all audits and filtering client-side, use server-side `.range()` with filters applied at the query level. Use the existing `get_contractor_audits` RPC for contractor/auditor roles, and build equivalent server-side filtering for other roles.
+- **Remove the `fetchAllAudits` loop** that fetches everything. Instead, apply search/status/field-manager filters directly in the Supabase query and use `.range()` for pagination.
+- **Lazy-load comment counts**: Only fetch unread comment counts for the current page's audit IDs (not all audits).
+- **Remove the separate burned audit IDs query**: Instead, add a `NOT EXISTS (SELECT 1 FROM burn_queue WHERE audit_id = audits.id AND restored_at IS NULL)` filter server-side via an RPC or a view.
+
+**File: `src/pages/AdminReviewHistory.tsx`**
+
+The main query already uses server-side pagination (good). The `stats` query fetches ALL reviewed audits via `fetchAllRows` which is slow.
+
+**Fix:** Replace the stats query with a server-side count query:
+```sql
+-- Count by status in one query
+SELECT status, COUNT(*), SUM(total_names) FROM audits 
+JOIN interview_metadata ON ... 
+WHERE reviewed_at IS NOT NULL GROUP BY status
+```
+Create a lightweight RPC `get_review_stats()` or use multiple `.select('id', { count: 'exact', head: true })` queries instead of fetching all rows.
+
+**File: `src/pages/ReviewHistory.tsx`**
+
+Already uses server-side pagination. No major changes needed.
+
+**File: `src/hooks/useTeamAssignments.ts`**
+
+The `useAssignments` hook fetches all assignments. If this is causing slow loads on the team assignments page, apply the same server-side pagination pattern.
 
 ---
 
@@ -70,7 +97,13 @@ Additionally, simplify the `importVapidPrivateKey` function - the current approa
 
 | Area | File | Change |
 |------|------|--------|
-| SMS PDF Report | `src/pages/SmsLogs.tsx` | Add PDF generation with contractor/interviewer/interview breakdown using jsPDF |
-| SMS Pagination | `src/pages/SmsLogs.tsx` | Add server-side pagination with AuditPagination component, count query |
-| Push Fix | `supabase/functions/send-web-push/index.ts` | Implement RFC 8291 aes128gcm encryption for Web Push payloads |
+| Burn button mobile | `InterviewTracking.tsx` | Add burn button to mobile accordion actions |
+| Burn-aware exports | `AdminReviewHistory.tsx` | Exclude burned IDs from all export functions |
+| Burn stat cards | `InterviewTracking.tsx`, `AdminReviewHistory.tsx`, `ReviewHistory.tsx` | Add "Sent to Burn" count card |
+| Export on tracking | `InterviewTracking.tsx` | Add PDF export dropdown alongside CSV |
+| Dropdown actions | `InterviewTracking.tsx` | Convert actions column to dropdown menu (desktop + mobile) |
+| Performance - Tracking | `InterviewTracking.tsx` | Server-side pagination + filtering instead of fetching all rows |
+| Performance - Admin Review | `AdminReviewHistory.tsx` | Replace fetchAllRows stats with count-only queries |
+| Performance - Assignments | `useTeamAssignments.ts` | Server-side pagination for assignments |
+| DB migration | New RPC function | `get_tracking_stats` for server-side stat aggregation |
 
