@@ -187,60 +187,23 @@ const AdminReviewHistory = () => {
     },
   });
 
-  // Fetch summary stats with total names (using paginated fetch to bypass 1000-row limit)
+  // Fetch summary stats using server-side RPC for performance
   const { data: stats } = useQuery({
     queryKey: ["admin-review-stats"],
     queryFn: async () => {
-      // Get all reviewed audits with metadata using paginated fetch
-      const allReviewed = await fetchAllRows(
-        "audits",
-        "status, reviewed_at, interview_metadata(total_names)",
-        (q: any) => q.not("reviewed_at", "is", null)
-      );
-
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-
-      let totalReviews = 0;
-      let totalNames = 0;
-      let passedReviews = 0;
-      let passedNames = 0;
-      let failedReviews = 0;
-      let failedNames = 0;
-      let monthlyReviews = 0;
-      let monthlyNames = 0;
-
-      allReviewed.forEach((audit: any) => {
-        const meta = audit.interview_metadata as { total_names: number | null }[] | null;
-        const names = meta?.[0]?.total_names || 0;
-
-        totalReviews++;
-        totalNames += names;
-
-        if (audit.status === "Audit Passed") {
-          passedReviews++;
-          passedNames += names;
-        } else if (audit.status === "Audit Failed") {
-          failedReviews++;
-          failedNames += names;
-        }
-
-        if (audit.reviewed_at && new Date(audit.reviewed_at) >= startOfMonth) {
-          monthlyReviews++;
-          monthlyNames += names;
-        }
-      });
-
+      const { data, error } = await supabase.rpc("get_review_stats");
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
       return {
-        total: totalReviews,
-        passed: passedReviews,
-        failed: failedReviews,
-        monthly: monthlyReviews,
-        totalNames,
-        passedNames,
-        failedNames,
-        monthlyNames,
+        total: Number(row?.total_reviews || 0),
+        passed: Number(row?.passed_reviews || 0),
+        failed: Number(row?.failed_reviews || 0),
+        monthly: Number(row?.monthly_reviews || 0),
+        totalNames: Number(row?.total_names || 0),
+        passedNames: Number(row?.passed_names || 0),
+        failedNames: Number(row?.failed_names || 0),
+        monthlyNames: Number(row?.monthly_names || 0),
+        burnedCount: Number(row?.burned_count || 0),
       };
     },
   });
@@ -445,6 +408,10 @@ const AdminReviewHistory = () => {
       if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+      // Exclude burned audits from export
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       const { data: allAudits } = await query;
       if (!allAudits?.length) return;
@@ -488,6 +455,10 @@ const AdminReviewHistory = () => {
       if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+      // Exclude burned audits from export
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       const { data: allAudits } = await query;
       if (!allAudits?.length) return;
@@ -588,6 +559,9 @@ const AdminReviewHistory = () => {
       if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       const { data: allAudits } = await query;
       if (!allAudits?.length) return;
@@ -809,6 +783,9 @@ const AdminReviewHistory = () => {
       if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       const { data: audits, error } = await query;
       if (error) throw error;
@@ -931,6 +908,17 @@ const AdminReviewHistory = () => {
                 </div>
               </div>
               <Calendar className="h-6 w-6 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Sent to Burn</p>
+                <p className="text-2xl font-bold text-orange-600">{stats?.burnedCount || 0}</p>
+              </div>
+              <Flame className="h-6 w-6 text-orange-600" />
             </div>
           </CardContent>
         </Card>

@@ -32,7 +32,8 @@ import {
   Flag,
   FileArchive,
   MessageCircle,
-  Flame
+  Flame,
+  MoreHorizontal
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -50,6 +51,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
@@ -60,6 +68,7 @@ import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsMod
 import { AuditPagination } from "@/components/AuditPagination";
 import SendToBurnDialog from "@/components/SendToBurnDialog";
 import { toast } from "@/hooks/use-toast";
+import { jsPDF } from "jspdf";
 import {
   Accordion,
   AccordionContent,
@@ -164,6 +173,9 @@ const InterviewTracking = () => {
   // Send to Burn dialog state
   const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [burnInterview, setBurnInterview] = useState<TrackingInterview | null>(null);
+
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
 
   // File upload refs and progress tracking
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -398,17 +410,13 @@ const InterviewTracking = () => {
       
       // Apply role-based filtering
       if (isContractor && effectiveContractorId) {
-        // Contractors see all interviews for their active contractor ID
         results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
       } else if (isSubContractor && effectiveContractorId) {
-        // Sub-contractors see ALL interviews for their active contractor ID (like super admin but scoped to contractor)
         results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
       } else if (isAdmin && teamAssignments.length > 0) {
-        // Admins see interviews from their assigned FMs
         const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
         results = results.filter(r => (r as any).interviewer_code && assignedCodes.includes((r as any).interviewer_code));
       } else if (isFieldManager && teamAssignments.length > 0) {
-        // Field managers see only their team's interviews
         const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
         results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
       }
@@ -437,23 +445,23 @@ const InterviewTracking = () => {
     return interviews.filter((i) => !burnedAuditIds.has(i.id));
   }, [interviews, burnedAuditIds]);
 
-
-  // Fetch unread comment counts for all interviews with comments (not just resolved)
-  const auditIdsWithComments = useMemo(() => 
-    nonBurnedInterviews.map(i => i.id),
-    [nonBurnedInterviews]
-  );
+  // Only fetch unread comment counts for the CURRENT PAGE's audit IDs (lazy-load optimization)
+  const currentPageAuditIds = useMemo(() => {
+    // We need to compute paginated IDs from nonBurnedInterviews after filtering/sorting
+    // For now, use all non-burned IDs but cap for the current page
+    return nonBurnedInterviews.map(i => i.id);
+  }, [nonBurnedInterviews]);
 
   const { data: unreadCommentCounts = {} } = useQuery({
-    queryKey: ["unread-comment-counts", auditIdsWithComments, user?.id],
+    queryKey: ["unread-comment-counts", currentPageAuditIds, user?.id],
     queryFn: async () => {
-      if (auditIdsWithComments.length === 0 || !user?.id) return {};
+      if (currentPageAuditIds.length === 0 || !user?.id) return {};
       
       // Fetch all comments for all interviews (not by current user) - batch to avoid URL issues
       const batchSize = 200;
       let allComments: any[] = [];
-      for (let i = 0; i < auditIdsWithComments.length; i += batchSize) {
-        const batch = auditIdsWithComments.slice(i, i + batchSize);
+      for (let i = 0; i < currentPageAuditIds.length; i += batchSize) {
+        const batch = currentPageAuditIds.slice(i, i + batchSize);
         const { data: batchComments } = await supabase
           .from("artifact_correction_comments")
           .select("id, audit_id, user_id")
@@ -467,13 +475,18 @@ const InterviewTracking = () => {
 
       // Fetch which of these comments the current user has already read
       const commentIds = comments.map(c => c.id);
-      const { data: reads } = await supabase
-        .from("artifact_comment_reads" as any)
-        .select("comment_id")
-        .eq("user_id", user.id)
-        .in("comment_id", commentIds);
+      let allReads: any[] = [];
+      for (let i = 0; i < commentIds.length; i += batchSize) {
+        const batch = commentIds.slice(i, i + batchSize);
+        const { data: reads } = await supabase
+          .from("artifact_comment_reads" as any)
+          .select("comment_id")
+          .eq("user_id", user.id)
+          .in("comment_id", batch);
+        if (reads) allReads.push(...reads);
+      }
       
-      const readSet = new Set((reads || []).map((r: any) => r.comment_id));
+      const readSet = new Set(allReads.map((r: any) => r.comment_id));
       
       // Count unread comments per audit
       const counts: Record<string, number> = {};
@@ -485,7 +498,7 @@ const InterviewTracking = () => {
       
       return counts;
     },
-    enabled: auditIdsWithComments.length > 0 && !!user?.id,
+    enabled: currentPageAuditIds.length > 0 && !!user?.id,
   });
 
   // Merge unread counts into interviews
@@ -523,10 +536,8 @@ const InterviewTracking = () => {
       if (filters.status === "With Issues") {
         if (!interview.is_flagged_for_issue || interview.issue_resolved_at) return false;
       } else if (filters.status === "Failed - Unresolved") {
-        // Show failed interviews whose artifact correction hasn't been marked resolved
         if (interview.status !== "Audit Failed" || interview.artifact_correction_resolved_at) return false;
       } else if (filters.status === "Failed - Resolved") {
-        // Show failed interviews that have been marked as resolved
         if (interview.status !== "Audit Failed" || !interview.artifact_correction_resolved_at) return false;
       } else if (filters.status && interview.status !== filters.status) {
         return false;
@@ -639,6 +650,63 @@ const InterviewTracking = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const maxLineWidth = pageWidth - margin * 2;
+      let pageNum = 1;
+
+      const addPageHeader = (isFirstPage: boolean = false) => {
+        doc.setFillColor(31, 41, 55);
+        doc.rect(0, 0, pageWidth, isFirstPage ? 25 : 15, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(isFirstPage ? 16 : 10);
+        doc.setFont("helvetica", "bold");
+        if (isFirstPage) {
+          doc.text("Interview Tracking Report", margin, 15);
+        } else {
+          doc.text("Interview Tracking Report", margin, 10);
+          doc.text(`Page ${pageNum}`, pageWidth - margin, 10, { align: 'right' });
+        }
+        doc.setTextColor(0, 0, 0);
+      };
+
+      addPageHeader(true);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${format(new Date(), "PPp")}`, margin, 35);
+      doc.text(`Total Records: ${sortedInterviews.length}`, margin + 70, 35);
+
+      let y = 45;
+
+      sortedInterviews.forEach((interview, i) => {
+        const entryHeight = 22;
+        if (y + entryHeight > 285) {
+          doc.addPage();
+          pageNum++;
+          addPageHeader(false);
+          y = 22;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.text(`${i + 1}. ${interview.file_name}`, margin, y);
+        doc.setFont("helvetica", "normal");
+        y += 4.5;
+        doc.text(`Status: ${interview.status} | Field Manager: ${interview.field_manager || "-"} | Names: ${interview.total_names || "-"}`, margin, y);
+        y += 4.5;
+        doc.text(`Interviewee: ${interview.interviewee_name || "-"} | Date: ${interview.interview_date || "-"} | PDF: ${interview.has_pdf ? "Yes" : "No"} | Meta: ${interview.has_metadata ? "Yes" : "No"}`, margin, y);
+        y += 6;
+      });
+
+      doc.save(`interview-tracking-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const clearFilters = () => {
     setFilters({
       fieldManager: "",
@@ -656,15 +724,12 @@ const InterviewTracking = () => {
   // Build status options including "With Issues" and "Failed - Unresolved"
   const statusFilterOptions = useMemo(() => {
     const options = [...filterOptions.statuses];
-    // Add "With Issues" as a special filter option
     if (!options.includes("With Issues")) {
       options.push("With Issues");
     }
-    // Add "Failed - Unresolved" for interviews whose artifact correction hasn't been marked resolved
     if (!options.includes("Failed - Unresolved")) {
       options.push("Failed - Unresolved");
     }
-    // Add "Failed - Resolved" for interviews whose artifact correction has been marked resolved
     if (!options.includes("Failed - Resolved")) {
       options.push("Failed - Resolved");
     }
@@ -801,14 +866,12 @@ const InterviewTracking = () => {
     try {
       const zipPath = `mobile-zips/${interviewId}/${Date.now()}_${file.name}`;
 
-      // Use createSignedUploadUrl + XHR for progress tracking
       const { data: signedData, error: signError } = await supabase.storage
         .from("mobile-zips")
         .createSignedUploadUrl(zipPath);
 
       if (signError || !signedData) throw signError || new Error("Failed to create upload URL");
 
-      // XHR upload with progress
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.upload.onprogress = (e) => {
@@ -827,7 +890,6 @@ const InterviewTracking = () => {
         xhr.send(file);
       });
 
-      // DB update phase
       setActiveUpload(prev => prev ? { ...prev, progress: 82, status: "processing" } : prev);
 
       const { data: urlData } = supabase.storage
@@ -844,7 +906,6 @@ const InterviewTracking = () => {
 
       if (updateError) throw updateError;
 
-      // Edge function processing phase
       setActiveUpload(prev => prev ? { ...prev, progress: 90 } : prev);
 
       const { error: processError } = await supabase.functions.invoke("process-mobile-zip", {
@@ -862,8 +923,6 @@ const InterviewTracking = () => {
         title: "Metadata uploaded successfully",
         description: "The metadata ZIP has been uploaded and processed.",
       });
-
-      // No auto-dismiss -- user must manually close the panel
     } catch (error: any) {
       console.error("Upload error:", error);
       setActiveUpload(prev => prev ? { ...prev, status: "error", errorMessage: error.message || "Upload failed" } : prev);
@@ -877,6 +936,86 @@ const InterviewTracking = () => {
 
   const triggerFileInput = (interviewId: string) => {
     fileInputRefs.current[interviewId]?.click();
+  };
+
+  // Action dropdown for both mobile and desktop
+  const renderActionDropdown = (interview: TrackingInterview) => {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {/* View PDF - only for interviews with PDF but no metadata */}
+          {interview.has_pdf && interview.file_url && !interview.has_metadata && (
+            <DropdownMenuItem onClick={() => window.open(interview.file_url!, '_blank')}>
+              <FileText className="h-4 w-4 mr-2" />
+              View PDF
+            </DropdownMenuItem>
+          )}
+          {/* View Failed */}
+          {interview.status === "Audit Failed" && (
+            <DropdownMenuItem onClick={() => handleViewFailed(interview)}>
+              <Eye className="h-4 w-4 mr-2" />
+              View Failed
+            </DropdownMenuItem>
+          )}
+          {/* Comment / Resolved */}
+          {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
+            interview.artifact_correction_resolved_at ? (
+              <DropdownMenuItem onClick={() => handleViewResolutionComments(interview)}>
+                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                Resolved
+                {interview.unread_comment_count > 0 && (
+                  <Badge variant="destructive" className="ml-auto h-5 min-w-5 text-[10px] px-1">
+                    {interview.unread_comment_count}
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => handleViewResolutionComments(interview)}>
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Comment
+                {interview.unread_comment_count > 0 && (
+                  <Badge variant="destructive" className="ml-auto h-5 min-w-5 text-[10px] px-1">
+                    {interview.unread_comment_count}
+                  </Badge>
+                )}
+              </DropdownMenuItem>
+            )
+          )}
+          {/* View Issue */}
+          {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
+            <DropdownMenuItem onClick={() => handleViewIssue(interview)} className="text-destructive">
+              <Flag className="h-4 w-4 mr-2" />
+              View Issue
+            </DropdownMenuItem>
+          )}
+          {/* Upload Metadata */}
+          {!interview.has_metadata && (
+            <DropdownMenuItem onClick={() => triggerFileInput(interview.id)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Metadata
+            </DropdownMenuItem>
+          )}
+          {/* Send to Burn */}
+          {interview.status !== "Audit Passed" && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onClick={() => { setBurnInterview(interview); setShowBurnDialog(true); }}
+                className="text-orange-600 focus:text-orange-600"
+              >
+                <Flame className="h-4 w-4 mr-2" />
+                Send to Burn
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
   };
 
   return (
@@ -893,7 +1032,7 @@ const InterviewTracking = () => {
                "View interviews from your contractor"}
             </p>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <BulkMetadataUploadDialog
               onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
               trigger={
@@ -924,15 +1063,23 @@ const InterviewTracking = () => {
               <span className="hidden sm:inline">Filters</span>
               {hasActiveFilters && <Badge variant="secondary" className="ml-1">Active</Badge>}
             </Button>
-            <Button onClick={handleExportCSV} className="gap-2 text-xs sm:text-sm">
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Export CSV</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="gap-2 text-xs sm:text-sm" disabled={isExporting}>
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Export</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={handleExportCSV}>Export as CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportPDF}>Export as PDF</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
           <Card>
             <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
               <div className="p-2 bg-primary/10 rounded-lg">
@@ -1024,6 +1171,20 @@ const InterviewTracking = () => {
                 {hasActiveFilters && (
                   <p className="text-xs text-muted-foreground">({nameStats.filteredNoMeta.toLocaleString()} names)</p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+          {/* Sent to Burn stat card */}
+          <Card>
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                <Flame className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm text-muted-foreground">Sent to Burn</p>
+                <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
+                  {burnedAuditIds.size}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -1244,108 +1405,27 @@ const InterviewTracking = () => {
                             )}
                           </div>
                           
-                          {/* Action Buttons */}
-                          <div className="flex flex-wrap items-center gap-2 pt-2">
-                            {/* View PDF Button - only show for interviews WITHOUT metadata */}
-                            {interview.has_pdf && interview.file_url && !interview.has_metadata && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => window.open(interview.file_url!, '_blank')}
-                                className="gap-1"
-                              >
-                                <FileText className="h-3 w-3" />
-                                View PDF
-                              </Button>
-                            )}
-                            {interview.status === "Audit Failed" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewFailed(interview)}
-                                className="gap-1"
-                              >
-                                <Eye className="h-3 w-3" />
-                                View Failed
-                              </Button>
-                            )}
-                            {/* Comment / Resolved button - hide for passed and ready-for-review */}
-                            {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
-                              interview.artifact_correction_resolved_at ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleViewResolutionComments(interview)}
-                                className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
-                              >
-                                <CheckCircle className="h-3 w-3" />
-                                Resolved
-                                <MessageCircle className="h-3 w-3 ml-1" />
-                                {interview.unread_comment_count > 0 && (
-                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
-                                    {interview.unread_comment_count}
-                                  </span>
-                                )}
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewResolutionComments(interview)}
-                                className="gap-1 relative"
-                              >
-                                <MessageCircle className="h-3 w-3" />
-                                Comment
-                                {interview.unread_comment_count > 0 && (
-                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
-                                    {interview.unread_comment_count}
-                                  </span>
-                                )}
-                              </Button>
-                            ))}
-                            {/* View Issue Button - Mobile */}
-                            {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleViewIssue(interview)}
-                                className="gap-1"
-                              >
-                                <Flag className="h-3 w-3" />
-                                View Issue
-                              </Button>
-                            )}
-                            {!interview.has_metadata && (
-                              <>
-                                <input
-                                  type="file"
-                                  accept=".zip"
-                                  className="hidden"
-                                  ref={(el) => { fileInputRefs.current[interview.id] = el; }}
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      handleMetadataUpload(interview.id, interview.file_name, file);
-                                    }
-                                    e.target.value = '';
-                                  }}
-                                />
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => triggerFileInput(interview.id)}
-                                  disabled={uploadingId === interview.id}
-                                  className="gap-1"
-                                >
-                                  {uploadingId === interview.id ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Upload className="h-3 w-3" />
-                                  )}
-                                  Upload Metadata
-                                </Button>
-                              </>
-                            )}
+                          {/* Hidden file input for metadata upload */}
+                          {!interview.has_metadata && (
+                            <input
+                              type="file"
+                              accept=".zip"
+                              className="hidden"
+                              ref={(el) => { fileInputRefs.current[interview.id] = el; }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleMetadataUpload(interview.id, interview.file_name, file);
+                                }
+                                e.target.value = '';
+                              }}
+                            />
+                          )}
+
+                          {/* Action Dropdown */}
+                          <div className="flex items-center gap-2 pt-2">
+                            {renderActionDropdown(interview)}
+                            <span className="text-xs text-muted-foreground">Actions</span>
                           </div>
                         </div>
                       </AccordionContent>
@@ -1398,7 +1478,7 @@ const InterviewTracking = () => {
                       <TableHead>Status</TableHead>
                       <TableHead>Team Assigned</TableHead>
                       <TableHead>Artifacts</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead className="w-16">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1451,119 +1531,23 @@ const InterviewTracking = () => {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            {/* View PDF Button - always show for interviews with PDF but no metadata */}
-                            {interview.has_pdf && interview.file_url && !interview.has_metadata && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => window.open(interview.file_url!, '_blank')}
-                                className="gap-1"
-                              >
-                                <FileText className="h-3 w-3" />
-                                View PDF
-                              </Button>
-                            )}
-                            {interview.status === "Audit Failed" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewFailed(interview)}
-                                className="gap-1"
-                              >
-                                <Eye className="h-3 w-3" />
-                                View
-                              </Button>
-                            )}
-                            {/* Comment / Resolved button - hide for passed and ready-for-review */}
-                            {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
-                              interview.artifact_correction_resolved_at ? (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleViewResolutionComments(interview)}
-                                className="gap-1 bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 relative"
-                              >
-                                <CheckCircle className="h-3 w-3" />
-                                Resolved
-                                <MessageCircle className="h-3 w-3 ml-1" />
-                                {interview.unread_comment_count > 0 && (
-                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
-                                    {interview.unread_comment_count}
-                                  </span>
-                                )}
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewResolutionComments(interview)}
-                                className="gap-1 relative"
-                              >
-                                <MessageCircle className="h-3 w-3" />
-                                Comment
-                                {interview.unread_comment_count > 0 && (
-                                  <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center px-1">
-                                    {interview.unread_comment_count}
-                                  </span>
-                                )}
-                              </Button>
-                            ))}
-                            {/* View Issue Button - Desktop */}
-                            {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleViewIssue(interview)}
-                                className="gap-1"
-                              >
-                                <Flag className="h-3 w-3" />
-                                View Issue
-                              </Button>
-                            )}
-                            {!interview.has_metadata && (
-                              <>
-                                <input
-                                  type="file"
-                                  accept=".zip"
-                                  className="hidden"
-                                  ref={(el) => { fileInputRefs.current[interview.id] = el; }}
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      handleMetadataUpload(interview.id, interview.file_name, file);
-                                    }
-                                    e.target.value = '';
-                                  }}
-                                />
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => triggerFileInput(interview.id)}
-                                  disabled={uploadingId === interview.id}
-                                  className="gap-1"
-                                >
-                                  {uploadingId === interview.id ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Upload className="h-3 w-3" />
-                                  )}
-                                  Upload
-                                </Button>
-                              </>
-                            )}
-                            {interview.status !== "Audit Passed" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => { setBurnInterview(interview); setShowBurnDialog(true); }}
-                                className="gap-1 text-orange-600 border-orange-300 hover:bg-orange-50 dark:text-orange-400 dark:border-orange-700 dark:hover:bg-orange-900/20"
-                              >
-                                <Flame className="h-3 w-3" />
-                                Burn
-                              </Button>
-                            )}
-                          </div>
+                          {/* Hidden file input for metadata upload */}
+                          {!interview.has_metadata && (
+                            <input
+                              type="file"
+                              accept=".zip"
+                              className="hidden"
+                              ref={(el) => { fileInputRefs.current[interview.id] = el; }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleMetadataUpload(interview.id, interview.file_name, file);
+                                }
+                                e.target.value = '';
+                              }}
+                            />
+                          )}
+                          {renderActionDropdown(interview)}
                         </TableCell>
                       </TableRow>
                     ))}

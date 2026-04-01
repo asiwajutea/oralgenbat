@@ -1538,6 +1538,20 @@ export type Database = {
           uploaded_at: string
         }[]
       }
+      get_review_stats: {
+        Args: never
+        Returns: {
+          burned_count: number
+          failed_names: number
+          failed_reviews: number
+          monthly_names: number
+          monthly_reviews: number
+          passed_names: number
+          passed_reviews: number
+          total_names: number
+          total_reviews: number
+        }[]
+      }
       get_storage_usage: {
         Args: never
         Returns: {
