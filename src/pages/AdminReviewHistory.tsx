@@ -783,6 +783,9 @@ const AdminReviewHistory = () => {
       if (statusFilter !== "all") query = applyStatusFilter(query, statusFilter);
       if (reviewerFilter !== "all") query = query.eq("reviewed_by", reviewerFilter);
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
+      if (burnedAuditIds.length > 0) {
+        query = query.not("id", "in", `(${burnedAuditIds.join(",")})`);
+      }
 
       const { data: audits, error } = await query;
       if (error) throw error;
