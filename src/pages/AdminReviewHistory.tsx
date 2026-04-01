@@ -911,6 +911,17 @@ const AdminReviewHistory = () => {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Sent to Burn</p>
+                <p className="text-2xl font-bold text-orange-600">{stats?.burnedCount || 0}</p>
+              </div>
+              <Flame className="h-6 w-6 text-orange-600" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filters */}
