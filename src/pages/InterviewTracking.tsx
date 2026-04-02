@@ -1664,6 +1664,55 @@ const InterviewTracking = () => {
           fileName={burnInterview.file_name}
         />
       )}
+
+      {/* Edit Filename Dialog */}
+      {editFilenameInterview && (
+        <AlertDialog open={showEditFilename} onOpenChange={setShowEditFilename}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Edit Filename</AlertDialogTitle>
+              <AlertDialogDescription>
+                Change the filename for this interview. Current: {editFilenameInterview.file_name}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-4">
+              <Label htmlFor="new-filename">New Filename</Label>
+              <Input
+                id="new-filename"
+                value={newFilename}
+                onChange={(e) => setNewFilename(e.target.value)}
+                placeholder="Enter new filename"
+                className="mt-2"
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isEditingFilename}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isEditingFilename || !newFilename.trim() || newFilename.trim() === editFilenameInterview.file_name}
+                onClick={async () => {
+                  setIsEditingFilename(true);
+                  try {
+                    const { error } = await supabase
+                      .from("audits")
+                      .update({ file_name: newFilename.trim() })
+                      .eq("id", editFilenameInterview.id);
+                    if (error) throw error;
+                    toast({ title: "Filename Updated", description: `Renamed to ${newFilename.trim()}` });
+                    setShowEditFilename(false);
+                    queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+                  } catch (error) {
+                    toast({ title: "Error", description: "Failed to update filename", variant: "destructive" });
+                  } finally {
+                    setIsEditingFilename(false);
+                  }
+                }}
+              >
+                {isEditingFilename ? "Saving..." : "Save"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 };
