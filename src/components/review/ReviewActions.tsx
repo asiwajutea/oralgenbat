@@ -526,6 +526,112 @@ export const ReviewActions = ({
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Pass with Override Dialog - when checklist has failures */}
+      <AlertDialog open={showPassOverrideDialog} onOpenChange={setShowPassOverrideDialog}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-600">Pass Interview with Failed Checklist Items</AlertDialogTitle>
+            <AlertDialogDescription>
+              This interview has failed checklist items. You must provide a reason for passing it. This will be recorded as reviewed by {profile?.full_name}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Show failed items for context */}
+            {checklistFailureComments && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Failed Checklist Items:</p>
+                <p className="text-xs text-amber-600 dark:text-amber-300 whitespace-pre-line">{checklistFailureComments}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="pass-override-reason">Reason for Passing Despite Failures *</Label>
+              <Textarea
+                id="pass-override-reason"
+                placeholder="Explain why this interview should pass despite failed checklist items..."
+                value={passOverrideReason}
+                onChange={(e) => setPassOverrideReason(e.target.value)}
+                className="min-h-[100px]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pass-override-action-plan">Action Plan (Optional)</Label>
+              <Textarea
+                id="pass-override-action-plan"
+                placeholder="Describe any follow-up actions needed..."
+                value={passOverrideActionPlan}
+                onChange={(e) => setPassOverrideActionPlan(e.target.value)}
+                className="min-h-[80px]"
+              />
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <Button
+              onClick={async () => {
+                if (passOverrideReason.trim().length < 10) {
+                  toast({
+                    title: "Validation Error",
+                    description: "Please provide a detailed reason (at least 10 characters).",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                setIsSubmitting(true);
+                try {
+                  const { error } = await supabase
+                    .from("audits")
+                    .update({
+                      status: "Audit Passed" as any,
+                      reviewed_at: new Date().toISOString(),
+                      reviewed_by: profile?.full_name || "Unknown",
+                      review_duration_seconds: reviewDurationSeconds || null,
+                      locked_by: null,
+                      locked_at: null,
+                      review_started_at: null,
+                      passed_with_failures: true,
+                      pass_override_reason: passOverrideReason.trim(),
+                      pass_override_action_plan: passOverrideActionPlan.trim() || null,
+                    } as any)
+                    .eq("id", auditId);
+                  if (error) throw error;
+                  if (onReleaseLock) await onReleaseLock();
+                  try {
+                    await supabase.functions.invoke('cleanup-interview-audio', { body: { auditId } });
+                  } catch {}
+                  toast({ title: "Interview Passed (with override)", description: "The interview has been passed with noted checklist failures." });
+                  setShowPassOverrideDialog(false);
+                  queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+                  queryClient.invalidateQueries({ queryKey: ["status-counts"] });
+                  queryClient.invalidateQueries({ queryKey: ["next-unreviewed-audit"] });
+                  queryClient.invalidateQueries({ queryKey: ["audits"] });
+                  if (onReviewCompleted) onReviewCompleted("passed");
+                } catch (error) {
+                  console.error("Error passing interview with override:", error);
+                  toast({ title: "Error", description: "Failed to update interview status.", variant: "destructive" });
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              disabled={isSubmitting}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Passing...
+                </>
+              ) : (
+                "Pass with Override"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Re-Audit Dialog for Field Managers/Contractors */}
       {canSubmitReaudit && (
         <ReAuditDialog

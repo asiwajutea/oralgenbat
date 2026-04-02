@@ -819,13 +819,20 @@ const InterviewTracking = () => {
     if (status === "Audit Failed" && artifactCorrection && artifactCorrection.length > 0) {
       const hasPdf = artifactCorrection.includes("scanned_pdf");
       const hasMeta = artifactCorrection.includes("mobile_metadata");
-      const correctionBadge = hasPdf && hasMeta ? (
-        <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>
-      ) : hasPdf ? (
-        <Badge className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 border-red-300">P</Badge>
-      ) : hasMeta ? (
-        <Badge className="h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-orange-300">M</Badge>
-      ) : null;
+      const hasFieldAudit = artifactCorrection.includes("no_field_audit");
+      
+      let correctionBadge = null;
+      if (hasPdf && hasMeta && hasFieldAudit) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B+F</Badge>;
+      } else if (hasPdf && hasMeta) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>;
+      } else if (hasPdf) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 border-red-300">P</Badge>;
+      } else if (hasMeta) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-orange-300">M</Badge>;
+      } else if (hasFieldAudit) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-yellow-100 text-yellow-700 border-yellow-300">F</Badge>;
+      }
 
       return (
         <div className="flex items-center gap-1">
