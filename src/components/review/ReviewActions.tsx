@@ -22,6 +22,7 @@ import { ReAuditDialog } from "./ReAuditDialog";
 
 const CHECKLIST_FEEDBACK_STATEMENTS: Record<number, string> = {
   // A. Form & Document Review
+  0: "The interview failed because there is no proof that the interview was audited by the Field Manager.",
   1: "The interview was not recorded on the FSI Standard Interview Collection Form or an incorrect form was submitted. Please ensure the interview is properly documented using the approved FSI Standard Interview Collection Form and resubmit for review.",
   2: "The Authorization Form is incomplete, missing a signature and/or date, or a required witness signature is absent where \"X\" was used. Please obtain all required signatures and dates and resubmit the completed Authorization Form.",
   3: "The Field Manager Checklist was not fully completed and/or signed. Please ensure all required checklist items are checked and the form is properly signed before resubmission.",
