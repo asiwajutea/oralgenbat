@@ -432,6 +432,19 @@ export const ReviewActions = ({
                     </Label>
                   </div>
                 </div>
+                <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <Checkbox
+                    id="no-field-audit"
+                    checked={artifactCorrection.includes('no_field_audit')}
+                    onCheckedChange={(checked) => toggleArtifact('no_field_audit', !!checked)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="no-field-audit" className="cursor-pointer font-medium">
+                      No Proof of Field Audit
+                    </Label>
+                  </div>
+                </div>
               </div>
             </div>
 
