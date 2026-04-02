@@ -319,7 +319,13 @@ export const ReviewActions = ({
               <>
                 {canPass && (
                   <Button
-                    onClick={() => setShowPassDialog(true)}
+                    onClick={() => {
+                      if (hasChecklistFailures) {
+                        setShowPassOverrideDialog(true);
+                      } else {
+                        setShowPassDialog(true);
+                      }
+                    }}
                     disabled={isSubmitting}
                     className="gap-2 bg-green-600 hover:bg-green-700 text-white"
                   >
@@ -354,7 +360,7 @@ export const ReviewActions = ({
 
                 {hasChecklistFailures && (
                   <span className="text-sm text-amber-600 ml-2">
-                    Checklist has failed items - interview cannot pass
+                    ⚠ Checklist has failed items — you will need to provide reasons if passing
                   </span>
                 )}
 
