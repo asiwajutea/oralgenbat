@@ -445,16 +445,27 @@ const InterviewTracking = () => {
   });
 
   // Fetch burned audit IDs to exclude from listing
-  const { data: burnedAuditIds = new Set<string>() } = useQuery({
-    queryKey: ["burned-audit-ids"],
+  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0 } } = useQuery({
+    queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole],
     queryFn: async () => {
       const { data } = await supabase
         .from("burn_queue")
-        .select("audit_id")
+        .select("audit_id, file_name")
         .is("restored_at", null);
-      return new Set((data || []).map((b) => b.audit_id));
+      const allBurned = data || [];
+      const ids = new Set(allBurned.map((b) => b.audit_id));
+      
+      // Scope count by user's contractor for non-admins
+      const effectiveCid = profile?.active_contractor_id || profile?.contractor_id;
+      let scopedCount = allBurned.length;
+      if (!isSuperAdmin && effectiveCid) {
+        scopedCount = allBurned.filter(b => b.file_name?.startsWith(effectiveCid)).length;
+      }
+      
+      return { ids, scopedCount };
     },
   });
+  const burnedAuditIds = burnedAuditData.ids;
 
   // Filter out burned interviews
   const nonBurnedInterviews = useMemo(() => {
