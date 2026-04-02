@@ -617,16 +617,6 @@ const InterviewTracking = () => {
     const passed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed");
     const failed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed");
     const pending = interviewsWithUnreadCounts.filter(i => i.status === "Pending" || i.status === "Awaiting Review");
-
-  const burnedNameStats = useMemo(() => {
-  if (!interviewsWithUnreadCounts.length || burnedAuditIds.size === 0) {
-    return 0;
-  }
-
-  const burned = interviewsWithUnreadCounts.filter(i => burnedAuditIds.has(i.id));
-
-  return burned.reduce((acc, i) => acc + (i.total_names || 0), 0);
-}, [interviewsWithUnreadCounts, burnedAuditIds]);
     
     const sum = (list: typeof interviewsWithUnreadCounts) => 
       list.reduce((acc, i) => acc + (i.total_names || 0), 0);
@@ -1240,9 +1230,6 @@ const InterviewTracking = () => {
                 <p className="text-xs sm:text-sm text-muted-foreground">Sent to Burn</p>
                 <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
                   {burnedAuditData.scopedCount}
-                {/* Burned total names */}
-                <p className="text-xs font-medium text-orange-600 dark:text-orange-400">
-                  {burnedNameStats.toLocaleString()} names
                 </p>
               </div>
             </CardContent>
