@@ -116,6 +116,9 @@ const MobileNav = () => {
                   <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>
                 )}
                 {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
+                  <NavItem to="/burn-queue" icon={Flame}>Burn Queue</NavItem>
+                )}
+                {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
                   <NavItem to="/payment-tracking" icon={DollarSign}>Payments</NavItem>
                 )}
                 {(userRole === 'data_entry_clerk' || userRole === 'quality_assurance_manager' || isAdmin) && (

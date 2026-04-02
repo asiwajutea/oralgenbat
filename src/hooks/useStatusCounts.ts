@@ -99,6 +99,9 @@ export const useStatusCounts = () => {
       };
 
       allAudits?.forEach((audit) => {
+        // Exclude burned audits from status counts
+        if (burnedIds.has(audit.id)) return;
+
         const metadata = audit.interview_metadata as { total_names: number | null; contractor_id: string | null }[] | null;
         const hasMetadata = metadata && metadata.length > 0;
         const names = metadata?.[0]?.total_names || 0;
