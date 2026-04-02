@@ -1229,7 +1229,7 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Sent to Burn</p>
                 <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
-                  {burnedAuditIds.size}
+                  {burnedAuditData.scopedCount}
                 </p>
               </div>
             </CardContent>
