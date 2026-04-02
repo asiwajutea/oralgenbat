@@ -174,6 +174,12 @@ const InterviewTracking = () => {
   const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [burnInterview, setBurnInterview] = useState<TrackingInterview | null>(null);
 
+  // Edit Filename dialog state
+  const [showEditFilename, setShowEditFilename] = useState(false);
+  const [editFilenameInterview, setEditFilenameInterview] = useState<TrackingInterview | null>(null);
+  const [newFilename, setNewFilename] = useState("");
+  const [isEditingFilename, setIsEditingFilename] = useState(false);
+
   // Export state
   const [isExporting, setIsExporting] = useState(false);
 
