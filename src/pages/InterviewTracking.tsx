@@ -444,8 +444,8 @@ const InterviewTracking = () => {
     enabled: !!user?.id,
   });
 
-  // Fetch burned audit IDs to exclude from listing with total names
-  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0, totalNames: 0 } } = useQuery({
+  // Fetch burned audit IDs to exclude from listing
+  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0 } } = useQuery({
     queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole],
     queryFn: async () => {
       const { data } = await supabase
@@ -462,7 +462,7 @@ const InterviewTracking = () => {
         scopedCount = allBurned.filter(b => b.file_name?.startsWith(effectiveCid)).length;
       }
       
-      return { ids, scopedCount, totalNames };
+      return { ids, scopedCount };
     },
   });
   const burnedAuditIds = burnedAuditData.ids;
@@ -642,7 +642,6 @@ const InterviewTracking = () => {
       filteredFailedCount: filteredFailed.length,
       filteredUnresolvedCount: filteredUnresolved.length,
       filteredNoMetaCount: filteredNoMeta.length,
-      burnedTotalNames: burnedAuditData.totalNames,
     };
   }, [interviewsWithUnreadCounts, filteredInterviews]);
 
@@ -1231,8 +1230,6 @@ const InterviewTracking = () => {
                 <p className="text-xs sm:text-sm text-muted-foreground">Sent to Burn</p>
                 <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
                   {burnedAuditData.scopedCount}
-                <p className="text-xs font-medium text-orange-600 dark:text-orange-400">  
-                  {nameStats.burnedTotalNames.toLocaleString()} names
                 </p>
               </div>
             </CardContent>
