@@ -1014,6 +1014,17 @@ const InterviewTracking = () => {
               Upload Metadata
             </DropdownMenuItem>
           )}
+          {/* Edit Filename - only for interviews without metadata */}
+          {!interview.has_metadata && (
+            <DropdownMenuItem onClick={() => {
+              setEditFilenameInterview(interview);
+              setNewFilename(interview.file_name);
+              setShowEditFilename(true);
+            }}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit Filename
+            </DropdownMenuItem>
+          )}
           {/* Send to Burn */}
           {interview.status !== "Audit Passed" && (
             <>
