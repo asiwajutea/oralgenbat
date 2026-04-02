@@ -360,6 +360,8 @@ const AdminReviewHistory = () => {
         return 'Scanned PDF';
       case 'mobile_metadata':
         return 'Mobile Metadata';
+      case 'no_field_audit':
+        return 'No Proof of Field Audit';
       default:
         return artifact;
     }
@@ -370,13 +372,22 @@ const AdminReviewHistory = () => {
     
     const hasPdf = artifacts.includes('scanned_pdf');
     const hasMetadata = artifacts.includes('mobile_metadata');
+    const hasFieldAudit = artifacts.includes('no_field_audit');
     
-    if (hasPdf && hasMetadata) {
+    if (hasPdf && hasMetadata && hasFieldAudit) {
+      return { letter: 'B+F', label: 'Both PDF & Metadata need correction + No Field Audit' };
+    } else if (hasPdf && hasMetadata) {
       return { letter: 'B', label: 'Both PDF and Metadata need correction' };
+    } else if (hasPdf && hasFieldAudit) {
+      return { letter: 'P+F', label: 'PDF needs correction + No Field Audit' };
+    } else if (hasMetadata && hasFieldAudit) {
+      return { letter: 'M+F', label: 'Metadata needs correction + No Field Audit' };
     } else if (hasPdf) {
       return { letter: 'P', label: 'PDF needs correction' };
     } else if (hasMetadata) {
       return { letter: 'M', label: 'Metadata needs correction' };
+    } else if (hasFieldAudit) {
+      return { letter: 'F', label: 'No Proof of Field Audit' };
     }
     return null;
   };

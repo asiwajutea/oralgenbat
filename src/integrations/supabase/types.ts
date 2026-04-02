@@ -366,6 +366,9 @@ export type Database = {
           mobile_zip_uploaded_at: string | null
           mobile_zip_url: string | null
           original_status: Database["public"]["Enums"]["audit_status"] | null
+          pass_override_action_plan: string | null
+          pass_override_reason: string | null
+          passed_with_failures: boolean | null
           re_audit_count: number | null
           review_comment: string | null
           review_duration_seconds: number | null
@@ -390,6 +393,9 @@ export type Database = {
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
           original_status?: Database["public"]["Enums"]["audit_status"] | null
+          pass_override_action_plan?: string | null
+          pass_override_reason?: string | null
+          passed_with_failures?: boolean | null
           re_audit_count?: number | null
           review_comment?: string | null
           review_duration_seconds?: number | null
@@ -414,6 +420,9 @@ export type Database = {
           mobile_zip_uploaded_at?: string | null
           mobile_zip_url?: string | null
           original_status?: Database["public"]["Enums"]["audit_status"] | null
+          pass_override_action_plan?: string | null
+          pass_override_reason?: string | null
+          passed_with_failures?: boolean | null
           re_audit_count?: number | null
           review_comment?: string | null
           review_duration_seconds?: number | null

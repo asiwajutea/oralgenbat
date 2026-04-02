@@ -33,7 +33,8 @@ import {
   FileArchive,
   MessageCircle,
   Flame,
-  MoreHorizontal
+  MoreHorizontal,
+  Pencil
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -59,6 +60,16 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
 import { BulkMetadataUploadDialog } from "@/components/tracking/BulkMetadataUploadDialog";
@@ -173,6 +184,12 @@ const InterviewTracking = () => {
   // Send to Burn dialog state
   const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [burnInterview, setBurnInterview] = useState<TrackingInterview | null>(null);
+
+  // Edit Filename dialog state
+  const [showEditFilename, setShowEditFilename] = useState(false);
+  const [editFilenameInterview, setEditFilenameInterview] = useState<TrackingInterview | null>(null);
+  const [newFilename, setNewFilename] = useState("");
+  const [isEditingFilename, setIsEditingFilename] = useState(false);
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
@@ -428,16 +445,27 @@ const InterviewTracking = () => {
   });
 
   // Fetch burned audit IDs to exclude from listing
-  const { data: burnedAuditIds = new Set<string>() } = useQuery({
-    queryKey: ["burned-audit-ids"],
+  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0 } } = useQuery({
+    queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole],
     queryFn: async () => {
       const { data } = await supabase
         .from("burn_queue")
-        .select("audit_id")
+        .select("audit_id, file_name")
         .is("restored_at", null);
-      return new Set((data || []).map((b) => b.audit_id));
+      const allBurned = data || [];
+      const ids = new Set(allBurned.map((b) => b.audit_id));
+      
+      // Scope count by user's contractor for non-admins
+      const effectiveCid = profile?.active_contractor_id || profile?.contractor_id;
+      let scopedCount = allBurned.length;
+      if (!isSuperAdmin && effectiveCid) {
+        scopedCount = allBurned.filter(b => b.file_name?.startsWith(effectiveCid)).length;
+      }
+      
+      return { ids, scopedCount };
     },
   });
+  const burnedAuditIds = burnedAuditData.ids;
 
   // Filter out burned interviews
   const nonBurnedInterviews = useMemo(() => {
@@ -819,13 +847,20 @@ const InterviewTracking = () => {
     if (status === "Audit Failed" && artifactCorrection && artifactCorrection.length > 0) {
       const hasPdf = artifactCorrection.includes("scanned_pdf");
       const hasMeta = artifactCorrection.includes("mobile_metadata");
-      const correctionBadge = hasPdf && hasMeta ? (
-        <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>
-      ) : hasPdf ? (
-        <Badge className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 border-red-300">P</Badge>
-      ) : hasMeta ? (
-        <Badge className="h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-orange-300">M</Badge>
-      ) : null;
+      const hasFieldAudit = artifactCorrection.includes("no_field_audit");
+      
+      let correctionBadge = null;
+      if (hasPdf && hasMeta && hasFieldAudit) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B+F</Badge>;
+      } else if (hasPdf && hasMeta) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>;
+      } else if (hasPdf) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 border-red-300">P</Badge>;
+      } else if (hasMeta) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-orange-300">M</Badge>;
+      } else if (hasFieldAudit) {
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-yellow-100 text-yellow-700 border-yellow-300">F</Badge>;
+      }
 
       return (
         <div className="flex items-center gap-1">
@@ -998,6 +1033,17 @@ const InterviewTracking = () => {
             <DropdownMenuItem onClick={() => triggerFileInput(interview.id)}>
               <Upload className="h-4 w-4 mr-2" />
               Upload Metadata
+            </DropdownMenuItem>
+          )}
+          {/* Edit Filename - only for interviews without metadata */}
+          {!interview.has_metadata && (
+            <DropdownMenuItem onClick={() => {
+              setEditFilenameInterview(interview);
+              setNewFilename(interview.file_name);
+              setShowEditFilename(true);
+            }}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit Filename
             </DropdownMenuItem>
           )}
           {/* Send to Burn */}
@@ -1183,7 +1229,7 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Sent to Burn</p>
                 <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
-                  {burnedAuditIds.size}
+                  {burnedAuditData.scopedCount}
                 </p>
               </div>
             </CardContent>
@@ -1638,6 +1684,55 @@ const InterviewTracking = () => {
           auditId={burnInterview.id}
           fileName={burnInterview.file_name}
         />
+      )}
+
+      {/* Edit Filename Dialog */}
+      {editFilenameInterview && (
+        <AlertDialog open={showEditFilename} onOpenChange={setShowEditFilename}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Edit Filename</AlertDialogTitle>
+              <AlertDialogDescription>
+                Change the filename for this interview. Current: {editFilenameInterview.file_name}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-4">
+              <Label htmlFor="new-filename">New Filename</Label>
+              <Input
+                id="new-filename"
+                value={newFilename}
+                onChange={(e) => setNewFilename(e.target.value)}
+                placeholder="Enter new filename"
+                className="mt-2"
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isEditingFilename}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isEditingFilename || !newFilename.trim() || newFilename.trim() === editFilenameInterview.file_name}
+                onClick={async () => {
+                  setIsEditingFilename(true);
+                  try {
+                    const { error } = await supabase
+                      .from("audits")
+                      .update({ file_name: newFilename.trim() })
+                      .eq("id", editFilenameInterview.id);
+                    if (error) throw error;
+                    toast({ title: "Filename Updated", description: `Renamed to ${newFilename.trim()}` });
+                    setShowEditFilename(false);
+                    queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+                  } catch (error) {
+                    toast({ title: "Error", description: "Failed to update filename", variant: "destructive" });
+                  } finally {
+                    setIsEditingFilename(false);
+                  }
+                }}
+              >
+                {isEditingFilename ? "Saving..." : "Save"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

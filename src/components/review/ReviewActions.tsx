@@ -22,6 +22,7 @@ import { ReAuditDialog } from "./ReAuditDialog";
 
 const CHECKLIST_FEEDBACK_STATEMENTS: Record<number, string> = {
   // A. Form & Document Review
+  0: "The interview failed because there is no proof that the interview was audited by the Field Manager.",
   1: "The interview was not recorded on the FSI Standard Interview Collection Form or an incorrect form was submitted. Please ensure the interview is properly documented using the approved FSI Standard Interview Collection Form and resubmit for review.",
   2: "The Authorization Form is incomplete, missing a signature and/or date, or a required witness signature is absent where \"X\" was used. Please obtain all required signatures and dates and resubmit the completed Authorization Form.",
   3: "The Field Manager Checklist was not fully completed and/or signed. Please ensure all required checklist items are checked and the form is properly signed before resubmission.",
@@ -298,8 +299,11 @@ export const ReviewActions = ({
   // Determine if we should show auditor buttons
   const showAuditorButtons = isAuditor && !isReviewed && checklistCompleted;
   const analysisComplete = audioAnalysisComplete && pdfAnalysisComplete;
-  const canPass = showAuditorButtons && !hasChecklistFailures && analysisComplete;
+  const canPass = showAuditorButtons && analysisComplete;
   const canFail = showAuditorButtons && analysisComplete;
+  const [showPassOverrideDialog, setShowPassOverrideDialog] = useState(false);
+  const [passOverrideReason, setPassOverrideReason] = useState("");
+  const [passOverrideActionPlan, setPassOverrideActionPlan] = useState("");
 
   return (
     <>
@@ -315,7 +319,13 @@ export const ReviewActions = ({
               <>
                 {canPass && (
                   <Button
-                    onClick={() => setShowPassDialog(true)}
+                    onClick={() => {
+                      if (hasChecklistFailures) {
+                        setShowPassOverrideDialog(true);
+                      } else {
+                        setShowPassDialog(true);
+                      }
+                    }}
                     disabled={isSubmitting}
                     className="gap-2 bg-green-600 hover:bg-green-700 text-white"
                   >
@@ -350,7 +360,7 @@ export const ReviewActions = ({
 
                 {hasChecklistFailures && (
                   <span className="text-sm text-amber-600 ml-2">
-                    Checklist has failed items - interview cannot pass
+                    ⚠ Checklist has failed items — you will need to provide reasons if passing
                   </span>
                 )}
 
@@ -431,6 +441,19 @@ export const ReviewActions = ({
                     </Label>
                   </div>
                 </div>
+                <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <Checkbox
+                    id="no-field-audit"
+                    checked={artifactCorrection.includes('no_field_audit')}
+                    onCheckedChange={(checked) => toggleArtifact('no_field_audit', !!checked)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="no-field-audit" className="cursor-pointer font-medium">
+                      No Proof of Field Audit
+                    </Label>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -499,6 +522,112 @@ export const ReviewActions = ({
                 "Confirm Pass"
               )}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Pass with Override Dialog - when checklist has failures */}
+      <AlertDialog open={showPassOverrideDialog} onOpenChange={setShowPassOverrideDialog}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-600">Pass Interview with Failed Checklist Items</AlertDialogTitle>
+            <AlertDialogDescription>
+              This interview has failed checklist items. You must provide a reason for passing it. This will be recorded as reviewed by {profile?.full_name}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Show failed items for context */}
+            {checklistFailureComments && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Failed Checklist Items:</p>
+                <p className="text-xs text-amber-600 dark:text-amber-300 whitespace-pre-line">{checklistFailureComments}</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="pass-override-reason">Reason for Passing Despite Failures *</Label>
+              <Textarea
+                id="pass-override-reason"
+                placeholder="Explain why this interview should pass despite failed checklist items..."
+                value={passOverrideReason}
+                onChange={(e) => setPassOverrideReason(e.target.value)}
+                className="min-h-[100px]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pass-override-action-plan">Action Plan (Optional)</Label>
+              <Textarea
+                id="pass-override-action-plan"
+                placeholder="Describe any follow-up actions needed..."
+                value={passOverrideActionPlan}
+                onChange={(e) => setPassOverrideActionPlan(e.target.value)}
+                className="min-h-[80px]"
+              />
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <Button
+              onClick={async () => {
+                if (passOverrideReason.trim().length < 10) {
+                  toast({
+                    title: "Validation Error",
+                    description: "Please provide a detailed reason (at least 10 characters).",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                setIsSubmitting(true);
+                try {
+                  const { error } = await supabase
+                    .from("audits")
+                    .update({
+                      status: "Audit Passed" as any,
+                      reviewed_at: new Date().toISOString(),
+                      reviewed_by: profile?.full_name || "Unknown",
+                      review_duration_seconds: reviewDurationSeconds || null,
+                      locked_by: null,
+                      locked_at: null,
+                      review_started_at: null,
+                      passed_with_failures: true,
+                      pass_override_reason: passOverrideReason.trim(),
+                      pass_override_action_plan: passOverrideActionPlan.trim() || null,
+                    } as any)
+                    .eq("id", auditId);
+                  if (error) throw error;
+                  if (onReleaseLock) await onReleaseLock();
+                  try {
+                    await supabase.functions.invoke('cleanup-interview-audio', { body: { auditId } });
+                  } catch {}
+                  toast({ title: "Interview Passed (with override)", description: "The interview has been passed with noted checklist failures." });
+                  setShowPassOverrideDialog(false);
+                  queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
+                  queryClient.invalidateQueries({ queryKey: ["status-counts"] });
+                  queryClient.invalidateQueries({ queryKey: ["next-unreviewed-audit"] });
+                  queryClient.invalidateQueries({ queryKey: ["audits"] });
+                  if (onReviewCompleted) onReviewCompleted("passed");
+                } catch (error) {
+                  console.error("Error passing interview with override:", error);
+                  toast({ title: "Error", description: "Failed to update interview status.", variant: "destructive" });
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              disabled={isSubmitting}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Passing...
+                </>
+              ) : (
+                "Pass with Override"
+              )}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
