@@ -40,6 +40,13 @@ export const useStatusCounts = () => {
   return useQuery({
     queryKey: ["status-counts", userRole, profile?.full_name, effectiveContractorId],
     queryFn: async (): Promise<{ counts: StatusCounts; totalNames: TotalNames }> => {
+      // First, fetch burned audit IDs to exclude
+      const { data: burnedData } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      const burnedIds = new Set((burnedData || []).map(b => b.audit_id));
+
       // Paginated fetch to bypass the 1000-row default limit
       const batchSize = 1000;
       let allAudits: any[] = [];
@@ -50,6 +57,7 @@ export const useStatusCounts = () => {
         const { data: batch, error } = await supabase
           .from("audits")
           .select(`
+            id,
             status, 
             locked_by, 
             locked_at,
