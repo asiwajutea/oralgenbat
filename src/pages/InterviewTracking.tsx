@@ -33,7 +33,8 @@ import {
   FileArchive,
   MessageCircle,
   Flame,
-  MoreHorizontal
+  MoreHorizontal,
+  Pencil
 } from "lucide-react";
 import { format } from "date-fns";
 import {
