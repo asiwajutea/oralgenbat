@@ -299,8 +299,11 @@ export const ReviewActions = ({
   // Determine if we should show auditor buttons
   const showAuditorButtons = isAuditor && !isReviewed && checklistCompleted;
   const analysisComplete = audioAnalysisComplete && pdfAnalysisComplete;
-  const canPass = showAuditorButtons && !hasChecklistFailures && analysisComplete;
+  const canPass = showAuditorButtons && analysisComplete;
   const canFail = showAuditorButtons && analysisComplete;
+  const [showPassOverrideDialog, setShowPassOverrideDialog] = useState(false);
+  const [passOverrideReason, setPassOverrideReason] = useState("");
+  const [passOverrideActionPlan, setPassOverrideActionPlan] = useState("");
 
   return (
     <>

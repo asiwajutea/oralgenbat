@@ -34,6 +34,12 @@ export interface ChecklistProgress {
 const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
   // A. Form & Document Review (things checked by looking at the scanned PDF)
   {
+    id: 0,
+    category: "A",
+    categoryLabel: "Form & Document Review",
+    question: "Was the interview audited by the Field Manager using the AVTool or any other proof of audit?",
+  },
+  {
     id: 1,
     category: "A",
     categoryLabel: "Form & Document Review",
