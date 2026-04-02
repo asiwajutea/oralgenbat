@@ -60,6 +60,16 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal";
 import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
 import { BulkMetadataUploadDialog } from "@/components/tracking/BulkMetadataUploadDialog";
