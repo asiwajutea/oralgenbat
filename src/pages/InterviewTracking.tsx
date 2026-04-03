@@ -122,6 +122,9 @@ interface TrackingInterview {
   artifact_correction_resolved_by: string | null;
   has_resolution_comments: boolean;
   unread_comment_count: number;
+  passed_with_failures: boolean;
+  pass_override_reason: string | null;
+  pass_override_action_plan: string | null;
 }
 
 const InterviewTracking = () => {
