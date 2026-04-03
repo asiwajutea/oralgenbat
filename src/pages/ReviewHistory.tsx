@@ -13,7 +13,8 @@ import { AuditPagination } from "@/components/AuditPagination";
 import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
-import { History, Search, Clock, MessageSquare, ExternalLink } from "lucide-react";
+import { History, Search, Clock, MessageSquare, ExternalLink, AlertTriangle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ReviewedAudit {
   id: string;
@@ -25,6 +26,9 @@ interface ReviewedAudit {
   is_re_audit: boolean;
   re_audit_count: number;
   review_duration_seconds: number | null;
+  passed_with_failures: boolean;
+  pass_override_reason: string | null;
+  pass_override_action_plan: string | null;
 }
 
 const ReviewHistory = () => {
@@ -43,7 +47,7 @@ const ReviewHistory = () => {
 
       let query = supabase
         .from("audits")
-        .select("id, file_name, status, reviewed_at, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds", { count: "exact" })
+        .select("id, file_name, status, reviewed_at, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, passed_with_failures, pass_override_reason, pass_override_action_plan", { count: "exact" })
         .eq("reviewed_by", profile.full_name)
         .not("reviewed_at", "is", null)
         .order("reviewed_at", { ascending: false });
@@ -191,11 +195,31 @@ const ReviewHistory = () => {
                           {audit.file_name}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={audit.status === "Audit Passed" ? "default" : "destructive"}
-                          >
-                            {audit.status === "Audit Passed" ? "Passed" : "Failed"}
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge
+                              variant={audit.status === "Audit Passed" ? "default" : "destructive"}
+                            >
+                              {audit.status === "Audit Passed" ? "Passed" : "Failed"}
+                            </Badge>
+                            {audit.status === "Audit Passed" && audit.passed_with_failures && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-300 cursor-help" onClick={(e) => e.stopPropagation()}>
+                                      <AlertTriangle className="h-3 w-3" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    <p className="font-semibold text-xs mb-1">Passed with Override</p>
+                                    <p className="text-xs">{audit.pass_override_reason || "No reason provided"}</p>
+                                    {audit.pass_override_action_plan && (
+                                      <p className="text-xs mt-1 text-muted-foreground">Action Plan: {audit.pass_override_action_plan}</p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm">
                           {audit.reviewed_at && format(new Date(audit.reviewed_at), "PPp")}

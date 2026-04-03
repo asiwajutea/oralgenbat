@@ -16,9 +16,9 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Find burn queue items older than 190 days that haven't been restored
+    // Find burn queue items older than 90 days that haven't been restored
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 190);
+    cutoffDate.setDate(cutoffDate.getDate() - 90);
 
     const { data: expiredItems, error: fetchError } = await supabase
       .from("burn_queue")

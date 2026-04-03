@@ -34,7 +34,8 @@ import {
   MessageCircle,
   Flame,
   MoreHorizontal,
-  Pencil
+  Pencil,
+  Info
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -60,6 +61,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -122,6 +124,9 @@ interface TrackingInterview {
   artifact_correction_resolved_by: string | null;
   has_resolution_comments: boolean;
   unread_comment_count: number;
+  passed_with_failures: boolean;
+  pass_override_reason: string | null;
+  pass_override_action_plan: string | null;
 }
 
 const InterviewTracking = () => {
@@ -307,6 +312,9 @@ const InterviewTracking = () => {
               artifact_correction,
               artifact_correction_resolved_at,
               artifact_correction_resolved_by,
+              passed_with_failures,
+              pass_override_reason,
+              pass_override_action_plan,
               last_modified,
               uploaded_at,
               interview_metadata (
@@ -418,6 +426,9 @@ const InterviewTracking = () => {
           artifact_correction_resolved_at: (audit as any).artifact_correction_resolved_at || null,
           artifact_correction_resolved_by: (audit as any).artifact_correction_resolved_by || null,
           has_resolution_comments: false,
+          passed_with_failures: audit.passed_with_failures || false,
+          pass_override_reason: audit.pass_override_reason || null,
+          pass_override_action_plan: audit.pass_override_action_plan || null,
           unread_comment_count: 0, // Will be populated after we fetch comments count
           // For filtering - use metadata if available, otherwise extract from file_name
           contractor_id: meta?.contractor_id || contractorIdFromFileName,
@@ -445,7 +456,7 @@ const InterviewTracking = () => {
   });
 
   // Fetch burned audit IDs to exclude from listing
-  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0 } } = useQuery({
+  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0, scopedNames: 0 } } = useQuery({
     queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole],
     queryFn: async () => {
       const { data } = await supabase
@@ -457,12 +468,30 @@ const InterviewTracking = () => {
       
       // Scope count by user's contractor for non-admins
       const effectiveCid = profile?.active_contractor_id || profile?.contractor_id;
-      let scopedCount = allBurned.length;
+      let scopedItems = allBurned;
       if (!isSuperAdmin && effectiveCid) {
-        scopedCount = allBurned.filter(b => b.file_name?.startsWith(effectiveCid)).length;
+        scopedItems = allBurned.filter(b => b.file_name?.startsWith(effectiveCid));
+      }
+      const scopedCount = scopedItems.length;
+      
+      // Fetch total names for scoped burned items
+      let scopedNames = 0;
+      if (scopedItems.length > 0) {
+        const burnedIds = scopedItems.map(b => b.audit_id);
+        const batchSize = 200;
+        for (let i = 0; i < burnedIds.length; i += batchSize) {
+          const batch = burnedIds.slice(i, i + batchSize);
+          const { data: metaData } = await supabase
+            .from("interview_metadata")
+            .select("total_names")
+            .in("audit_id", batch);
+          if (metaData) {
+            scopedNames += metaData.reduce((sum, m) => sum + (m.total_names || 0), 0);
+          }
+        }
       }
       
-      return { ids, scopedCount };
+      return { ids, scopedCount, scopedNames };
     },
   });
   const burnedAuditIds = burnedAuditData.ids;
@@ -827,7 +856,7 @@ const InterviewTracking = () => {
     );
   };
 
-  const getStatusBadge = (status: string, artifactCorrection?: string[] | null) => {
+  const getStatusBadge = (status: string, artifactCorrection?: string[] | null, interview?: TrackingInterview) => {
     const badge = (() => {
       switch (status) {
         case "Audit Passed":
@@ -866,6 +895,31 @@ const InterviewTracking = () => {
         <div className="flex items-center gap-1">
           {badge}
           {correctionBadge}
+        </div>
+      );
+    }
+
+    // Show override indicator for passed-with-failures
+    if (status === "Audit Passed" && interview?.passed_with_failures) {
+      return (
+        <div className="flex items-center gap-1">
+          {badge}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-300 cursor-help" onClick={(e) => e.stopPropagation()}>
+                  <AlertTriangle className="h-3 w-3" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs" onClick={(e) => e.stopPropagation()}>
+                <p className="font-semibold text-xs mb-1">Passed with Override</p>
+                <p className="text-xs">{interview.pass_override_reason || "No reason provided"}</p>
+                {interview.pass_override_action_plan && (
+                  <p className="text-xs mt-1 text-muted-foreground">Action Plan: {interview.pass_override_action_plan}</p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       );
     }
@@ -1231,6 +1285,9 @@ const InterviewTracking = () => {
                 <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
                   {burnedAuditData.scopedCount}
                 </p>
+                <p className="text-xs font-medium text-orange-600 dark:text-orange-400">
+                  {burnedAuditData.scopedNames.toLocaleString()} names
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -1399,7 +1456,7 @@ const InterviewTracking = () => {
                                 {interview.team_name || "Assigned"}
                               </Badge>
                             )}
-                            {getStatusBadge(interview.status, interview.artifact_correction)}
+                            {getStatusBadge(interview.status, interview.artifact_correction, interview)}
                           </div>
                         </div>
                       </AccordionTrigger>
@@ -1549,7 +1606,7 @@ const InterviewTracking = () => {
                           {interview.interviewee_name || "-"}
                         </TableCell>
                         <TableCell>{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</TableCell>
-                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction)}</TableCell>
+                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction, interview)}</TableCell>
                         <TableCell>
                           {getTeamBadge(interview)}
                         </TableCell>

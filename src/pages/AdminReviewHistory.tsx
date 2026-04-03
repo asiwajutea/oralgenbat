@@ -40,6 +40,9 @@ interface ReviewedAudit {
   artifact_correction: string[] | null;
   artifact_correction_resolved_at: string | null;
   artifact_correction_resolved_by: string | null;
+  passed_with_failures: boolean;
+  pass_override_reason: string | null;
+  pass_override_action_plan: string | null;
 }
 
 interface AssignmentInfo {
@@ -225,7 +228,7 @@ const AdminReviewHistory = () => {
     queryFn: async () => {
       let query = supabase
         .from("audits")
-        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction, artifact_correction_resolved_at, artifact_correction_resolved_by", { count: "exact" })
+        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction, artifact_correction_resolved_at, artifact_correction_resolved_by, passed_with_failures, pass_override_reason, pass_override_action_plan", { count: "exact" })
         .not("reviewed_at", "is", null)
         .order(sortField, { ascending: sortDirection === "asc" });
 
@@ -1131,6 +1134,29 @@ const AdminReviewHistory = () => {
                           <Badge variant={audit.status === "Audit Passed" ? "default" : "destructive"}>
                             {audit.status === "Audit Passed" ? "Passed" : "Failed"}
                           </Badge>
+                          
+                          {/* Passed with override indicator */}
+                          {audit.status === "Audit Passed" && audit.passed_with_failures && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span 
+                                    className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-300 cursor-help"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    ⚠
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs" onClick={(e) => e.stopPropagation()}>
+                                  <p className="font-semibold text-xs mb-1">Passed with Override</p>
+                                  <p className="text-xs">{audit.pass_override_reason || "No reason provided"}</p>
+                                  {audit.pass_override_action_plan && (
+                                    <p className="text-xs mt-1 text-muted-foreground">Action Plan: {audit.pass_override_action_plan}</p>
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                           
                           {audit.status === "Audit Failed" && (() => {
                             const indicator = getArtifactIndicator(audit.artifact_correction);

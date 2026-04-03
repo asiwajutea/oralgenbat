@@ -545,12 +545,17 @@ const ReviewInterview = () => {
 
           <XCircle className="h-16 w-16 mx-auto mb-4 text-destructive" />
           }
-          <h2 className="text-2xl font-bold mb-2">
-            Interview {isPassed ? "Passed" : "Failed"}
-          </h2>
-          <p className="text-muted-foreground mb-1">
-            Your review has been submitted successfully.
-          </p>
+           <h2 className="text-2xl font-bold mb-2">
+             Interview {isPassed ? "Passed" : "Failed"}
+           </h2>
+           {isPassed && audit?.passed_with_failures && (
+             <Badge variant="outline" className="mb-2 bg-amber-50 text-amber-700 border-amber-300">
+               ⚠ Passed with Override
+             </Badge>
+           )}
+           <p className="text-muted-foreground mb-1">
+             Your review has been submitted successfully.
+           </p>
           {awaitingCount !== undefined &&
           <p className="text-sm font-medium text-foreground mt-4">
               {awaitingCount} {awaitingCount === 1 ? "interview" : "interviews"} awaiting review
