@@ -33,25 +33,38 @@ serve(async (req) => {
       );
     }
 
-    // Call AVTool's get-field-audit edge function
-    const response = await fetch(`${avtoolUrl}/functions/v1/get-field-audit`, {
-      method: 'POST',
+    // Query AVTool's database directly via REST API to check folder existence regardless of status
+    const response = await fetch(`${avtoolUrl}/rest/v1/interviews?folder_name=eq.${encodeURIComponent(folder_name)}&select=id,folder_name,status`, {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        ...(avtoolApiKey ? { 'api_key': avtoolApiKey } : {}),
+        'apikey': avtoolApiKey || '',
+        'Authorization': `Bearer ${avtoolApiKey || ''}`,
       },
-      body: JSON.stringify({ folder_name }),
     });
 
     if (!response.ok) {
-      console.error('AVTool response error:', response.status, await response.text());
+      console.error('AVTool REST query error:', response.status, await response.text());
       return new Response(
-        JSON.stringify({ found: false, error: 'Failed to reach AVTool' }),
+        JSON.stringify({ found: false, error: 'Failed to query AVTool' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const result = await response.json();
+    const rows = await response.json();
+    
+    if (Array.isArray(rows) && rows.length > 0) {
+      const row = rows[0];
+      return new Response(
+        JSON.stringify({ found: true, status: row.status, folder_name: row.folder_name }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ found: false }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
     return new Response(
       JSON.stringify(result),
