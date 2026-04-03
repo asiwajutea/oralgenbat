@@ -1435,7 +1435,7 @@ const InterviewTracking = () => {
                                 {interview.team_name || "Assigned"}
                               </Badge>
                             )}
-                            {getStatusBadge(interview.status, interview.artifact_correction)}
+                            {getStatusBadge(interview.status, interview.artifact_correction, interview)}
                           </div>
                         </div>
                       </AccordionTrigger>
