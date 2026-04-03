@@ -34,7 +34,8 @@ import {
   MessageCircle,
   Flame,
   MoreHorizontal,
-  Pencil
+  Pencil,
+  Info
 } from "lucide-react";
 import { format } from "date-fns";
 import {
