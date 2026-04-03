@@ -195,11 +195,31 @@ const ReviewHistory = () => {
                           {audit.file_name}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={audit.status === "Audit Passed" ? "default" : "destructive"}
-                          >
-                            {audit.status === "Audit Passed" ? "Passed" : "Failed"}
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge
+                              variant={audit.status === "Audit Passed" ? "default" : "destructive"}
+                            >
+                              {audit.status === "Audit Passed" ? "Passed" : "Failed"}
+                            </Badge>
+                            {audit.status === "Audit Passed" && audit.passed_with_failures && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-300 cursor-help" onClick={(e) => e.stopPropagation()}>
+                                      <AlertTriangle className="h-3 w-3" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    <p className="font-semibold text-xs mb-1">Passed with Override</p>
+                                    <p className="text-xs">{audit.pass_override_reason || "No reason provided"}</p>
+                                    {audit.pass_override_action_plan && (
+                                      <p className="text-xs mt-1 text-muted-foreground">Action Plan: {audit.pass_override_action_plan}</p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm">
                           {audit.reviewed_at && format(new Date(audit.reviewed_at), "PPp")}
