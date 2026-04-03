@@ -25,6 +25,9 @@ interface ReviewedAudit {
   is_re_audit: boolean;
   re_audit_count: number;
   review_duration_seconds: number | null;
+  passed_with_failures: boolean;
+  pass_override_reason: string | null;
+  pass_override_action_plan: string | null;
 }
 
 const ReviewHistory = () => {
