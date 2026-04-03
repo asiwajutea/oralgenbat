@@ -424,6 +424,9 @@ const InterviewTracking = () => {
           artifact_correction_resolved_at: (audit as any).artifact_correction_resolved_at || null,
           artifact_correction_resolved_by: (audit as any).artifact_correction_resolved_by || null,
           has_resolution_comments: false,
+          passed_with_failures: audit.passed_with_failures || false,
+          pass_override_reason: audit.pass_override_reason || null,
+          pass_override_action_plan: audit.pass_override_action_plan || null,
           unread_comment_count: 0, // Will be populated after we fetch comments count
           // For filtering - use metadata if available, otherwise extract from file_name
           contractor_id: meta?.contractor_id || contractorIdFromFileName,
