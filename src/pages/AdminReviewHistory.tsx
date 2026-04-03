@@ -228,7 +228,7 @@ const AdminReviewHistory = () => {
     queryFn: async () => {
       let query = supabase
         .from("audits")
-        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction, artifact_correction_resolved_at, artifact_correction_resolved_by", { count: "exact" })
+        .select("id, file_name, status, reviewed_at, reviewed_by, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, artifact_correction, artifact_correction_resolved_at, artifact_correction_resolved_by, passed_with_failures, pass_override_reason, pass_override_action_plan", { count: "exact" })
         .not("reviewed_at", "is", null)
         .order(sortField, { ascending: sortDirection === "asc" });
 
