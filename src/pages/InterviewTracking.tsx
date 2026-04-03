@@ -456,7 +456,7 @@ const InterviewTracking = () => {
   });
 
   // Fetch burned audit IDs to exclude from listing
-  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0 } } = useQuery({
+  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0, scopedNames: 0 } } = useQuery({
     queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole],
     queryFn: async () => {
       const { data } = await supabase
@@ -468,12 +468,30 @@ const InterviewTracking = () => {
       
       // Scope count by user's contractor for non-admins
       const effectiveCid = profile?.active_contractor_id || profile?.contractor_id;
-      let scopedCount = allBurned.length;
+      let scopedItems = allBurned;
       if (!isSuperAdmin && effectiveCid) {
-        scopedCount = allBurned.filter(b => b.file_name?.startsWith(effectiveCid)).length;
+        scopedItems = allBurned.filter(b => b.file_name?.startsWith(effectiveCid));
+      }
+      const scopedCount = scopedItems.length;
+      
+      // Fetch total names for scoped burned items
+      let scopedNames = 0;
+      if (scopedItems.length > 0) {
+        const burnedIds = scopedItems.map(b => b.audit_id);
+        const batchSize = 200;
+        for (let i = 0; i < burnedIds.length; i += batchSize) {
+          const batch = burnedIds.slice(i, i + batchSize);
+          const { data: metaData } = await supabase
+            .from("interview_metadata")
+            .select("total_names")
+            .in("audit_id", batch);
+          if (metaData) {
+            scopedNames += metaData.reduce((sum, m) => sum + (m.total_names || 0), 0);
+          }
+        }
       }
       
-      return { ids, scopedCount };
+      return { ids, scopedCount, scopedNames };
     },
   });
   const burnedAuditIds = burnedAuditData.ids;
