@@ -1,118 +1,112 @@
 
 
-## Plan: New Checklist Question, Pass-with-Failures Flow, Burn Queue Scoping, Edit Filename, Mobile Nav Update
+## Plan: Pass-with-Override Visibility, Burn Queue Overhaul, Total Names on Tracking, Field Audit API Fix
 
-This plan covers 7 changes across the codebase.
-
----
-
-### 1. Add New Checklist Question (Field Audit Proof)
-
-**File: `src/components/review/AuditChecklist.tsx`**
-- Insert a new question as ID 0 (or renumber all to start from 0) at the top of `CHECKLIST_ITEMS`:
-  ```
-  { id: 0, category: "A", categoryLabel: "Form & Document Review",
-    question: "Was the interview audited by the Field Manager using the AVTool or any other proof of audit?" }
-  ```
-- Renumber existing questions: current Q1→Q1 stays but new question becomes Q0 or we shift all IDs up by 1 (new=1, old 1→2, etc). Best approach: prepend with id: 0 to avoid breaking existing saved checklist data.
-
-**File: `src/components/review/ReviewActions.tsx`**
-- Add feedback statement for Q0:
-  ```
-  0: "The interview failed because there is no proof that the interview was audited by the Field Manager."
-  ```
-- Add "No Proof of Field Audit" as a third artifact correction option (`no_field_audit`) in the fail dialog, alongside "Scanned PDF" and "Mobile Metadata"
-
-**File: `src/components/fraud-dashboard/ChecklistAnalyticsTab.tsx`** — No code changes needed; it reads dynamically from saved checklist data.
-
-**File: `src/hooks/useChecklistAnalytics.ts`** — No changes needed; it processes items dynamically from the JSONB data.
-
-**File: `src/pages/AdminReviewHistory.tsx`** — The PDF export reads `review_comment` which already contains the parsed feedback. The artifact correction indicators need to handle `no_field_audit` with a new badge letter "F".
-
-**File: `src/pages/InterviewTracking.tsx`** — The artifact correction badge display needs to handle `no_field_audit` → show "F" indicator.
-
-**File: `src/components/tracking/FailedInterviewModal.tsx`** — Already reads `artifact_correction` from DB; no changes needed unless we want to display the "F" label.
+This plan addresses 4 areas across many files.
 
 ---
 
-### 2. Allow Passing Interviews with Failed Checklist Items
+### 1. Show "Passed with Override" Indicator on Tracking + Admin Review + Index Pages
 
-Currently, `canPass` is `false` when `hasChecklistFailures` is `true`. This needs to change.
+**Problem:** The `passed_with_failures` flag is stored in DB but never fetched or displayed outside the review page.
 
-**Database migration:**
-- Add columns to `audits` table:
-  - `passed_with_failures` (boolean, default false)
-  - `pass_override_reason` (text, nullable)
-  - `pass_override_action_plan` (text, nullable)
+**File: `src/pages/InterviewTracking.tsx`**
+- Add `passed_with_failures`, `pass_override_reason`, `pass_override_action_plan` to the `TrackingInterview` interface
+- Add these fields to the audit SELECT query (line ~297)
+- Map them in the results transformation (line ~389)
+- Update `getStatusBadge`: when `status === "Audit Passed"` and `passed_with_failures` is true, show an amber `⚠` indicator next to the green "Passed" badge
+- Wrap the amber indicator in a `Tooltip` showing the override reason on hover/click
+- Add a `Popover` or dialog for viewing full reason + action plan on click
 
-**File: `src/components/review/ReviewActions.tsx`**
-- Change `canPass` logic: allow pass even when `hasChecklistFailures` is true
-- When `hasChecklistFailures && user clicks Pass`: show a modified pass dialog requiring:
-  - Reason(s) why the interview is being passed (required, textarea)
-  - Action plan (optional, textarea)
-  - List of failed checklist items displayed for context
-- On submit: update audits with `status: "Audit Passed"`, `passed_with_failures: true`, `pass_override_reason`, `pass_override_action_plan`
-- Remove the "Checklist has failed items - interview cannot pass" warning; replace with amber notice "Checklist has failed items - you will need to provide reasons if passing"
-
-**File: `src/pages/ReviewInterview.tsx`**
-- On the review completion page, if `passed_with_failures`, show a note: "Passed with override"
-
-**File: `src/pages/InterviewTracking.tsx`** and **`src/pages/AdminReviewHistory.tsx`**
-- For audits where `passed_with_failures` is true, show a small indicator (e.g., amber dot or "⚠" next to "Audit Passed" badge)
-- Add ability to click/hover to view the override reason
+**File: `src/pages/AdminReviewHistory.tsx`**
+- Add `passed_with_failures`, `pass_override_reason`, `pass_override_action_plan` to the `ReviewedAudit` interface
+- Add these fields to the audit SELECT query
+- In the status badge rendering, show amber `⚠` indicator for overridden passes with tooltip showing reason
+- In PDF export, append "[PASSED WITH OVERRIDE]" marker and the reason
 
 **File: `src/pages/ReviewHistory.tsx`**
-- Show override indicator for passed-with-failures interviews
+- Same pattern: fetch `passed_with_failures` and show indicator
+
+**File: `src/pages/ReviewInterview.tsx`** (completion page)
+- On the completion screen (line ~537-590), if `audit.passed_with_failures`, show note "Passed with override" below the result heading
+
+**File: `src/pages/Index.tsx`** (main interviews page)
+- If interview data includes `passed_with_failures`, show the same amber indicator next to status
 
 ---
 
-### 3. Exclude Burned Interviews from Status Counts (FilterSidebar)
-
-**File: `src/hooks/useStatusCounts.ts`**
-- Fetch burned audit IDs (same pattern as tracking page) and exclude them from all status counting logic
-- Add burned IDs query before the main audit fetch, then filter them out in the `forEach` loop
-
----
-
-### 4. Scope "Sent to Burn" Card per User Role
+### 2. Add Total Names for Burned Interviews on Tracking Page
 
 **File: `src/pages/InterviewTracking.tsx`**
-- Change the burned audit IDs query to also fetch `file_name` so we can scope by contractor
-- For field managers: only count burned audits where `file_name` starts with their team's contractor prefix (or filter via interview_metadata join)
-- For contractors/sub-contractors: filter burned audits by matching contractor_id from file_name prefix
-- For admins/super_admins: show all burned counts (current behavior)
-- The simplest approach: join `burn_queue` with `interview_metadata` on `audit_id` and filter by `contractor_id`, or extract contractor from `file_name` prefix
+- In the `burnedAuditData` query (line ~448), also fetch the audit IDs' `interview_metadata.total_names` by joining or running a secondary query
+- Compute `burnedTotalNames` sum
+- Display it under the "Sent to Burn" stat card as `{burnedTotalNames.toLocaleString()} names`
+- Scope by user's contractor prefix (same as scopedCount logic)
 
 ---
 
-### 5. Add "Edit Filename" to Tracking Page Action Dropdown
+### 3. Burn Queue Page Overhaul
 
-**File: `src/pages/InterviewTracking.tsx`**
-- Add a new dropdown menu item "Edit Filename" for interviews without metadata (`!interview.has_metadata`)
-- On click: show a dialog/inline input to edit the filename
-- On submit: update `audits.file_name` in the database
-- Create a small `EditFilenameDialog` component inline or as a separate component
+**File: `src/pages/BurnQueue.tsx`** — Major rewrite
+
+**a) Change BURN_DAYS from 190 to 90**
+- Update constant and all references including `cleanup-burn-queue` edge function
+
+**b) Mobile optimization**
+- Use accordion/card layout for mobile (same pattern as InterviewTracking)
+- Responsive stat cards and filters
+
+**c) Stat cards**
+- Total burned interviews count
+- Total names (join with `interview_metadata` to get `total_names`)
+- Total unique field managers (extract from `interview_metadata.field_manager`)
+- Average days remaining
+
+**d) Advanced filtering**
+- Sort by clicking column headers (file_name, sent_at, days_remaining)
+- Filter by field manager (dropdown populated from metadata)
+- Filter by date range (sent_at)
+- Search bar styled like tracking page (persistent, with clear button)
+
+**e) Field Manager analytics section**
+- Collapsible section showing per-field-manager breakdown: FM name, interview count, total names
+- Displayed as a small table or cards
+
+**f) Bulk actions**
+- Checkbox selection on each row + "Select All" header checkbox
+- Bulk Restore button (for admins)
+- Bulk Permanent Delete button (for admins, with confirmation dialog)
+- Both mutations update all selected items
+
+**g) Actions column → DropdownMenu**
+- Replace the inline Restore button with a kebab dropdown menu containing:
+  - "View Details" — opens FailedInterviewModal with the audit's failure info (fetches from `audits` table)
+  - "Restore" (admin only)
+  - "Delete Permanently" (admin only, with confirmation)
+
+**h) PDF report download**
+- "Export PDF" button that generates a report following AdminReviewHistory template
+- Includes: File Name, Sent By, Reason, Sent At, Days Remaining, Field Manager
+- Follows active filters (status, search, date range, FM filter)
+- Uses jsPDF with same styling as AdminReviewHistory export
 
 ---
 
-### 6. Add Burn Queue to Mobile Nav
+### 4. Field Audit API Fix
 
-**File: `src/components/MobileNav.tsx`**
-- Add a `NavItem` for Burn Queue under the Operations section:
-  ```tsx
-  <NavItem to="/burn-queue" icon={Flame}>Burn Queue</NavItem>
-  ```
-- Show for roles that can see the tracking page (field_manager, contractor, admin, sub_contractor)
+**File: `supabase/functions/check-field-audit/index.ts`**
+- The issue is in the upstream `get-field-audit` function on the AVTool project which likely filters by `status = 'completed'`
+- Since we can't modify the external function, update `check-field-audit` to pass an additional parameter `{ folder_name, include_all_statuses: true }` in the body
+- If the upstream function doesn't support this parameter, we need to modify the approach: instead of calling `get-field-audit`, call the AVTool's Supabase API directly to check if the folder exists in their `interviews` table regardless of status
+- Add a direct query approach: use the AVTool URL + API key to query their database table directly via REST API: `GET ${avtoolUrl}/rest/v1/interviews?folder_name=eq.${folder_name}&select=id,folder_name,status` with the API key as Bearer token
+- If any row is returned (regardless of status), return `{ found: true }` with the status info
 
 ---
 
-### 7. Display Override Reason for Passed-with-Failures Interviews
+### 5. Edge Function: Update Burn Days
 
-**File: `src/components/review/MetadataPanel.tsx`** or inline on review page
-- If the audit has `passed_with_failures === true`, display a card/section showing:
-  - "This interview was passed with failed checklist items"
-  - The override reason
-  - The action plan (if provided)
+**File: `supabase/functions/cleanup-burn-queue/index.ts`**
+- Change `cutoffDate.setDate(cutoffDate.getDate() - 190)` to `- 90`
 
 ---
 
@@ -120,11 +114,9 @@ Currently, `canPass` is `false` when `hasChecklistFailures` is `true`. This need
 
 | Area | Files | Change |
 |------|-------|--------|
-| New checklist Q | `AuditChecklist.tsx`, `ReviewActions.tsx` | Add Q0 field audit question + feedback + artifact option |
-| Pass with failures | DB migration, `ReviewActions.tsx` | Allow pass with reasons when checklist has failures |
-| Status counts fix | `useStatusCounts.ts` | Exclude burned audit IDs from counts |
-| Burn card scoping | `InterviewTracking.tsx` | Filter burn count by user's contractor scope |
-| Edit filename | `InterviewTracking.tsx` | New dropdown action + dialog for renaming |
-| Mobile nav | `MobileNav.tsx` | Add Burn Queue link |
-| Override display | `ReviewActions.tsx`, tracking pages | Show indicators for passed-with-failures |
+| Override visibility | `InterviewTracking.tsx`, `AdminReviewHistory.tsx`, `ReviewHistory.tsx`, `ReviewInterview.tsx`, `Index.tsx` | Fetch + display `passed_with_failures` with amber indicator and tooltip |
+| Burn total names | `InterviewTracking.tsx` | Join metadata to get names sum for burned interviews |
+| Burn Queue overhaul | `BurnQueue.tsx` | Stats, FM analytics, bulk actions, dropdown actions, filters, PDF export, mobile layout, 90-day change |
+| Field audit API | `check-field-audit/index.ts` | Query AVTool DB directly for folder existence regardless of status |
+| Burn days | `cleanup-burn-queue/index.ts`, `BurnQueue.tsx` | 190 → 90 days |
 
