@@ -310,6 +310,9 @@ const InterviewTracking = () => {
               artifact_correction,
               artifact_correction_resolved_at,
               artifact_correction_resolved_by,
+              passed_with_failures,
+              pass_override_reason,
+              pass_override_action_plan,
               last_modified,
               uploaded_at,
               interview_metadata (
