@@ -837,7 +837,7 @@ const InterviewTracking = () => {
     );
   };
 
-  const getStatusBadge = (status: string, artifactCorrection?: string[] | null) => {
+  const getStatusBadge = (status: string, artifactCorrection?: string[] | null, interview?: TrackingInterview) => {
     const badge = (() => {
       switch (status) {
         case "Audit Passed":
