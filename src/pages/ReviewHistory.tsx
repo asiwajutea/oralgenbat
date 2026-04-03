@@ -46,7 +46,7 @@ const ReviewHistory = () => {
 
       let query = supabase
         .from("audits")
-        .select("id, file_name, status, reviewed_at, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds", { count: "exact" })
+        .select("id, file_name, status, reviewed_at, review_comment, action_plan, is_re_audit, re_audit_count, review_duration_seconds, passed_with_failures, pass_override_reason, pass_override_action_plan", { count: "exact" })
         .eq("reviewed_by", profile.full_name)
         .not("reviewed_at", "is", null)
         .order("reviewed_at", { ascending: false });

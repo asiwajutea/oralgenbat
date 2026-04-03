@@ -1135,6 +1135,29 @@ const AdminReviewHistory = () => {
                             {audit.status === "Audit Passed" ? "Passed" : "Failed"}
                           </Badge>
                           
+                          {/* Passed with override indicator */}
+                          {audit.status === "Audit Passed" && audit.passed_with_failures && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span 
+                                    className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-300 cursor-help"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    ⚠
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs" onClick={(e) => e.stopPropagation()}>
+                                  <p className="font-semibold text-xs mb-1">Passed with Override</p>
+                                  <p className="text-xs">{audit.pass_override_reason || "No reason provided"}</p>
+                                  {audit.pass_override_action_plan && (
+                                    <p className="text-xs mt-1 text-muted-foreground">Action Plan: {audit.pass_override_action_plan}</p>
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                          
                           {audit.status === "Audit Failed" && (() => {
                             const indicator = getArtifactIndicator(audit.artifact_correction);
                             if (!indicator) return null;
