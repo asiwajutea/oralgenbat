@@ -248,14 +248,16 @@ const BurnQueue = () => {
         .single();
       if (!burnItem) throw new Error("Item not found");
 
-      const tables = [
-        "audit_checklist_progress", "artifact_correction_comments", "re_audit_submissions",
-        "interview_assignments", "sms_notification_logs", "payment_records",
-        "audit_file_cleanup_log", "interview_photos", "interview_metadata",
-      ];
-      for (const table of tables) {
-        await supabase.from(table).delete().eq("audit_id", burnItem.audit_id);
-      }
+      // Delete related records
+      await supabase.from("audit_checklist_progress").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("artifact_correction_comments").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("re_audit_submissions").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("interview_assignments").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("sms_notification_logs").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("payment_records").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("audit_file_cleanup_log").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("interview_photos").delete().eq("audit_id", burnItem.audit_id);
+      await supabase.from("interview_metadata").delete().eq("audit_id", burnItem.audit_id);
       await supabase.from("audits").delete().eq("id", burnItem.audit_id);
       await supabase.from("burn_queue").delete().eq("id", burnId);
     },
