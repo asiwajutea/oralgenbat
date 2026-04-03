@@ -1585,7 +1585,7 @@ const InterviewTracking = () => {
                           {interview.interviewee_name || "-"}
                         </TableCell>
                         <TableCell>{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</TableCell>
-                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction)}</TableCell>
+                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction, interview)}</TableCell>
                         <TableCell>
                           {getTeamBadge(interview)}
                         </TableCell>
