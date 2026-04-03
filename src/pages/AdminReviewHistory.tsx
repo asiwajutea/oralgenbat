@@ -40,6 +40,9 @@ interface ReviewedAudit {
   artifact_correction: string[] | null;
   artifact_correction_resolved_at: string | null;
   artifact_correction_resolved_by: string | null;
+  passed_with_failures: boolean;
+  pass_override_reason: string | null;
+  pass_override_action_plan: string | null;
 }
 
 interface AssignmentInfo {
