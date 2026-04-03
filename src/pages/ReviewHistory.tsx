@@ -13,7 +13,8 @@ import { AuditPagination } from "@/components/AuditPagination";
 import { OfflineTablePlaceholder } from "@/components/OfflineTablePlaceholder";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { format } from "date-fns";
-import { History, Search, Clock, MessageSquare, ExternalLink } from "lucide-react";
+import { History, Search, Clock, MessageSquare, ExternalLink, AlertTriangle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ReviewedAudit {
   id: string;
