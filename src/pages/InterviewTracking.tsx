@@ -1285,6 +1285,9 @@ const InterviewTracking = () => {
                 <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
                   {burnedAuditData.scopedCount}
                 </p>
+                <p className="text-xs font-medium text-orange-600 dark:text-orange-400">
+                  {burnedAuditData.scopedNames.toLocaleString()} names
+                </p>
               </div>
             </CardContent>
           </Card>
