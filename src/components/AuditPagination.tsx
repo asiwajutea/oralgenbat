@@ -25,6 +25,7 @@ interface AuditPaginationProps {
 }
 
 export const AuditPagination = ({
+  // Added default values to prevent "undefined" errors
   currentPage = 1,
   totalPages = 0,
   totalCount = 0,
@@ -32,15 +33,14 @@ export const AuditPagination = ({
   onPageChange,
   onItemsPerPageChange,
 }: AuditPaginationProps) => {
-  // Prevent crash if totalPages is undefined or 1
+  // Guard clause: don't render if there's nothing to paginate
   if (!totalPages || totalPages <= 1) return null;
 
-  // Safe calculations with fallbacks
+  // Safety check for math calculations
   const safeItemsPerPage = itemsPerPage ?? 10;
-  const startItem = ((currentPage - 1) * safeItemsPerPage) + 1;
+  const startItem = (currentPage - 1) * safeItemsPerPage + 1;
   const endItem = Math.min(currentPage * safeItemsPerPage, totalCount ?? 0);
 
-  // Generate page numbers to display (compact: 1, 2, ..., last)
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
     
@@ -72,7 +72,7 @@ export const AuditPagination = ({
           Showing {startItem}-{endItem} of {totalCount ?? 0} results
         </p>
         <Select
-          // FIX: Added optional chaining and fallback to prevent the 'toString' error
+          // FIX: Added ?. and ?? "10" to prevent the 'toString' crash
           value={itemsPerPage?.toString() ?? "10"}
           onValueChange={(value) => onItemsPerPageChange(Number(value))}
         >
