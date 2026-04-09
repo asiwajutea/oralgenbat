@@ -40,7 +40,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Flame, RotateCcw, Search, Loader2, MoreHorizontal, Trash2, Eye, Download, Users, FileText, Calendar, ChevronDown, X, ArrowUpDown, BarChart3 } from "lucide-react";
+import { Flame, RotateCcw, Search, Loader2, MoreHorizontal, Trash2, Eye, Download, Users, FileText, Calendar, ChevronDown, X, ArrowUpDown, BarChart3, Phone } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
@@ -112,7 +112,7 @@ const BurnQueue = () => {
     },
   });
 
-  // Fetch metadata for burned items
+  // Fetch metadata for burned items - UPDATED to include interviewee_phone
   const burnedAuditIds = useMemo(() => data?.items.map(i => i.audit_id) || [], [data]);
   const { data: metadataMap = new Map() } = useQuery({
     queryKey: ["burn-queue-metadata", burnedAuditIds],
@@ -120,7 +120,7 @@ const BurnQueue = () => {
       if (burnedAuditIds.length === 0) return new Map();
       const { data: meta } = await supabase
         .from("interview_metadata")
-        .select("audit_id, total_names, field_manager")
+        .select("audit_id, total_names, field_manager, interviewee_phone")
         .in("audit_id", burnedAuditIds);
       return new Map((meta || []).map(m => [m.audit_id, m]));
     },
@@ -166,7 +166,6 @@ const BurnQueue = () => {
       // Average days remaining
       let avgDays = 0;
       if (allBurned && allBurned.length > 0) {
-        // We need sent_at for this - re-fetch with it
         const { data: withDates } = await supabase
           .from("burn_queue")
           .select("sent_at")
@@ -240,7 +239,6 @@ const BurnQueue = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async (burnId: string) => {
-      // Get audit_id first
       const { data: burnItem } = await supabase
         .from("burn_queue")
         .select("audit_id")
@@ -248,7 +246,6 @@ const BurnQueue = () => {
         .single();
       if (!burnItem) throw new Error("Item not found");
 
-      // Delete related records
       await supabase.from("audit_checklist_progress").delete().eq("audit_id", burnItem.audit_id);
       await supabase.from("artifact_correction_comments").delete().eq("audit_id", burnItem.audit_id);
       await supabase.from("re_audit_submissions").delete().eq("audit_id", burnItem.audit_id);
@@ -346,11 +343,10 @@ const BurnQueue = () => {
 
   const hasActiveFilters = searchTerm || statusFilter !== "active" || fmFilter !== "all" || startDate || endDate;
 
-  // PDF Export
+  // PDF Export - Updated to include Phone
   const exportToPDF = async () => {
     setIsExporting(true);
     try {
-      // Fetch all active burn queue items respecting filters
       let query = supabase.from("burn_queue").select("*").is("restored_at", null).order("sent_at", { ascending: false });
       if (searchTerm) query = query.ilike("file_name", `%${searchTerm}%`);
       if (startDate) query = query.gte("sent_at", new Date(startDate).toISOString());
@@ -362,12 +358,10 @@ const BurnQueue = () => {
       const { data: allItems } = await query;
       if (!allItems?.length) { toast({ title: "No data to export" }); return; }
 
-      // Fetch metadata
       const ids = allItems.map(i => i.audit_id);
-      const { data: metaAll } = await supabase.from("interview_metadata").select("audit_id, total_names, field_manager").in("audit_id", ids);
+      const { data: metaAll } = await supabase.from("interview_metadata").select("audit_id, total_names, field_manager, interviewee_phone").in("audit_id", ids);
       const metaMapAll = new Map((metaAll || []).map(m => [m.audit_id, m]));
 
-      // Fetch sender names
       const sIds = [...new Set(allItems.map(i => i.sent_by))];
       const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", sIds);
       const sMap = new Map((profiles || []).map(p => [p.id, p.full_name]));
@@ -406,7 +400,7 @@ const BurnQueue = () => {
         doc.text(`${i + 1}. ${item.file_name}`, margin, y);
         y += 4.5;
         doc.setFont("helvetica", "normal");
-        doc.text(`Sent by: ${sMap.get(item.sent_by) || "Unknown"} | Sent: ${format(new Date(item.sent_at), "PPp")} | Days Remaining: ${daysRemaining}`, margin, y);
+        doc.text(`Sent by: ${sMap.get(item.sent_by) || "Unknown"} | Sent: ${format(new Date(item.sent_at), "PPp")} | Phone: ${meta?.interviewee_phone || "-"}`, margin, y);
         y += 4.5;
         doc.text(`FM: ${meta?.field_manager || "-"} | Names: ${meta?.total_names || "-"} | Reason: ${item.reason}`, margin, y);
         y += 6;
@@ -669,6 +663,7 @@ const BurnQueue = () => {
                             <div className="grid grid-cols-2 gap-2">
                               <div><p className="text-muted-foreground text-xs">Sent By</p><p className="font-medium">{senderMap.get(item.sent_by) || "Unknown"}</p></div>
                               <div><p className="text-muted-foreground text-xs">Sent At</p><p className="font-medium">{format(new Date(item.sent_at), "PP")}</p></div>
+                              <div><p className="text-muted-foreground text-xs">Phone</p><p className="font-medium">{meta?.interviewee_phone || "-"}</p></div>
                               <div><p className="text-muted-foreground text-xs">FM</p><p className="font-medium">{meta?.field_manager || "-"}</p></div>
                               <div><p className="text-muted-foreground text-xs">Names</p><p className="font-medium">{meta?.total_names || "-"}</p></div>
                             </div>
@@ -711,6 +706,7 @@ const BurnQueue = () => {
                       <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("file_name")}>
                         <div className="flex items-center gap-1">File Name <ArrowUpDown className="h-3 w-3" /></div>
                       </TableHead>
+                      <TableHead>Phone Number</TableHead>
                       <TableHead>Sent By</TableHead>
                       <TableHead>Reason</TableHead>
                       <TableHead>FM</TableHead>
@@ -719,19 +715,18 @@ const BurnQueue = () => {
                         <div className="flex items-center gap-1">Sent At <ArrowUpDown className="h-3 w-3" /></div>
                       </TableHead>
                       <TableHead>Days Left</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-10"></TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredItems.map((item, index) => {
+                      const meta = metadataMap.get(item.audit_id);
                       const daysSinceSent = differenceInDays(new Date(), new Date(item.sent_at));
                       const daysRemaining = Math.max(0, BURN_DAYS - daysSinceSent);
                       const isRestored = !!item.restored_at;
-                      const meta = metadataMap.get(item.audit_id);
 
                       return (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} className={isRestored ? "opacity-60 grayscale-[0.5]" : ""}>
                           {isAdmin && (
                             <TableCell>
                               <Checkbox
@@ -740,32 +735,48 @@ const BurnQueue = () => {
                               />
                             </TableCell>
                           )}
-                          <TableCell>{(currentPage - 1) * itemsPerPage + index + 1}</TableCell>
-                          <TableCell className="font-mono text-sm font-medium">{item.file_name}</TableCell>
-                          <TableCell className="text-sm">{senderMap.get(item.sent_by) || "Unknown"}</TableCell>
-                          <TableCell className="text-sm max-w-[200px] truncate" title={item.reason}>{item.reason}</TableCell>
-                          <TableCell className="text-sm">{meta?.field_manager || "-"}</TableCell>
-                          <TableCell className="text-right text-sm">{meta?.total_names || "-"}</TableCell>
-                          <TableCell className="text-sm">{format(new Date(item.sent_at), "PPp")}</TableCell>
-                          <TableCell>
-                            {isRestored ? (
-                              <span className="text-sm text-muted-foreground">-</span>
-                            ) : (
-                              <Badge variant={daysRemaining <= 30 ? "destructive" : "secondary"}>
-                                {daysRemaining} days
-                              </Badge>
-                            )}
+                          <TableCell className="text-muted-foreground font-mono text-xs">
+                            {(currentPage - 1) * itemsPerPage + index + 1}
+                          </TableCell>
+                          <TableCell className="font-medium font-mono text-xs max-w-[200px] truncate">
+                            {item.file_name}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {meta?.interviewee_phone || "-"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {senderMap.get(item.sent_by) || "Unknown"}
+                          </TableCell>
+                          <TableCell className="text-xs italic text-muted-foreground max-w-[150px] truncate">
+                            {item.reason}
+                          </TableCell>
+                          <TableCell className="text-xs font-medium">
+                            {meta?.field_manager || "-"}
+                          </TableCell>
+                          <TableCell className="text-right text-xs">
+                            {meta?.total_names?.toLocaleString() || "-"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {format(new Date(item.sent_at), "PPp")}
                           </TableCell>
                           <TableCell>
                             {isRestored ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700">
-                                Restored
-                              </Badge>
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400">Restored</Badge>
                             ) : (
-                              <Badge variant="destructive">Ready to Burn</Badge>
+                              <div className="flex flex-col gap-1">
+                                <Badge variant={daysRemaining <= 30 ? "destructive" : "secondary"}>
+                                  {daysRemaining} days left
+                                </Badge>
+                                <div className="w-full bg-muted h-1 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full ${daysRemaining <= 30 ? "bg-destructive" : "bg-primary"}`} 
+                                    style={{ width: `${(daysRemaining / BURN_DAYS) * 100}%` }} 
+                                  />
+                                </div>
+                              </div>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-right">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -774,16 +785,16 @@ const BurnQueue = () => {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => handleViewDetails(item)}>
-                                  <Eye className="h-4 w-4 mr-2" /> View Details
+                                  <Eye className="h-4 w-4 mr-2" /> View Audit
                                 </DropdownMenuItem>
                                 {isAdmin && !isRestored && (
                                   <>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => restoreMutation.mutate(item.id)}>
-                                      <RotateCcw className="h-4 w-4 mr-2" /> Restore
+                                    <DropdownMenuItem onClick={() => restoreMutation.mutate(item.id)} disabled={restoreMutation.isPending}>
+                                      <RotateCcw className="h-4 w-4 mr-2" /> Restore Interview
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      className="text-destructive"
+                                    <DropdownMenuItem 
+                                      className="text-destructive focus:text-destructive" 
                                       onClick={() => { setDeleteTarget(item.id); setShowDeleteConfirm(true); }}
                                     >
                                       <Trash2 className="h-4 w-4 mr-2" /> Delete Permanently
@@ -803,67 +814,62 @@ const BurnQueue = () => {
           </CardContent>
         </Card>
 
-        <AuditPagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalCount={data?.totalCount || 0}
-          itemsPerPage={itemsPerPage}
-          onPageChange={setCurrentPage}
-          onItemsPerPageChange={(v) => { setItemsPerPage(v); setCurrentPage(1); }}
-        />
+        {/* Pagination */}
+        {data && data.totalCount > itemsPerPage && (
+          <AuditPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        )}
       </div>
 
-      {/* Delete Confirmation */}
+      {/* Modals */}
+      <FailedInterviewModal 
+        isOpen={showFailedModal} 
+        onOpenChange={setShowFailedModal} 
+        interview={selectedFailedInterview} 
+      />
+
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Permanently Delete Interview?</AlertDialogTitle>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the interview and all associated data. This action cannot be undone.
+              This action cannot be undone. This will permanently delete the interview and all associated data from the database.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
               onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Delete Permanently
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Bulk Delete Confirmation */}
       <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedIds.size} Interviews?</AlertDialogTitle>
+            <AlertDialogTitle>Bulk Delete Interviews</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all selected interviews and their associated data. This action cannot be undone.
+              You are about to permanently delete {selectedIds.size} interviews. This action cannot be reversed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            <AlertDialogAction 
               onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete All Selected
+              Delete {selectedIds.size} Items
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Failed Interview Modal */}
-      {selectedFailedInterview && (
-        <FailedInterviewModal
-          open={showFailedModal}
-          onOpenChange={setShowFailedModal}
-          interview={selectedFailedInterview}
-        />
-      )}
     </div>
   );
 };
