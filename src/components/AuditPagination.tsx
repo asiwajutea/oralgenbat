@@ -25,39 +25,37 @@ interface AuditPaginationProps {
 }
 
 export const AuditPagination = ({
-  currentPage,
-  totalPages,
-  totalCount,
-  itemsPerPage,
+  currentPage = 1,
+  totalPages = 0,
+  totalCount = 0,
+  itemsPerPage = 10,
   onPageChange,
   onItemsPerPageChange,
 }: AuditPaginationProps) => {
-  if (totalPages <= 1) return null;
+  // Prevent crash if totalPages is undefined or 1
+  if (!totalPages || totalPages <= 1) return null;
 
-  const startItem = (currentPage - 1) * itemsPerPage + 1;
-  const endItem = Math.min(currentPage * itemsPerPage, totalCount);
+  // Safe calculations with fallbacks
+  const safeItemsPerPage = itemsPerPage ?? 10;
+  const startItem = ((currentPage - 1) * safeItemsPerPage) + 1;
+  const endItem = Math.min(currentPage * safeItemsPerPage, totalCount ?? 0);
 
   // Generate page numbers to display (compact: 1, 2, ..., last)
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
     
     if (totalPages <= 4) {
-      // Show all pages if 4 or fewer
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Always show first page
       pages.push(1);
       
       if (currentPage <= 2) {
-        // Near start: 1, 2, ..., last
         pages.push(2, "ellipsis", totalPages);
       } else if (currentPage >= totalPages - 1) {
-        // Near end: 1, ..., last-1, last
         pages.push("ellipsis", totalPages - 1, totalPages);
       } else {
-        // Middle: 1, ..., current, ..., last
         pages.push("ellipsis", currentPage, "ellipsis", totalPages);
       }
     }
@@ -71,10 +69,11 @@ export const AuditPagination = ({
     <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
       <div className="flex items-center gap-3">
         <p className="text-sm text-muted-foreground">
-          Showing {startItem}-{endItem} of {totalCount} results
+          Showing {startItem}-{endItem} of {totalCount ?? 0} results
         </p>
         <Select
-          value={itemsPerPage.toString()}
+          // FIX: Added optional chaining and fallback to prevent the 'toString' error
+          value={itemsPerPage?.toString() ?? "10"}
           onValueChange={(value) => onItemsPerPageChange(Number(value))}
         >
           <SelectTrigger className="w-[110px] h-9">
