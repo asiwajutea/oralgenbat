@@ -1,46 +1,55 @@
-## Plan: Add "Reassign to FM" Action on Interview Tracking Page
 
-### What It Does
 
-Adds a "Reassign FM" option in the action dropdown menu on the Interview Tracking page. When clicked, a dialog opens showing the interview's current Field Manager and a dropdown to select a new one. On confirmation, the `team_assignments` record for that interview ID is updated to the new field manager. However, this does not affect other interviews under the interviewer Code.   
-  
-Please note: only the interview ID is moved to the new FM. All other interview ID for the interviewer code remains intact under the main FM.
+## Plan: Per-Interview FM Reassignment
 
-### Who Can Use It
+### Problem
 
-Field managers, sub-contractors, contractors, admins, and super admins (all roles that already access the tracking page).
+The current `ReassignFMDialog` updates `team_assignments` by `interviewer_code`, which reassigns the **entire agent** (all interviews) to a new FM. Your use case requires moving only **one specific interview** while keeping the agent's other interviews under the original FM.
 
-### Changes
+### Solution
 
-**1. New component: `src/components/tracking/ReassignFMDialog.tsx**`
+Create a new `interview_fm_overrides` table that stores per-interview FM assignments. When an override exists for an interview, it takes priority over the agent-level `team_assignments` mapping.
 
-A dialog with:
+### Database Change
 
-- Display of the interview file name and current FM (if any)
-- A Select dropdown populated from the canonical FM list (profiles + user_roles where role = field_manager)
-- Confirm button that updates the `team_assignments` row matching the interview's `interviewer_code` to set `field_manager_id` to the selected FM
-- If no `team_assignments` record exists for that code, insert a new approved record
+**New table: `interview_fm_overrides`**
 
-**2. Edit: `src/pages/InterviewTracking.tsx**`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| audit_id | uuid | The specific interview being reassigned |
+| field_manager_id | uuid | The FM receiving this interview |
+| assigned_by | uuid | Who performed the reassignment |
+| created_at | timestamptz | When it was reassigned |
+| notes | text | Optional reason |
 
-- Import `ReassignFMDialog`
-- Add state: `showReassignDialog`, `reassignInterview`
-- Add a "Reassign FM" `DropdownMenuItem` (with a `Users` icon) in `renderActionDropdown`, visible when the interview has metadata (i.e., has an `interviewer_code`), and the user role is in the allowed list
-- Render `ReassignFMDialog` at the bottom of the page alongside other dialogs
-- Invalidate `tracking-interviews` and `team-assignments-tracking` queries on success
+RLS: viewable by all approved users, insertable/updatable by FM, contractor, sub_contractor, admin, super_admin.
 
-### Database
+### Code Changes
 
-No schema changes needed. The `team_assignments` table already has the required columns (`interviewer_code`, `field_manager_id`, `status`, `contractor_id`). Existing RLS policies allow updates by contractors, admins, super_admins, and sub-contractors with FM assignments.
+**1. `src/components/tracking/ReassignFMDialog.tsx`** — Rewrite to insert/upsert into `interview_fm_overrides` instead of updating `team_assignments`. Pass `auditId` (the specific interview) instead of `interviewerCode`.
 
-### Technical Details
+**2. `src/pages/InterviewTracking.tsx`** — Update the FM filter logic to check `interview_fm_overrides` first. If an interview has an override, use that FM; otherwise fall back to `team_assignments` by `interviewer_code`.
 
-The update query:
+**3. `src/pages/FieldManagerDashboard.tsx`** — After fetching interviews by team codes, also fetch any interviews with overrides pointing to this FM. Exclude interviews that have overrides pointing to a *different* FM. This ensures:
+- The 1 reassigned interview appears on Manager A's dashboard
+- The other 9 interviews stay on Manager B's dashboard
+- The reassigned interview no longer shows on Manager B's dashboard
 
-```sql
-UPDATE team_assignments 
-SET field_manager_id = <new_fm_id>
-WHERE interviewer_code = <code> AND status = 'approved'
-```
+### How It Works (Your Example)
 
-If no approved record exists, insert one with status = 'approved' using the interview's contractor_id from metadata.
+1. Agent 730 is assigned to Manager B in `team_assignments`
+2. Manager B clicks "Reassign FM" on the errored interview → selects Manager A
+3. A row is inserted into `interview_fm_overrides`: `{ audit_id: <that interview>, field_manager_id: Manager A's ID }`
+4. Manager A's dashboard: fetches team codes + override interviews → sees the 1 reassigned interview
+5. Manager B's dashboard: fetches team codes (still includes Agent 730) but excludes interviews with overrides to other FMs → sees 9 interviews
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| **New migration** | Create `interview_fm_overrides` table with RLS |
+| `src/components/tracking/ReassignFMDialog.tsx` | Insert into overrides table instead of updating team_assignments |
+| `src/pages/InterviewTracking.tsx` | FM filter respects overrides |
+| `src/pages/FieldManagerDashboard.tsx` | Include override interviews, exclude overridden-away interviews |
+
