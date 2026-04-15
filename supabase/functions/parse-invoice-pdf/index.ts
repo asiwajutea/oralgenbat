@@ -91,7 +91,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "openai/gpt-oss-120b:free",
         messages: [
           {
             role: "user",
