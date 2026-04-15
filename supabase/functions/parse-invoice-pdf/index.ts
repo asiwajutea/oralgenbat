@@ -67,9 +67,9 @@ serve(async (req) => {
     const base64Content = btoa(String.fromCharCode(...new Uint8Array(fileBytes)));
 
     // Use AI to parse the PDF content
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
     
-    if (!lovableApiKey) {
+    if (!openaiApiKey) {
       // Fallback: Parse using regex patterns from expected PDF structure
       console.log("No Lovable API key, using fallback parsing");
       
@@ -84,14 +84,14 @@ serve(async (req) => {
     }
 
     // Call Lovable AI to parse the PDF
-    const aiResponse = await fetch("https://api.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${lovableApiKey}`,
+        "Authorization": `Bearer ${openaiApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o",
         messages: [
           {
             role: "user",
