@@ -715,6 +715,7 @@ const BurnQueue = () => {
                         <AccordionContent className="px-4 pb-4">
                           <div className="space-y-2 text-sm">
                             <div className="grid grid-cols-2 gap-2">
+                              <div><p className="text-muted-foreground text-xs">Phone</p><p className="font-medium">{meta?.interviewee_phone || "-"}</p></div>
                               <div><p className="text-muted-foreground text-xs">Sent By</p><p className="font-medium">{senderMap.get(item.sent_by) || "Unknown"}</p></div>
                               <div><p className="text-muted-foreground text-xs">Sent At</p><p className="font-medium">{format(new Date(item.sent_at), "PP")}</p></div>
                               <div><p className="text-muted-foreground text-xs">FM</p><p className="font-medium">{meta?.field_manager || "-"}</p></div>
