@@ -454,6 +454,12 @@ const PaymentTracking = () => {
       {/* Upload Dialogs */}
       <InvoiceUploadDialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen} onUploadComplete={handleRefresh} />
       <ManualInvoiceEntryDialog open={manualDialogOpen} onOpenChange={setManualDialogOpen} onComplete={handleRefresh} />
+      <SetBudgetTargetDialog
+        open={budgetDialogOpen}
+        onOpenChange={setBudgetDialogOpen}
+        contractorId={effectiveContractorId}
+        currentTarget={budgetTarget || null}
+      />
     </div>
   );
 };
