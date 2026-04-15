@@ -229,7 +229,13 @@ const PaymentTracking = () => {
       </div>
 
       {/* Budget Stats */}
-      <BudgetStatsCard stats={budgetStats || null} isLoading={statsLoading} />
+      <BudgetStatsCard
+        stats={budgetStats || null}
+        isLoading={statsLoading}
+        budgetTarget={budgetTarget}
+        canSetBudget={canSetBudget}
+        onSetBudget={() => setBudgetDialogOpen(true)}
+      />
 
       {/* Assignment & Payment Stats */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
