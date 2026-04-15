@@ -395,7 +395,7 @@ const ErrorConsole = () => {
             <div className="flex items-center justify-center p-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : filteredErrors.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-green-500" />
+              <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-primary" />
               <p className="font-medium">No errors found</p>
               <p className="text-sm">The system is running smoothly.</p>
             </div>
@@ -438,7 +438,7 @@ const ErrorConsole = () => {
                       <TableCell>{getSourceBadge(err.error_source)}</TableCell>
                       <TableCell>
                         {err.resolved ? (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-600">Resolved</Badge>
+                          <Badge variant="outline" className="bg-primary/10 text-primary">Resolved</Badge>
                         ) : (
                           <Badge variant="destructive">Open</Badge>
                         )}
