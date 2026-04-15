@@ -1,123 +1,62 @@
 
 
-## Plan: Error Debug Console for Super Admins
+## Plan: Switch All AI from Lovable AI Gateway to OpenAI API
 
-A new `/admin/error-console` page accessible only to `super_admin` that captures client-side errors in real-time, stores them in a database table, and displays them with AI-generated fix suggestions.
+6 edge functions currently use the Lovable AI gateway with `LOVABLE_API_KEY`. This plan switches all of them to use the OpenAI API directly with your own API key.
 
 ---
 
-### 1. Database: `client_error_logs` Table
+### Step 1: Store Your OpenAI API Key
 
-New migration to create a table for storing error events:
+Use the `add_secret` tool to securely store your OpenAI API key as `OPENAI_API_KEY`, accessible to all edge functions.
 
-```sql
-CREATE TABLE public.client_error_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  user_email text,
-  user_role text,
-  error_message text NOT NULL,
-  error_stack text,
-  error_source text,          -- 'runtime' | 'unhandled_rejection' | 'network' | 'react_boundary'
-  page_url text,
-  component_name text,
-  browser_info text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  resolved boolean DEFAULT false,
-  resolved_at timestamptz,
-  resolved_by uuid,
-  notes text,
-  suggested_fix text
-);
+### Step 2: Update All 6 Edge Functions
 
-ALTER TABLE public.client_error_logs ENABLE ROW LEVEL SECURITY;
+Each function gets the same 3 changes:
+1. Read `OPENAI_API_KEY` instead of `LOVABLE_API_KEY`
+2. Call `https://api.openai.com/v1/chat/completions` instead of `https://ai.gateway.lovable.dev/v1/chat/completions`
+3. Switch model to `gpt-4o` (or `gpt-4o-mini` for lighter tasks)
 
--- Only super_admin can read/manage
-CREATE POLICY "Super admins can manage error logs"
-  ON public.client_error_logs FOR ALL TO authenticated
-  USING (has_role(auth.uid(), 'super_admin'::app_role))
-  WITH CHECK (has_role(auth.uid(), 'super_admin'::app_role));
+**Files to update:**
 
--- Any authenticated user can insert (to report errors)
-CREATE POLICY "Authenticated users can insert error logs"
-  ON public.client_error_logs FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() IS NOT NULL);
+| File | Current Model | New Model | Purpose |
+|------|--------------|-----------|---------|
+| `supabase/functions/suggest-error-fix/index.ts` | `gemini-3-flash-preview` | `gpt-4o-mini` | Error console AI fix suggestions |
+| `supabase/functions/fraud-analysis/index.ts` | `gemini-2.5-flash` | `gpt-4o` | Fraud report generation |
+| `supabase/functions/analyze-pdf/index.ts` | `gemini-2.5-flash` | `gpt-4o` | PDF quality analysis |
+| `supabase/functions/regenerate-audio-summary/index.ts` | `gemini-2.5-flash` | `gpt-4o-mini` | Audio quality summaries |
+| `supabase/functions/process-mobile-zip/index.ts` | `gemini-2.5-flash` | `gpt-4o-mini` | ZIP upload audio summary |
+| `supabase/functions/parse-invoice-pdf/index.ts` | `gemini-2.5-flash` | `gpt-4o` | Invoice PDF parsing |
 
--- Enable realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE public.client_error_logs;
+Model selection rationale: `gpt-4o` for complex analysis (fraud, PDF analysis, invoice parsing) and `gpt-4o-mini` for simpler summaries (audio, error fixes) to balance cost and quality.
+
+### Example Change Pattern
+
+```typescript
+// Before
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}` },
+  body: JSON.stringify({ model: "google/gemini-2.5-flash", ... }),
+});
+
+// After
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+  body: JSON.stringify({ model: "gpt-4o", ... }),
+});
 ```
 
-### 2. Global Error Capture: `src/components/ErrorBoundary.tsx` + `src/hooks/useGlobalErrorCapture.ts`
-
-**ErrorBoundary** — React error boundary that catches render crashes, logs to DB, and shows a fallback UI. Wrap the app in this.
-
-**useGlobalErrorCapture** — Hook placed in Layout that listens to:
-- `window.onerror` — uncaught runtime errors
-- `window.onunhandledrejection` — unhandled promise rejections
-- Intercepts `console.error` to capture React warnings
-
-Each captured error is debounced (same message within 5s = skip) and inserted into `client_error_logs` with user context from AuthContext.
-
-### 3. AI Fix Suggestions: Edge Function `suggest-error-fix`
-
-A backend function that receives an error message + stack trace, calls the AI gateway to generate a suggested fix, and returns it. Called on-demand from the console page when super_admin clicks "Get Fix Suggestion" on an error.
-
-### 4. Dashboard Page: `src/pages/ErrorConsole.tsx`
-
-**Stats Cards (top):**
-- Total Errors (24h)
-- Unresolved Errors
-- Most Affected Page
-- Most Common Error
-
-**Real-time Error Feed:**
-- Live-updating table via Supabase Realtime subscription
-- Columns: Time, User, Role, Error Message (truncated), Source, Page, Status
-- Click to expand full stack trace + suggested fix
-- "Mark Resolved" and "Add Note" actions
-- Bulk "Mark All Resolved" button
-
-**Filters:**
-- Date range picker
-- Error source filter (runtime, network, react_boundary, unhandled_rejection)
-- Resolved/Unresolved toggle
-- Search by error message
-
-**Error Detail Panel (expandable row or dialog):**
-- Full error message and stack trace
-- User info (email, role)
-- Browser info
-- Page URL
-- AI-suggested fix (fetched on demand)
-- Notes field
-- Resolution controls
-
-**Charts:**
-- Errors over time (bar chart, last 7 days)
-- Errors by source (pie/donut)
-- Top 5 most frequent errors
-
-### 5. Navigation & Routing
-
-- Route: `/admin/error-console` guarded by a super_admin-only check (inline in the route component)
-- Add link in Admin dropdown in `Header.tsx` (only for super_admin)
-- Add link in `MobileNav.tsx` admin section (only for super_admin)
-
-### 6. App Integration
-
-- Wrap `<App>` children with `<ErrorBoundary>` in `App.tsx`
-- Add `useGlobalErrorCapture()` call inside `Layout.tsx`
+Error handling for 429 (rate limit) and 402 (billing) remains the same since OpenAI uses the same HTTP status codes.
 
 ---
 
 ### Technical Summary
 
-| Area | Files | Change |
-|------|-------|--------|
-| DB table | New migration | `client_error_logs` with RLS + realtime |
-| Error capture | `ErrorBoundary.tsx`, `useGlobalErrorCapture.ts` | Global error interception |
-| Edge function | `suggest-error-fix/index.ts` | AI-powered fix suggestions |
-| Dashboard | `ErrorConsole.tsx` | Stats, real-time feed, charts, filters |
-| Navigation | `App.tsx`, `Header.tsx`, `MobileNav.tsx` | Route + nav links for super_admin |
-| Integration | `App.tsx`, `Layout.tsx` | Error boundary + hook wiring |
+| Area | Change |
+|------|--------|
+| Secret | Add `OPENAI_API_KEY` |
+| 6 edge functions | Swap URL, key, and model name |
+| No client-side changes | All AI calls go through edge functions already |
 
