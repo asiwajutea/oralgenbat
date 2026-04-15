@@ -93,6 +93,19 @@ Generate a fraud analysis report with:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('AI gateway error:', response.status, errorText);
+      
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'AI rate limit exceeded or quota exhausted. Please check your OpenAI billing and try again later.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (response.status === 402 || response.status === 401) {
+        return new Response(
+          JSON.stringify({ error: 'OpenAI API key is invalid or has no credits. Please check your API key and billing.' }),
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       throw new Error(`AI gateway error: ${response.status}`);
     }
 
