@@ -248,18 +248,28 @@ const BurnQueue = () => {
         .single();
       if (!burnItem) throw new Error("Item not found");
 
-      // Delete related records
-      await supabase.from("audit_checklist_progress").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("artifact_correction_comments").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("re_audit_submissions").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("interview_assignments").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("sms_notification_logs").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("payment_records").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("audit_file_cleanup_log").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("interview_photos").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("interview_metadata").delete().eq("audit_id", burnItem.audit_id);
-      await supabase.from("audits").delete().eq("id", burnItem.audit_id);
+      const auditId = burnItem.audit_id;
+
+      // Delete burn_queue FIRST (references audits)
       await supabase.from("burn_queue").delete().eq("id", burnId);
+
+      // Delete all related records (cascade)
+      await supabase.from("audit_checklist_progress").delete().eq("audit_id", auditId);
+      await supabase.from("artifact_comment_reads").delete().in("comment_id",
+        (await supabase.from("artifact_correction_comments").select("id").eq("audit_id", auditId)).data?.map(c => c.id) || []
+      );
+      await supabase.from("artifact_correction_comments").delete().eq("audit_id", auditId);
+      await supabase.from("re_audit_submissions").delete().eq("audit_id", auditId);
+      await supabase.from("interview_assignments").delete().eq("audit_id", auditId);
+      await supabase.from("sms_notification_logs").delete().eq("audit_id", auditId);
+      await supabase.from("payment_records").delete().eq("audit_id", auditId);
+      await supabase.from("audit_file_cleanup_log").delete().eq("audit_id", auditId);
+      await supabase.from("interview_photos").delete().eq("audit_id", auditId);
+      await supabase.from("interview_metadata").delete().eq("audit_id", auditId);
+
+      // Delete the audit last
+      const { error } = await supabase.from("audits").delete().eq("id", auditId);
+      if (error) throw error;
     },
     onSuccess: () => {
       toast({ title: "Interview permanently deleted" });
@@ -273,16 +283,22 @@ const BurnQueue = () => {
     },
   });
 
-  // Bulk actions
+  // Bulk actions with proper error handling
   const handleBulkRestore = async () => {
-    for (const id of selectedIds) {
-      await restoreMutation.mutateAsync(id);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(ids.map(id => restoreMutation.mutateAsync(id)));
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed > 0) {
+      toast({ title: `Restored ${ids.length - failed} of ${ids.length}`, description: `${failed} failed`, variant: "destructive" });
     }
   };
 
   const handleBulkDelete = async () => {
-    for (const id of selectedIds) {
-      await deleteMutation.mutateAsync(id);
+    const ids = Array.from(selectedIds);
+    const results = await Promise.allSettled(ids.map(id => deleteMutation.mutateAsync(id)));
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed > 0) {
+      toast({ title: `Deleted ${ids.length - failed} of ${ids.length}`, description: `${failed} failed`, variant: "destructive" });
     }
     setShowBulkDeleteConfirm(false);
   };

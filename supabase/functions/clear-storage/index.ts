@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -8,8 +7,7 @@ const corsHeaders = {
 
 const BUCKETS = ['audit-pdfs', 'mobile-zips', 'interview-photos', 'interview-audio'];
 
-serve(async (req) => {
-  // Handle CORS preflight requests
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -18,6 +16,22 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Auth validation
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: isAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
+    const { data: isSuperAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'super_admin' });
+    if (!isAdmin && !isSuperAdmin) {
+      return new Response(JSON.stringify({ error: 'Admin role required' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     console.log('Starting storage cleanup for buckets:', BUCKETS);
 
@@ -29,7 +43,6 @@ serve(async (req) => {
       let errorCount = 0;
 
       try {
-        // List all files in the bucket
         const { data: files, error: listError } = await supabase.storage
           .from(bucketId)
           .list('', { limit: 1000 });
@@ -42,22 +55,17 @@ serve(async (req) => {
         }
 
         if (!files || files.length === 0) {
-          console.log(`No files found in bucket: ${bucketId}`);
           results[bucketId] = { deleted: 0, errors: 0 };
           continue;
         }
 
-        // For buckets that use folders (like audit-id based paths)
-        // We need to recursively delete
         for (const item of files) {
           if (item.id === null) {
-            // This is a folder, list its contents
             const { data: folderFiles, error: folderListError } = await supabase.storage
               .from(bucketId)
               .list(item.name, { limit: 1000 });
 
             if (folderListError) {
-              console.error(`Error listing folder ${item.name}:`, folderListError);
               errorCount++;
               continue;
             }
@@ -69,20 +77,17 @@ serve(async (req) => {
                 .remove(filePaths);
 
               if (deleteError) {
-                console.error(`Error deleting files in folder ${item.name}:`, deleteError);
                 errorCount += filePaths.length;
               } else {
                 deletedCount += filePaths.length;
               }
             }
           } else {
-            // This is a file at the root level
             const { error: deleteError } = await supabase.storage
               .from(bucketId)
               .remove([item.name]);
 
             if (deleteError) {
-              console.error(`Error deleting file ${item.name}:`, deleteError);
               errorCount++;
             } else {
               deletedCount++;
@@ -90,10 +95,8 @@ serve(async (req) => {
           }
         }
 
-        console.log(`Bucket ${bucketId}: deleted ${deletedCount} files, ${errorCount} errors`);
         results[bucketId] = { deleted: deletedCount, errors: errorCount };
       } catch (bucketError) {
-        console.error(`Error processing bucket ${bucketId}:`, bucketError);
         results[bucketId] = { deleted: deletedCount, errors: errorCount + 1 };
       }
     }
@@ -101,26 +104,13 @@ serve(async (req) => {
     const totalDeleted = Object.values(results).reduce((sum, r) => sum + r.deleted, 0);
     const totalErrors = Object.values(results).reduce((sum, r) => sum + r.errors, 0);
 
-    console.log(`Storage cleanup complete. Total deleted: ${totalDeleted}, Total errors: ${totalErrors}`);
-
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Cleared ${totalDeleted} files from storage`,
-        results,
-        totalDeleted,
-        totalErrors,
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: true, message: `Cleared ${totalDeleted} files from storage`, results, totalDeleted, totalErrors }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
   } catch (error) {
-    console.error('Storage cleanup error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
