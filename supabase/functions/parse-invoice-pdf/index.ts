@@ -84,7 +84,7 @@ serve(async (req) => {
     }
 
     // Call Lovable AI to parse the PDF
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${openaiApiKey}`,

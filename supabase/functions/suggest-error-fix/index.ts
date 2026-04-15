@@ -80,7 +80,7 @@ Respond with:
 Keep the response under 300 words. Be specific and actionable.`;
 
     const aiResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
+      "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
         headers: {

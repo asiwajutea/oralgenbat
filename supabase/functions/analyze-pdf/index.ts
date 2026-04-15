@@ -45,7 +45,7 @@ serve(async (req) => {
     console.log("PDF URL:", pdfUrl);
 
     // Call AI to analyze PDF quality with improved, deterministic prompt
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${openaiApiKey}`,
