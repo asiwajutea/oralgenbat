@@ -764,9 +764,9 @@ async function generateAudioQualitySummary(
   pedigreeSegment: AudioAnalysis
 ): Promise<string> {
   try {
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!lovableApiKey) {
-      throw new Error("LOVABLE_API_KEY not found");
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiApiKey) {
+      throw new Error("OPENAI_API_KEY not found");
     }
 
     const formatDuration = (seconds: number) => {
@@ -799,14 +799,14 @@ Provide a brief quality assessment (2-3 sentences) with an overall rating:
 - Fair: One recording significantly below requirement
 - Poor: Both recordings significantly below requirements`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${lovableApiKey}`,
+        "Authorization": `Bearer ${openaiApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
