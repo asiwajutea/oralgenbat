@@ -667,7 +667,7 @@ const InterviewTracking = () => {
       
       return true;
     });
-  }, [interviewsWithUnreadCounts, searchQuery, filters]);
+  }, [interviewsWithUnreadCounts, searchQuery, filters, fmOverrideMap, teamAssignments]);
 
   // Sort interviews
   const sortedInterviews = useMemo(() => {
