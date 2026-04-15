@@ -610,12 +610,12 @@ const InterviewTracking = () => {
       if (filters.fieldManager) {
         if (filters.fieldManager === "not_assigned") {
           const allAssignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
-          if (allAssignedCodes.includes(interview.interviewer_code)) return false;
+          if (allAssignedCodes.includes((interview as any).interviewer_code)) return false;
         } else {
           const fmCodes = teamAssignments
             .filter((t: any) => t.field_manager_id === filters.fieldManager)
             .map((t: any) => t.interviewer_code);
-          if (!fmCodes.includes(interview.interviewer_code)) return false;
+          if (!fmCodes.includes((interview as any).interviewer_code)) return false;
         }
       }
       
