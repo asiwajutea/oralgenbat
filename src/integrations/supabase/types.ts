@@ -756,6 +756,33 @@ export type Database = {
           },
         ]
       }
+      interview_fm_overrides: {
+        Row: {
+          assigned_by: string | null
+          audit_id: string
+          created_at: string
+          field_manager_id: string
+          id: string
+          notes: string | null
+        }
+        Insert: {
+          assigned_by?: string | null
+          audit_id: string
+          created_at?: string
+          field_manager_id: string
+          id?: string
+          notes?: string | null
+        }
+        Update: {
+          assigned_by?: string | null
+          audit_id?: string
+          created_at?: string
+          field_manager_id?: string
+          id?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
       interview_metadata: {
         Row: {
           audio_quality_summary: string | null
