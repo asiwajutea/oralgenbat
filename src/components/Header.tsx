@@ -21,7 +21,7 @@ const Header = () => {
   const isOperationsActive = ['/interview-tracking', '/payment-tracking', '/data-entry', '/burn-queue'].some(p => location.pathname.startsWith(p));
   const isTeamsActive = ['/team-management', '/subcontractor-team-management', '/admin/team-approvals'].some(p => location.pathname.startsWith(p));
   const isAdminActive = ['/admin'].some(p => location.pathname.startsWith(p)) && !location.pathname.startsWith('/admin/team-approvals');
-  const isAnalyticsActive = location.pathname === '/analytics' || location.pathname === '/my-analytics' || location.pathname === '/fraud-analytics' || location.pathname.startsWith('/role-analytics');
+  const isAnalyticsActive = location.pathname === '/analytics' || location.pathname === '/my-analytics' || location.pathname === '/fraud-analytics' || location.pathname.startsWith('/role-analytics') || location.pathname === '/upload-tracking';
   const isCommunicationsActive = location.pathname.startsWith('/notices');
 
   // Role checks
@@ -149,6 +149,11 @@ const Header = () => {
                       <NavigationMenuLink asChild>
                         <Link to="/fraud-analytics" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/fraud-analytics' && "bg-accent text-accent-foreground")}>
                           Fraud Analytics
+                        </Link>
+                      </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/upload-tracking" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/upload-tracking' && "bg-accent text-accent-foreground")}>
+                          Upload Tracking
                         </Link>
                       </NavigationMenuLink>
                     </div>

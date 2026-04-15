@@ -1569,6 +1569,21 @@ export type Database = {
           total_size_bytes: number
         }[]
       }
+      get_upload_tracking_stats: {
+        Args: {
+          p_end_date: string
+          p_granularity?: string
+          p_start_date: string
+        }
+        Returns: {
+          interviews_uploaded: number
+          interviews_with_metadata: number
+          interviews_without_metadata: number
+          period: string
+          period_start: string
+          total_names: number
+        }[]
+      }
       get_user_display_name: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {

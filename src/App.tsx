@@ -52,6 +52,7 @@ import AccountSuspended from "./pages/AccountSuspended";
 import ResetPassword from "./pages/ResetPassword";
 import DuplicateInterviews from "./pages/DuplicateInterviews";
 import BurnQueue from "./pages/BurnQueue";
+import UploadTrackingDashboard from "./pages/UploadTrackingDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -372,6 +373,16 @@ const App = () => (
                       <BurnQueue />
                     </Layout>
                   </TrackingRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/upload-tracking"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <UploadTrackingDashboard />
+                  </Layout>
                 </ProtectedRoute>
               }
             />
