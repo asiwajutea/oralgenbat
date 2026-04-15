@@ -1,7 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, TrendingUp, TrendingDown, Wallet, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, AlertCircle, Target, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import { BudgetTarget } from "@/hooks/usePaymentTracking";
 
 interface BudgetStats {
   totalPaid: number;
@@ -14,9 +17,12 @@ interface BudgetStats {
 interface BudgetStatsCardProps {
   stats: BudgetStats | null;
   isLoading?: boolean;
+  budgetTarget?: BudgetTarget | null;
+  onSetBudget?: () => void;
+  canSetBudget?: boolean;
 }
 
-export const BudgetStatsCard = ({ stats, isLoading }: BudgetStatsCardProps) => {
+export const BudgetStatsCard = ({ stats, isLoading, budgetTarget, onSetBudget, canSetBudget }: BudgetStatsCardProps) => {
   if (isLoading) {
     return (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -83,6 +89,14 @@ export const BudgetStatsCard = ({ stats, isLoading }: BudgetStatsCardProps) => {
     },
   ];
 
+  const progressPercent = budgetTarget
+    ? Math.min(100, Math.round((stats.balance / budgetTarget.target_names) * 100))
+    : null;
+
+  const remaining = budgetTarget
+    ? Math.max(0, budgetTarget.target_names - stats.balance)
+    : null;
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -110,7 +124,55 @@ export const BudgetStatsCard = ({ stats, isLoading }: BudgetStatsCardProps) => {
           );
         })}
       </div>
-      
+
+      {/* Budget Target Progress */}
+      {budgetTarget && progressPercent !== null && (
+        <Card className="border border-primary/20 bg-primary/5">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Target className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">
+                  {budgetTarget.label || "Budget Target"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {stats.balance.toLocaleString()} / {budgetTarget.target_names.toLocaleString()} names
+                </span>
+                {canSetBudget && onSetBudget && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onSetBudget}>
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+            <Progress value={progressPercent} className="h-3" />
+            <div className="flex items-center justify-between mt-2">
+              <span className="text-xs text-muted-foreground">
+                {progressPercent}% complete
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {remaining!.toLocaleString()} remaining
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No target set - show CTA */}
+      {!budgetTarget && canSetBudget && onSetBudget && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onSetBudget}
+          className="gap-2"
+        >
+          <Target className="h-4 w-4" />
+          Set Budget Target
+        </Button>
+      )}
+
       {stats.unmatchedCount > 0 && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />

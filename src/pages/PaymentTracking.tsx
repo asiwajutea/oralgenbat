@@ -31,7 +31,8 @@ import { InvoiceUploadDialog } from "@/components/payment/InvoiceUploadDialog";
 import { ManualInvoiceEntryDialog } from "@/components/payment/ManualInvoiceEntryDialog";
 import { PaymentTable } from "@/components/payment/PaymentTable";
 import { InvoiceHistoryTab } from "@/components/payment/InvoiceHistoryTab";
-import { useAllInterviewsForPayment, useBudgetStats } from "@/hooks/usePaymentTracking";
+import { SetBudgetTargetDialog } from "@/components/payment/SetBudgetTargetDialog";
+import { useAllInterviewsForPayment, useBudgetStats, useBudgetTarget } from "@/hooks/usePaymentTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { PaymentInterviewRecord } from "@/hooks/usePaymentTracking";
 
@@ -70,6 +71,7 @@ const PaymentTracking = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   // Filter state
@@ -87,6 +89,11 @@ const PaymentTracking = () => {
 
   const { data: records, isLoading: recordsLoading } = useAllInterviewsForPayment(contractorId);
   const { data: budgetStats, isLoading: statsLoading } = useBudgetStats(contractorId);
+  const { data: budgetTarget } = useBudgetTarget(contractorId);
+
+  // Check if user can set budget
+  const canSetBudget = userRole === "super_admin" || userRole === "admin" || userRole === "contractor";
+  const effectiveContractorId = contractorId || profile?.contractor_id || "global";
 
   // Check if user can upload invoices
   const canUpload = userRole === "super_admin" || userRole === "admin" || userRole === "contractor";
@@ -222,7 +229,13 @@ const PaymentTracking = () => {
       </div>
 
       {/* Budget Stats */}
-      <BudgetStatsCard stats={budgetStats || null} isLoading={statsLoading} />
+      <BudgetStatsCard
+        stats={budgetStats || null}
+        isLoading={statsLoading}
+        budgetTarget={budgetTarget}
+        canSetBudget={canSetBudget}
+        onSetBudget={() => setBudgetDialogOpen(true)}
+      />
 
       {/* Assignment & Payment Stats */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
@@ -441,6 +454,12 @@ const PaymentTracking = () => {
       {/* Upload Dialogs */}
       <InvoiceUploadDialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen} onUploadComplete={handleRefresh} />
       <ManualInvoiceEntryDialog open={manualDialogOpen} onOpenChange={setManualDialogOpen} onComplete={handleRefresh} />
+      <SetBudgetTargetDialog
+        open={budgetDialogOpen}
+        onOpenChange={setBudgetDialogOpen}
+        contractorId={effectiveContractorId}
+        currentTarget={budgetTarget || null}
+      />
     </div>
   );
 };
