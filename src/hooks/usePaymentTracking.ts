@@ -475,3 +475,80 @@ export const useInvoices = () => {
     },
   });
 };
+
+// Budget Target hooks
+export interface BudgetTarget {
+  id: string;
+  contractor_id: string;
+  target_names: number;
+  label: string | null;
+  set_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const useBudgetTarget = (contractorId?: string) => {
+  return useQuery({
+    queryKey: ["budget-target", contractorId],
+    queryFn: async (): Promise<BudgetTarget | null> => {
+      if (!contractorId) {
+        // Super admin: get first/global target or null
+        const { data, error } = await supabase
+          .from("budget_targets" as any)
+          .select("*")
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        return data as BudgetTarget | null;
+      }
+      const { data, error } = await supabase
+        .from("budget_targets" as any)
+        .select("*")
+        .eq("contractor_id", contractorId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as BudgetTarget | null;
+    },
+  });
+};
+
+export const useUpsertBudgetTarget = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      contractorId,
+      targetNames,
+      label,
+    }: {
+      contractorId: string;
+      targetNames: number;
+      label?: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("budget_targets" as any)
+        .upsert(
+          {
+            contractor_id: contractorId,
+            target_names: targetNames,
+            label: label || null,
+            set_by: user.id,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "contractor_id" }
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["budget-target"] });
+      toast.success("Budget target updated");
+    },
+    onError: (error) => {
+      console.error("Budget target error:", error);
+      toast.error("Failed to update budget target");
+    },
+  });
+};
