@@ -31,7 +31,8 @@ import { InvoiceUploadDialog } from "@/components/payment/InvoiceUploadDialog";
 import { ManualInvoiceEntryDialog } from "@/components/payment/ManualInvoiceEntryDialog";
 import { PaymentTable } from "@/components/payment/PaymentTable";
 import { InvoiceHistoryTab } from "@/components/payment/InvoiceHistoryTab";
-import { useAllInterviewsForPayment, useBudgetStats } from "@/hooks/usePaymentTracking";
+import { SetBudgetTargetDialog } from "@/components/payment/SetBudgetTargetDialog";
+import { useAllInterviewsForPayment, useBudgetStats, useBudgetTarget } from "@/hooks/usePaymentTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { PaymentInterviewRecord } from "@/hooks/usePaymentTracking";
 
