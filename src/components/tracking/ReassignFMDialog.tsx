@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -24,10 +25,8 @@ import { toast } from "@/hooks/use-toast";
 interface ReassignFMDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  interviewId: string;
+  auditId: string;
   fileName: string;
-  interviewerCode: string;
-  contractorId: string;
   currentFmId?: string | null;
   currentFmName?: string | null;
 }
@@ -35,13 +34,12 @@ interface ReassignFMDialogProps {
 export const ReassignFMDialog = ({
   open,
   onOpenChange,
-  interviewId,
+  auditId,
   fileName,
-  interviewerCode,
-  contractorId,
   currentFmId,
   currentFmName,
 }: ReassignFMDialogProps) => {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedFmId, setSelectedFmId] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,40 +63,23 @@ export const ReassignFMDialog = ({
   });
 
   const handleReassign = async () => {
-    if (!selectedFmId || !interviewerCode) return;
+    if (!selectedFmId || !auditId) return;
     setIsSubmitting(true);
 
     try {
-      const { data: existing, error: fetchError } = await supabase
-        .from("team_assignments")
-        .select("id")
-        .eq("interviewer_code", interviewerCode)
-        .eq("status", "approved")
-        .limit(1);
-
-      if (fetchError) throw fetchError;
-
-      if (existing && existing.length > 0) {
-        const { error: updateError } = await supabase
-          .from("team_assignments")
-          .update({ field_manager_id: selectedFmId })
-          .eq("interviewer_code", interviewerCode)
-          .eq("status", "approved");
-
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await supabase
-          .from("team_assignments")
-          .insert({
-            interviewer_code: interviewerCode,
+      // Upsert into interview_fm_overrides (unique on audit_id)
+      const { error } = await supabase
+        .from("interview_fm_overrides")
+        .upsert(
+          {
+            audit_id: auditId,
             field_manager_id: selectedFmId,
-            contractor_id: contractorId,
-            status: "approved",
-            approved_at: new Date().toISOString(),
-          });
+            assigned_by: user?.id,
+          },
+          { onConflict: "audit_id" }
+        );
 
-        if (insertError) throw insertError;
-      }
+      if (error) throw error;
 
       const newFmName = fieldManagers.find(fm => fm.id === selectedFmId)?.full_name || "Unknown";
 
@@ -109,6 +90,9 @@ export const ReassignFMDialog = ({
 
       queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
       queryClient.invalidateQueries({ queryKey: ["team-assignments-tracking"] });
+      queryClient.invalidateQueries({ queryKey: ["interview-fm-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["field-manager-audits"] });
+      queryClient.invalidateQueries({ queryKey: ["field-manager-team"] });
       onOpenChange(false);
       setSelectedFmId("");
     } catch (error: any) {
@@ -129,7 +113,7 @@ export const ReassignFMDialog = ({
         <DialogHeader>
           <DialogTitle>Reassign Field Manager</DialogTitle>
           <DialogDescription>
-            Reassign this interview to a different Field Manager.
+            Reassign this specific interview to a different Field Manager. Other interviews by the same agent will not be affected.
           </DialogDescription>
         </DialogHeader>
 
