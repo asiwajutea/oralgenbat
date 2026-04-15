@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.cleanup-burn-queue]
 verify_jwt = false
+
+[functions.suggest-error-fix]
+verify_jwt = false

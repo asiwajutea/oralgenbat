@@ -22,6 +22,7 @@ const Header = () => {
   const isTeamsActive = ['/team-management', '/subcontractor-team-management', '/admin/team-approvals'].some(p => location.pathname.startsWith(p));
   const isAdminActive = ['/admin'].some(p => location.pathname.startsWith(p)) && !location.pathname.startsWith('/admin/team-approvals');
   const isAnalyticsActive = location.pathname === '/analytics' || location.pathname === '/my-analytics' || location.pathname === '/fraud-analytics' || location.pathname.startsWith('/role-analytics') || location.pathname === '/upload-tracking';
+  const isSuperAdmin = userRole === 'super_admin';
   const isCommunicationsActive = location.pathname.startsWith('/notices');
 
   // Role checks
@@ -247,6 +248,13 @@ const Header = () => {
                           Duplicate Detection
                         </Link>
                       </NavigationMenuLink>
+                      {isSuperAdmin && (
+                        <NavigationMenuLink asChild>
+                          <Link to="/admin/error-console" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/error-console' && "bg-accent text-accent-foreground")}>
+                            Error Console
+                          </Link>
+                        </NavigationMenuLink>
+                      )}
                     </div>
                   </NavigationMenuContent>
                 </NavigationMenuItem>
