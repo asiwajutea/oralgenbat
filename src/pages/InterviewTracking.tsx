@@ -264,7 +264,7 @@ const InterviewTracking = () => {
 
   // Get team codes for field managers
   const { data: teamAssignments = [] } = useQuery({
-    queryKey: ["team-assignments-tracking", user?.id, assignedFieldManagers],
+    queryKey: ["team-assignments-tracking", user?.id, assignedFieldManagers, isSuperAdmin],
     queryFn: async () => {
       if (!user?.id) return [];
       
@@ -273,7 +273,9 @@ const InterviewTracking = () => {
         .select("interviewer_code, field_manager_id")
         .eq("status", "approved");
       
-      if (isFieldManager) {
+      if (isSuperAdmin) {
+        // Fetch all approved assignments for FM filtering
+      } else if (isFieldManager) {
         query = query.eq("field_manager_id", user.id);
       } else if ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) {
         const fmIds = assignedFieldManagers.map((fm: any) => fm.field_manager_id);
@@ -607,10 +609,13 @@ const InterviewTracking = () => {
       // Field Manager filter - case-insensitive with "Not Assigned" support
       if (filters.fieldManager) {
         if (filters.fieldManager === "not_assigned") {
-          if (interview.field_manager && interview.field_manager.trim() !== "") return false;
+          const allAssignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
+          if (allAssignedCodes.includes(interview.interviewer_code)) return false;
         } else {
-          const filterLower = filters.fieldManager.toLowerCase();
-          if (!interview.field_manager || interview.field_manager.toLowerCase().trim() !== filterLower) return false;
+          const fmCodes = teamAssignments
+            .filter((t: any) => t.field_manager_id === filters.fieldManager)
+            .map((t: any) => t.interviewer_code);
+          if (!fmCodes.includes(interview.interviewer_code)) return false;
         }
       }
       
@@ -1365,7 +1370,7 @@ const InterviewTracking = () => {
                       <SelectItem value="all">All Field Managers</SelectItem>
                       <SelectItem value="not_assigned">Not Assigned</SelectItem>
                       {canonicalFms.map(fm => (
-                        <SelectItem key={fm.id} value={fm.full_name}>{fm.full_name}</SelectItem>
+                        <SelectItem key={fm.id} value={fm.id}>{fm.full_name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
