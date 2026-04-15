@@ -76,8 +76,6 @@ const App = () => (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TooltipProvider>
         <ErrorBoundary>
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <TooltipProvider>
         <OfflineIndicator />
         <Toaster />
         <Sonner />
