@@ -499,7 +499,7 @@ export const useBudgetTarget = (contractorId?: string) => {
           .limit(1)
           .maybeSingle();
         if (error) throw error;
-        return data as BudgetTarget | null;
+        return data as unknown as BudgetTarget | null;
       }
       const { data, error } = await supabase
         .from("budget_targets" as any)
@@ -507,7 +507,7 @@ export const useBudgetTarget = (contractorId?: string) => {
         .eq("contractor_id", contractorId)
         .maybeSingle();
       if (error) throw error;
-      return data as BudgetTarget | null;
+      return data as unknown as BudgetTarget | null;
     },
   });
 };
