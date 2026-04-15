@@ -80,6 +80,7 @@ import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
 import SendToBurnDialog from "@/components/SendToBurnDialog";
+import { ReassignFMDialog } from "@/components/tracking/ReassignFMDialog";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
 import {
@@ -195,6 +196,10 @@ const InterviewTracking = () => {
   const [editFilenameInterview, setEditFilenameInterview] = useState<TrackingInterview | null>(null);
   const [newFilename, setNewFilename] = useState("");
   const [isEditingFilename, setIsEditingFilename] = useState(false);
+
+  // Reassign FM dialog state
+  const [showReassignDialog, setShowReassignDialog] = useState(false);
+  const [reassignInterview, setReassignInterview] = useState<TrackingInterview | null>(null);
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
@@ -1130,6 +1135,16 @@ const InterviewTracking = () => {
               Edit Filename
             </DropdownMenuItem>
           )}
+          {/* Reassign FM - visible when interview has metadata */}
+          {(interview as any).interviewer_code && (
+            <DropdownMenuItem onClick={() => {
+              setReassignInterview(interview);
+              setShowReassignDialog(true);
+            }}>
+              <Users className="h-4 w-4 mr-2" />
+              Reassign FM
+            </DropdownMenuItem>
+          )}
           {/* Send to Burn */}
           {interview.status !== "Audit Passed" && (
             <>
@@ -1821,6 +1836,27 @@ const InterviewTracking = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      )}
+
+      {/* Reassign FM Dialog */}
+      {reassignInterview && (
+        <ReassignFMDialog
+          open={showReassignDialog}
+          onOpenChange={(v) => { setShowReassignDialog(v); if (!v) setReassignInterview(null); }}
+          interviewId={reassignInterview.id}
+          fileName={reassignInterview.file_name}
+          interviewerCode={(reassignInterview as any).interviewer_code || ""}
+          contractorId={(reassignInterview as any).contractor_id || ""}
+          currentFmId={
+            teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id || null
+          }
+          currentFmName={
+            (() => {
+              const fmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
+              return fmId ? canonicalFms.find(fm => fm.id === fmId)?.full_name || null : null;
+            })()
+          }
+        />
       )}
     </div>
   );
