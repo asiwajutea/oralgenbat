@@ -73,7 +73,18 @@ const BurnQueue = () => {
   
   // Failed interview modal
   const [showFailedModal, setShowFailedModal] = useState(false);
-  const [selectedFailedInterview, setSelectedFailedInterview] = useState<any>(null);
+  const [selectedFailedInterview, setSelectedFailedInterview] = useState<{
+    id: string;
+    file_name: string;
+    file_url: string;
+    status: string;
+    reviewed_at: string | null;
+    review_comment: string | null;
+    action_plan: string | null;
+    artifact_correction: string[] | null;
+    has_metadata: boolean;
+    has_pdf: boolean;
+  } | null>(null);
 
   // Fetch burn queue items
   const { data, isLoading } = useQuery({
@@ -328,7 +339,7 @@ const BurnQueue = () => {
     setCurrentPage(1);
   };
 
-  const handleViewDetails = async (item: any) => {
+  const handleViewDetails = async (item: { id: string; audit_id: string; file_name: string; reason: string; sent_at: string; sent_by: string; restored_at: string | null }) => {
     const { data: audit } = await supabase
       .from("audits")
       .select("*")

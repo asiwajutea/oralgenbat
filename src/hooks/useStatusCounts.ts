@@ -24,59 +24,24 @@ interface TotalNames {
 
 export const useStatusCounts = () => {
   const { userRole, profile } = useAuth();
-  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
   const isAuditor = userRole === 'auditor';
-  const isContractor = userRole === 'contractor';
-  const isFieldManager = userRole === 'field_manager';
-  const isSubContractor = userRole === 'sub_contractor';
-  
-  // Auditors MUST use active_contractor_id to filter
-  // Contractors and Sub-contractors use their contractor_id
-  // Field managers need separate handling (by team members)
-  const effectiveContractorId = isAuditor 
-    ? profile?.active_contractor_id  // Auditors only filter when they have active_contractor_id
-    : (profile?.active_contractor_id || profile?.contractor_id);  // Others use active or fallback to contractor_id
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+
+  const effectiveContractorId = isAuditor
+    ? profile?.active_contractor_id
+    : (profile?.active_contractor_id || profile?.contractor_id);
 
   return useQuery({
     queryKey: ["status-counts", userRole, profile?.full_name, effectiveContractorId],
     queryFn: async (): Promise<{ counts: StatusCounts; totalNames: TotalNames }> => {
-      // First, fetch burned audit IDs to exclude
-      const { data: burnedData } = await supabase
-        .from("burn_queue")
-        .select("audit_id")
-        .is("restored_at", null);
-      const burnedIds = new Set((burnedData || []).map(b => b.audit_id));
+      // Use server-side RPC for efficient aggregation
+      const { data, error } = await supabase.rpc("get_status_counts", {
+        p_contractor_id: (isAdmin ? null : effectiveContractorId) || null,
+        p_auditor_name: isAuditor ? (profile?.full_name || null) : null,
+        p_is_auditor: isAuditor,
+      });
 
-      // Paginated fetch to bypass the 1000-row default limit
-      const batchSize = 1000;
-      let allAudits: any[] = [];
-      let from = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data: batch, error } = await supabase
-          .from("audits")
-          .select(`
-            id,
-            status, 
-            locked_by, 
-            locked_at,
-            is_re_audit,
-            reviewed_by,
-            file_url,
-            file_name,
-            mobile_zip_url,
-            interview_metadata(total_names, contractor_id)
-          `)
-          .range(from, from + batchSize - 1);
-
-        if (error) throw error;
-        if (batch) allAudits = [...allAudits, ...batch];
-        hasMore = batch?.length === batchSize;
-        from += batchSize;
-      }
-
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      if (error) throw error;
 
       const counts: StatusCounts = {
         Pending: 0,
@@ -98,73 +63,11 @@ export const useStatusCounts = () => {
         "Ready for Review": 0,
       };
 
-      allAudits?.forEach((audit) => {
-        // Exclude burned audits from status counts
-        if (burnedIds.has(audit.id)) return;
-
-        const metadata = audit.interview_metadata as { total_names: number | null; contractor_id: string | null }[] | null;
-        const hasMetadata = metadata && metadata.length > 0;
-        const names = metadata?.[0]?.total_names || 0;
-        const auditContractorId = metadata?.[0]?.contractor_id || null;
-        
-        // Extract contractor_id from file_name for audits without metadata (format: NG71_711_20251208_0937)
-        const fileNameParts = audit.file_name?.split('_') || [];
-        const contractorIdFromFileName = fileNameParts[0] || null;
-        const effectiveAuditContractorId = auditContractorId || contractorIdFromFileName;
-        
-        // For contractors, sub-contractors, and auditors with active_contractor_id, skip audits that don't belong to them
-        if ((isContractor || isSubContractor || (isAuditor && profile?.active_contractor_id)) && effectiveContractorId && effectiveAuditContractorId !== effectiveContractorId) {
-          return;
-        }
-        
-        // Complete artifacts = has PDF AND has mobile_zip_url (proxy for metadata presence)
-        // Uses mobile_zip_url as proxy to match the Interviews page query behavior
-        const hasCompleteArtifacts = !!audit.file_url && !!audit.mobile_zip_url;
-        
-        // Count as "In Progress" if locked and within 1 hour
-        if (audit.locked_by && audit.locked_at && audit.locked_at > oneHourAgo) {
-          counts["In Progress"]++;
-          totalNames["In Progress"] += names;
-        }
-        
-        // Handle re-audits separately
-        if (audit.is_re_audit && audit.status === "Awaiting Review") {
-          // For auditors, only count their own re-audits
-          if (isAuditor && profile?.full_name) {
-            if (audit.reviewed_by === profile.full_name) {
-              counts["Re-Audit"]++;
-              totalNames["Re-Audit"] += names;
-            }
-          } else if (isAdmin) {
-            // Admins see all re-audits
-            counts["Re-Audit"]++;
-            totalNames["Re-Audit"] += names;
-          }
-          // Skip adding to Pending count for re-audits
-          return;
-        }
-        
-        // Count regular statuses (exclude re-audits from Pending/Awaiting Review)
-        if (audit.status === "Pending" || audit.status === "Awaiting Review") {
-          // For auditors, only count items with complete artifacts
-          if (isAuditor) {
-            if (hasCompleteArtifacts) {
-              counts["Pending"]++;
-              totalNames["Pending"] += names;
-            }
-          } else {
-            counts["Pending"]++;
-            totalNames["Pending"] += names;
-          }
-          
-          // Count "Ready for Review" - items with both PDF and metadata
-          if (hasCompleteArtifacts) {
-            counts["Ready for Review"]++;
-            totalNames["Ready for Review"] += names;
-          }
-        } else if (counts[audit.status as keyof StatusCounts] !== undefined) {
-          counts[audit.status as keyof StatusCounts]++;
-          totalNames[audit.status as keyof StatusCounts] += names;
+      (data || []).forEach((row: { status_key: string; count: number; total_names: number }) => {
+        const key = row.status_key as keyof StatusCounts;
+        if (counts[key] !== undefined) {
+          counts[key] = Number(row.count);
+          totalNames[key] = Number(row.total_names);
         }
       });
 
