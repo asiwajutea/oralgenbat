@@ -1561,6 +1561,18 @@ export type Database = {
           total_reviews: number
         }[]
       }
+      get_status_counts: {
+        Args: {
+          p_auditor_name?: string
+          p_contractor_id?: string
+          p_is_auditor?: boolean
+        }
+        Returns: {
+          count: number
+          status_key: string
+          total_names: number
+        }[]
+      }
       get_storage_usage: {
         Args: never
         Returns: {
