@@ -1,48 +1,61 @@
 
 
-## Plan: Fix Burn Queue Table — Phone Number, Sticky Actions, and FM Filter
+## Fix: FM Filter on Tracking Page Should Use Team Assignments
 
-### Problem Summary
+### Problem
 
-1. **No phone number column** — `interviewee_phone` exists in `interview_metadata` but isn't fetched or displayed.
-2. **Action menu (3-dots) not sticky** — When scrolling horizontally, the action column scrolls away.
-3. **FM filter shows duplicate/inconsistent names** — The filter reads `field_manager` from `interview_metadata` which has free-text entries with inconsistent casing (e.g., "Isaac pamilerin", "Oluwatoyin ojo" vs "Oluwatoyin  ojo"). There are 24 distinct strings but only 9 actual field managers in the system.
-4. **No "Not Assigned" option** — Interviews without a field manager value have no filter option.
+The FM filter matches `interview.field_manager` (free-text from metadata) against `profiles.full_name`. These rarely match because:
+- Metadata has entries like "Isaac pamilerin", "Godwin hellen", "Emmanuel adebisi"
+- Profile names are "Hellen Godwin ", "Taiwo Mary Ogara ", "Tobiloba idowu "
 
-### Changes — `src/pages/BurnQueue.tsx`
+Result: every FM filter returns 0 results except "Not Assigned".
 
-**1. Fetch `interviewee_phone` in metadata query (line ~133)**
+### Solution
 
-Add `interviewee_phone` to the select:
-```typescript
-.select("audit_id, total_names, field_manager, interviewee_phone")
+Use `team_assignments` (which maps `field_manager_id` → `interviewer_code`) instead of the free-text `field_manager` column. The page already fetches `teamAssignments` data. Each interview has `interviewer_code`.
+
+### Changes — `src/pages/InterviewTracking.tsx`
+
+**1. Change FM filter value from `full_name` to `id`**
+
+In the Select dropdown (~line 1368), use `fm.id` as the value instead of `fm.full_name`:
+```tsx
+<SelectItem key={fm.id} value={fm.id}>{fm.full_name}</SelectItem>
 ```
 
-**2. Add Phone column to desktop table**
+**2. Fetch all team assignments for FM filtering (super_admin case)**
 
-Insert a new `<TableHead>Phone</TableHead>` column after File Name, and render `meta?.interviewee_phone || "-"` in the corresponding cell. Also add it to the mobile accordion view.
+The existing `teamAssignments` query is scoped by role. For the FM filter to work for super admins, ensure all approved team assignments are fetched when the user is super_admin (remove the FM-scoping conditions for super_admin).
 
-**3. Make action column sticky**
+**3. Rewrite the FM filter logic (~lines 608-614)**
 
-Add `sticky right-0 bg-background` classes to the last `<TableHead>` and last `<TableCell>` so the 3-dot menu stays visible during horizontal scroll.
+Instead of comparing free-text strings, look up which interviewer codes belong to the selected FM via `teamAssignments`:
 
-**4. Fix FM filter to use canonical list from `profiles` + `user_roles`**
+```typescript
+if (filters.fieldManager) {
+  if (filters.fieldManager === "not_assigned") {
+    // Interview's interviewer_code is not in any team assignment
+    const allAssignedCodes = teamAssignments.map(t => t.interviewer_code);
+    if (allAssignedCodes.includes(interview.interviewer_code)) return false;
+  } else {
+    // Filter by FM id — find codes assigned to this FM
+    const fmCodes = teamAssignments
+      .filter(t => t.field_manager_id === filters.fieldManager)
+      .map(t => t.interviewer_code);
+    if (!fmCodes.includes(interview.interviewer_code)) return false;
+  }
+}
+```
 
-Replace the current approach (deriving FM names from free-text `interview_metadata.field_manager`) with a query against `profiles` joined with `user_roles` where `role = 'field_manager'`. This gives the real list of 9 FMs. Add a "Not Assigned" option.
+**4. Ensure `teamAssignments` query fetches all assignments for super_admin**
 
-**5. Handle "Not Assigned" FM filter**
-
-When `fmFilter === "not_assigned"`, filter items where `meta?.field_manager` is null/empty. When filtering by a specific FM name, use case-insensitive matching (`toLowerCase().includes()`) to handle the inconsistent casing in the metadata.
-
-**6. Update FM analytics breakdown**
-
-Apply the same case-insensitive grouping in the FM breakdown collapsible, so "Isaac pamilerin" and similar variants are merged.
+Update the query (~line 266-288) so that when `isSuperAdmin`, it fetches all approved team assignments without FM-id filtering (it already has `isSuperAdmin` in the `enabled` condition but doesn't actually fetch for that case).
 
 ### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/pages/BurnQueue.tsx` | All 6 changes above |
+| `src/pages/InterviewTracking.tsx` | FM filter logic, Select value, teamAssignments query scope |
 
-No database changes needed — `interviewee_phone` and the profiles/roles tables already exist.
+No database changes needed.
 
