@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame } from "lucide-react";
+import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame, Bug } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -180,6 +180,7 @@ const MobileNav = () => {
                 <NavItem to="/admin/locked-interviews" icon={Lock}>Locks</NavItem>
                 <NavItem to="/admin/sms-logs" icon={MessageSquare}>SMS Logs</NavItem>
                 <NavItem to="/admin/duplicates" icon={Copy}>Duplicate Detection</NavItem>
+                {userRole === 'super_admin' && <NavItem to="/admin/error-console" icon={Bug}>Error Console</NavItem>}
               </>
             )}
           </nav>

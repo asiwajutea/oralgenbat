@@ -53,6 +53,8 @@ import ResetPassword from "./pages/ResetPassword";
 import DuplicateInterviews from "./pages/DuplicateInterviews";
 import BurnQueue from "./pages/BurnQueue";
 import UploadTrackingDashboard from "./pages/UploadTrackingDashboard";
+import ErrorConsole from "./pages/ErrorConsole";
+import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -71,6 +73,9 @@ const queryClient = new QueryClient({
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <TooltipProvider>
+        <ErrorBoundary>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TooltipProvider>
         <OfflineIndicator />
@@ -387,12 +392,23 @@ const App = () => (
               }
             />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route
+              path="/admin/error-console"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <ErrorConsole />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
             </PresenceProvider>
             <PWAInstallPrompt />
           </AuthProvider>
         </BrowserRouter>
+        </ErrorBoundary>
       </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>
