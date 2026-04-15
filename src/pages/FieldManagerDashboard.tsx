@@ -58,8 +58,29 @@ const FieldManagerDashboard = () => {
     enabled: !!session?.user.id,
   });
 
+  // Fetch per-interview FM overrides relevant to this FM
+  const { data: fmOverrides = [] } = useQuery({
+    queryKey: ["interview-fm-overrides", session?.user.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("interview_fm_overrides")
+        .select("audit_id, field_manager_id");
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!session?.user.id,
+  });
+
+  // Build override maps
+  const overridesForMe = new Set(
+    fmOverrides.filter((o: any) => o.field_manager_id === session?.user.id).map((o: any) => o.audit_id)
+  );
+  const overridesAwayFromMe = new Set(
+    fmOverrides.filter((o: any) => o.field_manager_id !== session?.user.id).map((o: any) => o.audit_id)
+  );
+
   // Fetch audits for team members
-  const { data: audits, isLoading: loadingAudits, refetch } = useQuery({
+  const { data: teamAudits, isLoading: loadingAudits, refetch } = useQuery({
     queryKey: ["field-manager-audits", teamMembers, filters],
     queryFn: async () => {
       if (!teamMembers || teamMembers.length === 0) return [];
@@ -102,6 +123,46 @@ const FieldManagerDashboard = () => {
     },
     enabled: !!teamMembers && teamMembers.length > 0,
   });
+
+  // Fetch override interviews that belong to this FM but are from other agents
+  const { data: overrideAudits = [] } = useQuery({
+    queryKey: ["field-manager-override-audits", overridesForMe.size],
+    queryFn: async () => {
+      if (overridesForMe.size === 0) return [];
+      const overrideIds = Array.from(overridesForMe);
+      // Batch fetch
+      const batchSize = 200;
+      const allAudits: any[] = [];
+      for (let i = 0; i < overrideIds.length; i += batchSize) {
+        const batch = overrideIds.slice(i, i + batchSize);
+        const { data, error } = await supabase
+          .from("audits")
+          .select(`
+            *,
+            interview_metadata (
+              interviewer_code,
+              interviewer_name,
+              contractor_id,
+              field_manager
+            )
+          `)
+          .in("id", batch);
+        if (error) throw error;
+        if (data) allAudits.push(...data);
+      }
+      return allAudits;
+    },
+    enabled: overridesForMe.size > 0,
+  });
+
+  // Combine: team audits (minus overridden away) + override audits (assigned to me)
+  const audits = useMemo(() => {
+    const base = (teamAudits || []).filter((a: any) => !overridesAwayFromMe.has(a.id));
+    // Add override audits that aren't already in base
+    const baseIds = new Set(base.map((a: any) => a.id));
+    const extras = overrideAudits.filter((a: any) => !baseIds.has(a.id));
+    return [...base, ...extras];
+  }, [teamAudits, overrideAudits, overridesAwayFromMe]);
 
   // Calculate statistics from team data
   const stats = {
