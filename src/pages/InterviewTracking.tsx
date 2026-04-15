@@ -591,6 +591,25 @@ const InterviewTracking = () => {
     },
   });
 
+  // Fetch per-interview FM overrides
+  const { data: fmOverrides = [] } = useQuery({
+    queryKey: ["interview-fm-overrides"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("interview_fm_overrides")
+        .select("audit_id, field_manager_id");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Build a map of audit_id -> overridden FM id
+  const fmOverrideMap = useMemo(() => {
+    const map = new Map<string, string>();
+    fmOverrides.forEach((o: any) => map.set(o.audit_id, o.field_manager_id));
+    return map;
+  }, [fmOverrides]);
+
   // Get unique values for filter dropdowns
   const filterOptions = useMemo(() => {
     const statuses = [...new Set(interviewsWithUnreadCounts.map(i => i.status).filter(Boolean))];
@@ -611,16 +630,17 @@ const InterviewTracking = () => {
       }
       
       // Apply other filters
-      // Field Manager filter - case-insensitive with "Not Assigned" support
+      // Field Manager filter - checks per-interview overrides first, then falls back to team_assignments
       if (filters.fieldManager) {
+        // Determine effective FM for this interview: override takes priority
+        const overrideFmId = fmOverrideMap.get(interview.id);
+        const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (interview as any).interviewer_code)?.field_manager_id;
+        const effectiveFmId = overrideFmId || teamFmId;
+
         if (filters.fieldManager === "not_assigned") {
-          const allAssignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
-          if (allAssignedCodes.includes((interview as any).interviewer_code)) return false;
+          if (effectiveFmId) return false;
         } else {
-          const fmCodes = teamAssignments
-            .filter((t: any) => t.field_manager_id === filters.fieldManager)
-            .map((t: any) => t.interviewer_code);
-          if (!fmCodes.includes((interview as any).interviewer_code)) return false;
+          if (effectiveFmId !== filters.fieldManager) return false;
         }
       }
       
@@ -647,7 +667,7 @@ const InterviewTracking = () => {
       
       return true;
     });
-  }, [interviewsWithUnreadCounts, searchQuery, filters]);
+  }, [interviewsWithUnreadCounts, searchQuery, filters, fmOverrideMap, teamAssignments]);
 
   // Sort interviews
   const sortedInterviews = useMemo(() => {
@@ -1843,16 +1863,20 @@ const InterviewTracking = () => {
         <ReassignFMDialog
           open={showReassignDialog}
           onOpenChange={(v) => { setShowReassignDialog(v); if (!v) setReassignInterview(null); }}
-          interviewId={reassignInterview.id}
+          auditId={reassignInterview.id}
           fileName={reassignInterview.file_name}
-          interviewerCode={(reassignInterview as any).interviewer_code || ""}
-          contractorId={(reassignInterview as any).contractor_id || ""}
           currentFmId={
-            teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id || null
+            (() => {
+              const overrideFmId = fmOverrideMap.get(reassignInterview.id);
+              const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
+              return overrideFmId || teamFmId || null;
+            })()
           }
           currentFmName={
             (() => {
-              const fmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
+              const overrideFmId = fmOverrideMap.get(reassignInterview.id);
+              const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
+              const fmId = overrideFmId || teamFmId;
               return fmId ? canonicalFms.find(fm => fm.id === fmId)?.full_name || null : null;
             })()
           }
