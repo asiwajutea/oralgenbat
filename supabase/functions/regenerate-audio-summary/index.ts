@@ -109,7 +109,7 @@ End with an overall rating: Excellent, Good, Fair, or Poor.`;
 
     console.log("Calling Lovable AI to regenerate summary...");
 
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${openaiApiKey}`,

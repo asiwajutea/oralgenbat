@@ -799,7 +799,7 @@ Provide a brief quality assessment (2-3 sentences) with an overall rating:
 - Fair: One recording significantly below requirement
 - Poor: Both recordings significantly below requirements`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${openaiApiKey}`,

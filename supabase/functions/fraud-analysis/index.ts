@@ -75,7 +75,7 @@ Generate a fraud analysis report with:
 3. Action plan with immediate steps, short-term recommendations, and escalation guidance
 4. Risk assessment paragraph`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
