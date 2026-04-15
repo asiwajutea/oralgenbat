@@ -89,6 +89,11 @@ const PaymentTracking = () => {
 
   const { data: records, isLoading: recordsLoading } = useAllInterviewsForPayment(contractorId);
   const { data: budgetStats, isLoading: statsLoading } = useBudgetStats(contractorId);
+  const { data: budgetTarget } = useBudgetTarget(contractorId);
+
+  // Check if user can set budget
+  const canSetBudget = userRole === "super_admin" || userRole === "admin" || userRole === "contractor";
+  const effectiveContractorId = contractorId || profile?.contractor_id || "global";
 
   // Check if user can upload invoices
   const canUpload = userRole === "super_admin" || userRole === "admin" || userRole === "contractor";
