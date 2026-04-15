@@ -80,6 +80,7 @@ import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
 import SendToBurnDialog from "@/components/SendToBurnDialog";
+import { ReassignFMDialog } from "@/components/tracking/ReassignFMDialog";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
 import {
@@ -195,6 +196,10 @@ const InterviewTracking = () => {
   const [editFilenameInterview, setEditFilenameInterview] = useState<TrackingInterview | null>(null);
   const [newFilename, setNewFilename] = useState("");
   const [isEditingFilename, setIsEditingFilename] = useState(false);
+
+  // Reassign FM dialog state
+  const [showReassignDialog, setShowReassignDialog] = useState(false);
+  const [reassignInterview, setReassignInterview] = useState<TrackingInterview | null>(null);
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
@@ -1128,6 +1133,16 @@ const InterviewTracking = () => {
             }}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit Filename
+            </DropdownMenuItem>
+          )}
+          {/* Reassign FM - visible when interview has metadata */}
+          {(interview as any).interviewer_code && (
+            <DropdownMenuItem onClick={() => {
+              setReassignInterview(interview);
+              setShowReassignDialog(true);
+            }}>
+              <Users className="h-4 w-4 mr-2" />
+              Reassign FM
             </DropdownMenuItem>
           )}
           {/* Send to Burn */}
