@@ -566,12 +566,29 @@ const InterviewTracking = () => {
     }));
   }, [nonBurnedInterviews, unreadCommentCounts]);
 
+  // Fetch canonical FM list from profiles + user_roles
+  const { data: canonicalFms = [] } = useQuery({
+    queryKey: ["canonical-field-managers"],
+    queryFn: async () => {
+      const { data: fmRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "field_manager");
+      if (!fmRoles?.length) return [];
+      const fmIds = fmRoles.map(r => r.user_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", fmIds);
+      return (profiles || []).sort((a, b) => a.full_name.localeCompare(b.full_name));
+    },
+  });
+
   // Get unique values for filter dropdowns
   const filterOptions = useMemo(() => {
-    const fieldManagers = [...new Set(interviewsWithUnreadCounts.map(i => i.field_manager).filter(Boolean))];
     const statuses = [...new Set(interviewsWithUnreadCounts.map(i => i.status).filter(Boolean))];
     const contractors = [...new Set(interviewsWithUnreadCounts.map(i => (i as any).contractor_id).filter(Boolean))];
-    return { fieldManagers, statuses, contractors };
+    return { statuses, contractors };
   }, [interviewsWithUnreadCounts]);
 
   // Apply filters and search
@@ -587,7 +604,15 @@ const InterviewTracking = () => {
       }
       
       // Apply other filters
-      if (filters.fieldManager && interview.field_manager !== filters.fieldManager) return false;
+      // Field Manager filter - case-insensitive with "Not Assigned" support
+      if (filters.fieldManager) {
+        if (filters.fieldManager === "not_assigned") {
+          if (interview.field_manager && interview.field_manager.trim() !== "") return false;
+        } else {
+          const filterLower = filters.fieldManager.toLowerCase();
+          if (!interview.field_manager || interview.field_manager.toLowerCase().trim() !== filterLower) return false;
+        }
+      }
       
       // Status filter - special cases for "With Issues", "Failed - Unresolved", and "Failed - Resolved"
       if (filters.status === "With Issues") {
@@ -1338,8 +1363,9 @@ const InterviewTracking = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Field Managers</SelectItem>
-                      {[...filterOptions.fieldManagers].sort((a, b) => (a ?? '').localeCompare(b ?? '')).map(fm => (
-                        <SelectItem key={fm} value={fm!}>{fm}</SelectItem>
+                      <SelectItem value="not_assigned">Not Assigned</SelectItem>
+                      {canonicalFms.map(fm => (
+                        <SelectItem key={fm.id} value={fm.full_name}>{fm.full_name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
