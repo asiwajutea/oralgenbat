@@ -422,8 +422,14 @@ const BurnQueue = () => {
       const sMap = new Map((profiles || []).map(p => [p.id, p.full_name]));
 
       let items = allItems;
-      if (fmFilter !== "all") {
-        items = items.filter(i => metaMapAll.get(i.audit_id)?.field_manager === fmFilter);
+      if (fmFilter === "not_assigned") {
+        items = items.filter(i => {
+          const fm = metaMapAll.get(i.audit_id)?.field_manager;
+          return !fm || fm.trim() === "";
+        });
+      } else if (fmFilter !== "all") {
+        const filterLower = fmFilter.toLowerCase();
+        items = items.filter(i => metaMapAll.get(i.audit_id)?.field_manager?.toLowerCase().trim() === filterLower);
       }
 
       const doc = new jsPDF();
