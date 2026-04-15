@@ -34,8 +34,7 @@ class ErrorBoundary extends Component<Props, State> {
         page_url: window.location.href,
         browser_info: navigator.userAgent,
       })
-      .then(() => {})
-      .catch(() => {});
+      .then(() => {}, () => {});
   }
 
   render() {
