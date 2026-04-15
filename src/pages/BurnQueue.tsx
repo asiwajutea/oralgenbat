@@ -131,7 +131,7 @@ const BurnQueue = () => {
       if (burnedAuditIds.length === 0) return new Map();
       const { data: meta } = await supabase
         .from("interview_metadata")
-        .select("audit_id, total_names, field_manager")
+        .select("audit_id, total_names, field_manager, interviewee_phone")
         .in("audit_id", burnedAuditIds);
       return new Map((meta || []).map(m => [m.audit_id, m]));
     },
@@ -162,10 +162,12 @@ const BurnQueue = () => {
           if (meta) {
             meta.forEach(m => {
               totalNames += m.total_names || 0;
-              const fm = m.field_manager || "Unknown";
-              if (!fmCounts[fm]) fmCounts[fm] = { count: 0, names: 0 };
-              fmCounts[fm].count++;
-              fmCounts[fm].names += m.total_names || 0;
+              const fm = m.field_manager?.trim() || "Not Assigned";
+              // Normalize: title-case for consistent grouping
+              const fmKey = fm === "Not Assigned" ? fm : fm.replace(/\s+/g, " ").split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+              if (!fmCounts[fmKey]) fmCounts[fmKey] = { count: 0, names: 0 };
+              fmCounts[fmKey].count++;
+              fmCounts[fmKey].names += m.total_names || 0;
             });
           }
         }
@@ -212,19 +214,39 @@ const BurnQueue = () => {
 
   const senderMap = new Map(senderProfiles.map((p) => [p.id, p.full_name]));
 
-  // Unique field managers for filter
-  const fmOptions = useMemo(() => {
-    if (!allBurnedStats?.fmCounts) return [];
-    return Object.keys(allBurnedStats.fmCounts).sort();
-  }, [allBurnedStats]);
+  // Fetch canonical FM list from profiles + user_roles
+  const { data: canonicalFms = [] } = useQuery({
+    queryKey: ["canonical-field-managers"],
+    queryFn: async () => {
+      const { data: fmRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "field_manager");
+      if (!fmRoles?.length) return [];
+      const fmIds = fmRoles.map(r => r.user_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", fmIds);
+      return (profiles || []).sort((a, b) => a.full_name.localeCompare(b.full_name));
+    },
+  });
 
   // Filter by FM (client-side since we already have metadata)
   const filteredItems = useMemo(() => {
     if (!data?.items) return [];
     if (fmFilter === "all") return data.items;
+    if (fmFilter === "not_assigned") {
+      return data.items.filter(item => {
+        const meta = metadataMap.get(item.audit_id);
+        return !meta?.field_manager || meta.field_manager.trim() === "";
+      });
+    }
+    // Case-insensitive matching against selected FM name
+    const filterLower = fmFilter.toLowerCase();
     return data.items.filter(item => {
       const meta = metadataMap.get(item.audit_id);
-      return meta?.field_manager === fmFilter;
+      return meta?.field_manager?.toLowerCase().trim() === filterLower;
     });
   }, [data?.items, fmFilter, metadataMap]);
 
@@ -400,8 +422,14 @@ const BurnQueue = () => {
       const sMap = new Map((profiles || []).map(p => [p.id, p.full_name]));
 
       let items = allItems;
-      if (fmFilter !== "all") {
-        items = items.filter(i => metaMapAll.get(i.audit_id)?.field_manager === fmFilter);
+      if (fmFilter === "not_assigned") {
+        items = items.filter(i => {
+          const fm = metaMapAll.get(i.audit_id)?.field_manager;
+          return !fm || fm.trim() === "";
+        });
+      } else if (fmFilter !== "all") {
+        const filterLower = fmFilter.toLowerCase();
+        items = items.filter(i => metaMapAll.get(i.audit_id)?.field_manager?.toLowerCase().trim() === filterLower);
       }
 
       const doc = new jsPDF();
@@ -604,19 +632,18 @@ const BurnQueue = () => {
               <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
-          {fmOptions.length > 0 && (
-            <Select value={fmFilter} onValueChange={(v) => { setFmFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="Field Manager" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Managers</SelectItem>
-                {fmOptions.map(fm => (
-                  <SelectItem key={fm} value={fm}>{fm}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <Select value={fmFilter} onValueChange={(v) => { setFmFilter(v); setCurrentPage(1); }}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Field Manager" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Managers</SelectItem>
+              <SelectItem value="not_assigned">Not Assigned</SelectItem>
+              {canonicalFms.map(fm => (
+                <SelectItem key={fm.id} value={fm.full_name}>{fm.full_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {!isMobile && (
             <>
               <div>
@@ -694,6 +721,7 @@ const BurnQueue = () => {
                         <AccordionContent className="px-4 pb-4">
                           <div className="space-y-2 text-sm">
                             <div className="grid grid-cols-2 gap-2">
+                              <div><p className="text-muted-foreground text-xs">Phone</p><p className="font-medium">{meta?.interviewee_phone || "-"}</p></div>
                               <div><p className="text-muted-foreground text-xs">Sent By</p><p className="font-medium">{senderMap.get(item.sent_by) || "Unknown"}</p></div>
                               <div><p className="text-muted-foreground text-xs">Sent At</p><p className="font-medium">{format(new Date(item.sent_at), "PP")}</p></div>
                               <div><p className="text-muted-foreground text-xs">FM</p><p className="font-medium">{meta?.field_manager || "-"}</p></div>
@@ -738,6 +766,7 @@ const BurnQueue = () => {
                       <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort("file_name")}>
                         <div className="flex items-center gap-1">File Name <ArrowUpDown className="h-3 w-3" /></div>
                       </TableHead>
+                      <TableHead>Phone</TableHead>
                       <TableHead>Sent By</TableHead>
                       <TableHead>Reason</TableHead>
                       <TableHead>FM</TableHead>
@@ -747,7 +776,7 @@ const BurnQueue = () => {
                       </TableHead>
                       <TableHead>Days Left</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="w-10"></TableHead>
+                      <TableHead className="w-10 sticky right-0 bg-background"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -769,6 +798,7 @@ const BurnQueue = () => {
                           )}
                           <TableCell>{(currentPage - 1) * itemsPerPage + index + 1}</TableCell>
                           <TableCell className="font-mono text-sm font-medium">{item.file_name}</TableCell>
+                          <TableCell className="text-sm">{meta?.interviewee_phone || "-"}</TableCell>
                           <TableCell className="text-sm">{senderMap.get(item.sent_by) || "Unknown"}</TableCell>
                           <TableCell className="text-sm max-w-[200px] truncate" title={item.reason}>{item.reason}</TableCell>
                           <TableCell className="text-sm">{meta?.field_manager || "-"}</TableCell>
@@ -792,7 +822,7 @@ const BurnQueue = () => {
                               <Badge variant="destructive">Ready to Burn</Badge>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="sticky right-0 bg-background">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
