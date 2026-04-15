@@ -434,6 +434,36 @@ export type Database = {
         }
         Relationships: []
       }
+      budget_targets: {
+        Row: {
+          contractor_id: string
+          created_at: string
+          id: string
+          label: string | null
+          set_by: string | null
+          target_names: number
+          updated_at: string
+        }
+        Insert: {
+          contractor_id: string
+          created_at?: string
+          id?: string
+          label?: string | null
+          set_by?: string | null
+          target_names: number
+          updated_at?: string
+        }
+        Update: {
+          contractor_id?: string
+          created_at?: string
+          id?: string
+          label?: string | null
+          set_by?: string | null
+          target_names?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       burn_queue: {
         Row: {
           audit_id: string
