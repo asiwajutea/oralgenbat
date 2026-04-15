@@ -16,6 +16,22 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
+    // Auth validation
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const { data: isAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
+    const { data: isSuperAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'super_admin' });
+    if (!isAdmin && !isSuperAdmin) {
+      return new Response(JSON.stringify({ error: 'Admin role required' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Find burn queue items older than 90 days that haven't been restored
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 90);
@@ -40,6 +56,9 @@ Deno.serve(async (req) => {
 
     for (const item of expiredItems) {
       try {
+        // Delete burn_queue entry FIRST (before audits to avoid FK issues)
+        await supabase.from("burn_queue").delete().eq("id", item.id);
+
         // Cascade delete related records
         const tables = [
           "audit_checklist_progress",
@@ -57,7 +76,7 @@ Deno.serve(async (req) => {
           await supabase.from(table).delete().eq("audit_id", item.audit_id);
         }
 
-        // Delete the audit itself
+        // Delete the audit last
         const { error: deleteError } = await supabase
           .from("audits")
           .delete()
@@ -67,9 +86,6 @@ Deno.serve(async (req) => {
           errors.push(`Failed to delete audit ${item.audit_id}: ${deleteError.message}`);
           continue;
         }
-
-        // Remove from burn queue
-        await supabase.from("burn_queue").delete().eq("id", item.id);
 
         deletedCount++;
       } catch (e) {
@@ -88,7 +104,7 @@ Deno.serve(async (req) => {
     );
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
