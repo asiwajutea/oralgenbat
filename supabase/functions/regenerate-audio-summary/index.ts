@@ -116,7 +116,7 @@ End with an overall rating: Excellent, Good, Fair, or Poor.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-oss-120b:free",
         messages: [
           {
             role: "system",

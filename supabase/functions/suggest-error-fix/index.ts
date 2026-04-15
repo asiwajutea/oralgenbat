@@ -88,7 +88,7 @@ Keep the response under 300 words. Be specific and actionable.`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "openai/gpt-oss-120b:free",
           messages: [
             { role: "system", content: "You are an expert React/TypeScript debugger. Provide concise, actionable fix suggestions." },
             { role: "user", content: prompt },

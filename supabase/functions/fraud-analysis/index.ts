@@ -82,7 +82,7 @@ Generate a fraud analysis report with:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'openai/gpt-oss-120b:free',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }

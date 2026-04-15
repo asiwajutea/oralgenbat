@@ -806,7 +806,7 @@ Provide a brief quality assessment (2-3 sentences) with an overall rating:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "openai/gpt-oss-120b:free",
         messages: [
           {
             role: "system",
