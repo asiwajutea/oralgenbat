@@ -467,6 +467,63 @@ export type Database = {
         }
         Relationships: []
       }
+      client_error_logs: {
+        Row: {
+          browser_info: string | null
+          component_name: string | null
+          created_at: string
+          error_message: string
+          error_source: string | null
+          error_stack: string | null
+          id: string
+          notes: string | null
+          page_url: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          suggested_fix: string | null
+          user_email: string | null
+          user_id: string | null
+          user_role: string | null
+        }
+        Insert: {
+          browser_info?: string | null
+          component_name?: string | null
+          created_at?: string
+          error_message: string
+          error_source?: string | null
+          error_stack?: string | null
+          id?: string
+          notes?: string | null
+          page_url?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          suggested_fix?: string | null
+          user_email?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Update: {
+          browser_info?: string | null
+          component_name?: string | null
+          created_at?: string
+          error_message?: string
+          error_source?: string | null
+          error_stack?: string | null
+          id?: string
+          notes?: string | null
+          page_url?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          suggested_fix?: string | null
+          user_email?: string | null
+          user_id?: string | null
+          user_role?: string | null
+        }
+        Relationships: []
+      }
       data_entry_teams: {
         Row: {
           created_at: string | null
