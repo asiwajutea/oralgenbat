@@ -1837,6 +1837,27 @@ const InterviewTracking = () => {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* Reassign FM Dialog */}
+      {reassignInterview && (
+        <ReassignFMDialog
+          open={showReassignDialog}
+          onOpenChange={(v) => { setShowReassignDialog(v); if (!v) setReassignInterview(null); }}
+          interviewId={reassignInterview.id}
+          fileName={reassignInterview.file_name}
+          interviewerCode={(reassignInterview as any).interviewer_code || ""}
+          contractorId={(reassignInterview as any).contractor_id || ""}
+          currentFmId={
+            teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id || null
+          }
+          currentFmName={
+            (() => {
+              const fmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
+              return fmId ? canonicalFms.find(fm => fm.id === fmId)?.full_name || null : null;
+            })()
+          }
+        />
+      )}
     </div>
   );
 };
