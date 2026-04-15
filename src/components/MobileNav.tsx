@@ -150,6 +150,9 @@ const MobileNav = () => {
                     : <NavItem to="/my-analytics" icon={BarChart3}>My Analytics</NavItem>
                 )}
                 {canSeeFraudAnalytics && <NavItem to="/fraud-analytics" icon={Shield}>Fraud Analytics</NavItem>}
+                {(canSeeFraudAnalytics || userRole === 'contractor' || isSubContractor || isAdmin) && (
+                  <NavItem to="/upload-tracking" icon={BarChart3}>Upload Tracking</NavItem>
+                )}
               </>
             )}
 
