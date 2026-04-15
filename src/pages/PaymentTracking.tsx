@@ -71,6 +71,7 @@ const PaymentTracking = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   // Filter state
