@@ -271,7 +271,7 @@ const ReviewInterview = () => {
         body: { file_name: audit!.file_name }
       });
       if (error) throw error;
-      return data as {found: boolean;status?: string;reviewed_at?: string;reviewed_by?: string;created_at?: string;} | null;
+      return data as {found: boolean; reason?: string; message?: string; status?: string; reviewed_at?: string; reviewed_by?: string; created_at?: string;} | null;
     },
     enabled: !!audit?.file_name,
     staleTime: 5 * 60 * 1000,
@@ -660,15 +660,22 @@ const ReviewInterview = () => {
                 </Badge> :
                 fieldAuditData && !fieldAuditData.found ?
                 <span className="flex items-center gap-1 flex-shrink-0">
-                  <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0 gap-1">
+                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 gap-1 ${
+                    fieldAuditData.reason === 'external_auth_error' || fieldAuditData.reason === 'external_config_error' || fieldAuditData.reason === 'external_error'
+                      ? 'bg-amber-100 text-amber-700 border-amber-200'
+                      : 'bg-red-100 text-red-700 border-red-200'
+                  }`}>
                     <ShieldOff className="h-3 w-3" />
-                    No Field Audit
+                    {fieldAuditData.reason === 'external_auth_error' ? 'Lookup Failed (Auth)' :
+                     fieldAuditData.reason === 'external_config_error' ? 'Lookup Failed (Config)' :
+                     fieldAuditData.reason === 'external_error' ? 'Lookup Failed' :
+                     'No Field Audit'}
                   </Badge>
                   <button
                     onClick={() => refetchFieldAudit()}
                     disabled={isFieldAuditFetching}
                     className="p-0.5 rounded hover:bg-muted transition-colors"
-                    title="Retry field audit check"
+                    title={fieldAuditData.message || "Retry field audit check"}
                   >
                     <RefreshCw className={`h-3 w-3 text-muted-foreground ${isFieldAuditFetching ? 'animate-spin' : ''}`} />
                   </button>

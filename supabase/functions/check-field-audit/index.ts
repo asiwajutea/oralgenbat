@@ -10,49 +10,64 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const respond = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
   try {
+    // --- Caller auth ---
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return respond({ error: 'Unauthorized' }, 401);
     }
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      console.error('Auth error:', authError?.message);
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      console.error('Caller auth failed:', authError?.message);
+      return respond({ error: 'Unauthorized' }, 401);
     }
 
-    const { file_name } = await req.json();
-
-    if (!file_name) {
-      return new Response(
-        JSON.stringify({ error: 'file_name is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // --- Parse & validate body ---
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return respond({ error: 'Invalid JSON body' }, 400);
     }
 
-    const folder_name = file_name.replace(/\.pdf$/i, '');
-    console.log('Checking field audit for folder_name:', folder_name);
+    const fileName = typeof body.file_name === 'string' ? body.file_name.trim() : '';
+    if (!fileName) {
+      return respond({ error: 'file_name is required' }, 400);
+    }
 
+    // Normalize: strip .pdf extension to get folder_name
+    const folderName = fileName.replace(/\.pdf$/i, '');
+    console.log(`[check-field-audit] Looking up folder_name="${folderName}" for user=${user.id}`);
+
+    // --- External AVTool config ---
     const avtoolUrl = Deno.env.get('AVTOOL_SUPABASE_URL');
     const avtoolApiKey = Deno.env.get('AVTOOL_API_KEY');
 
     if (!avtoolUrl || !avtoolApiKey) {
-      console.error('Missing config - AVTOOL_SUPABASE_URL:', !!avtoolUrl, 'AVTOOL_API_KEY:', !!avtoolApiKey);
-      return new Response(
-        JSON.stringify({ error: 'Configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error('[check-field-audit] Missing AVTOOL_SUPABASE_URL or AVTOOL_API_KEY');
+      return respond({
+        found: false,
+        reason: 'external_config_error',
+        message: 'AVTool integration is not configured',
+      });
     }
 
-    const requestUrl = `${avtoolUrl}/rest/v1/interviews?folder_name=eq.${encodeURIComponent(folder_name)}&select=id,folder_name,status`;
-    console.log('Requesting AVTool URL:', requestUrl);
+    // --- Query AVTool REST API ---
+    const restUrl = `${avtoolUrl}/rest/v1/interviews?folder_name=eq.${encodeURIComponent(folderName)}&select=id,folder_name,status,reviewed_at,reviewed_by,created_at`;
+    console.log(`[check-field-audit] Querying AVTool: ${restUrl}`);
 
-    const response = await fetch(requestUrl, {
+    const avtoolResponse = await fetch(restUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -61,38 +76,44 @@ Deno.serve(async (req) => {
       },
     });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error('AVTool REST query error:', response.status, response.statusText);
-      console.error('AVTool response body:', errorBody);
-      console.error('AVTool URL used:', avtoolUrl);
-      return new Response(
-        JSON.stringify({ found: false }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!avtoolResponse.ok) {
+      const errorBody = await avtoolResponse.text();
+      console.error(`[check-field-audit] AVTool error ${avtoolResponse.status}: ${errorBody}`);
+
+      // Distinguish auth errors from other errors
+      if (avtoolResponse.status === 401 || avtoolResponse.status === 403) {
+        return respond({
+          found: false,
+          reason: 'external_auth_error',
+          message: 'AVTool rejected the credentials. The API key may need to be updated.',
+        });
+      }
+
+      return respond({
+        found: false,
+        reason: 'external_error',
+        message: `AVTool returned HTTP ${avtoolResponse.status}`,
+      });
     }
 
-    const rows = await response.json();
-    console.log('AVTool query result for', folder_name, ':', JSON.stringify(rows));
-    
+    const rows = await avtoolResponse.json();
+    console.log(`[check-field-audit] AVTool returned ${Array.isArray(rows) ? rows.length : 0} rows for "${folderName}"`);
+
     if (Array.isArray(rows) && rows.length > 0) {
       const row = rows[0];
-      return new Response(
-        JSON.stringify({ found: true, status: row.status, folder_name: row.folder_name }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return respond({
+        found: true,
+        status: row.status ?? null,
+        folder_name: row.folder_name ?? folderName,
+        reviewed_at: row.reviewed_at ?? null,
+        reviewed_by: row.reviewed_by ?? null,
+        created_at: row.created_at ?? null,
+      });
     }
 
-    return new Response(
-      JSON.stringify({ found: false }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    return respond({ found: false, reason: 'not_found' });
   } catch (error) {
-    console.error('check-field-audit error:', error);
-    return new Response(
-      JSON.stringify({ found: false }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error('[check-field-audit] Unexpected error:', error);
+    return respond({ found: false, reason: 'internal_error', message: 'Unexpected server error' });
   }
 });
