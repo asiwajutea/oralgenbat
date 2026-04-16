@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, XCircle, MessageCircle, Flag, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
+import { Loader2, FileCheck, AlertCircle, Lock, Clock, FileText, ClipboardList, CheckCircle, XCircle, MessageCircle, Flag, ShieldCheck, ShieldOff, Trash2, RefreshCw } from "lucide-react";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -264,7 +264,7 @@ const ReviewInterview = () => {
   });
 
   // Field audit lookup from AVTool
-  const { data: fieldAuditData } = useQuery({
+  const { data: fieldAuditData, refetch: refetchFieldAudit, isFetching: isFieldAuditFetching } = useQuery({
     queryKey: ["field-audit", audit?.file_name],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke('check-field-audit', {
@@ -659,10 +659,20 @@ const ReviewInterview = () => {
                   Field Audited{fieldAuditData.reviewed_at ? ` - ${format(new Date(fieldAuditData.reviewed_at), 'MMM d, yyyy')}` : ''}
                 </Badge> :
                 fieldAuditData && !fieldAuditData.found ?
-                <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0 gap-1 flex-shrink-0">
-                  <ShieldOff className="h-3 w-3" />
-                  No Field Audit
-                </Badge> :
+                <span className="flex items-center gap-1 flex-shrink-0">
+                  <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-[10px] px-1.5 py-0 gap-1">
+                    <ShieldOff className="h-3 w-3" />
+                    No Field Audit
+                  </Badge>
+                  <button
+                    onClick={() => refetchFieldAudit()}
+                    disabled={isFieldAuditFetching}
+                    className="p-0.5 rounded hover:bg-muted transition-colors"
+                    title="Retry field audit check"
+                  >
+                    <RefreshCw className={`h-3 w-3 text-muted-foreground ${isFieldAuditFetching ? 'animate-spin' : ''}`} />
+                  </button>
+                </span> :
                 null}
             </div>
           </div>
