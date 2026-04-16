@@ -1,55 +1,45 @@
+## Fix: Field Audit Check Returning "No Field Audit" for All Interviews
 
+### Root Cause
 
-## Plan: Per-Interview FM Reassignment
+The edge function logs show: `**AVTool REST query error: 401**`
 
-### Problem
+The AVTool API is rejecting the authentication. This means every interview shows "No Field Audit" regardless of whether the record exists on AVTool.
 
-The current `ReassignFMDialog` updates `team_assignments` by `interviewer_code`, which reassigns the **entire agent** (all interviews) to a new FM. Your use case requires moving only **one specific interview** while keeping the agent's other interviews under the original FM.
+There are two issues to fix:
 
-### Solution
+### Issue 1: AVTool API Key Authentication (Primary)
 
-Create a new `interview_fm_overrides` table that stores per-interview FM assignments. When an override exists for an interview, it takes priority over the agent-level `team_assignments` mapping.
+The current code sends the API key as a Bearer token:
 
-### Database Change
+```
+Authorization: Bearer ${avtoolApiKey}
+```
 
-**New table: `interview_fm_overrides`**
+If the AVTool project has changed its API key, or if the key was rotated, this would cause a 401. **You'll need to provide the current AVTool API key** so I can update the secret.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| audit_id | uuid | The specific interview being reassigned |
-| field_manager_id | uuid | The FM receiving this interview |
-| assigned_by | uuid | Who performed the reassignment |
-| created_at | timestamptz | When it was reassigned |
-| notes | text | Optional reason |
+### Issue 2: Edge Function Auth Uses Non-Existent Method
 
-RLS: viewable by all approved users, insertable/updatable by FM, contractor, sub_contractor, admin, super_admin.
+The function calls `supabase.auth.getClaims()` which doesn't exist in Supabase JS v2. This should be replaced with `supabase.auth.getUser()` to properly validate the caller's session.
 
-### Code Changes
+### Issue 3: Logic Should Return `found: true` Regardless of Status
 
-**1. `src/components/tracking/ReassignFMDialog.tsx`** — Rewrite to insert/upsert into `interview_fm_overrides` instead of updating `team_assignments`. Pass `auditId` (the specific interview) instead of `interviewerCode`.
+The user's requirement is: "all interviews whose record are on AVTool database will return as audited irrespective of their status." The current code already does this (any row match returns `found: true`), so no logic change needed here — just fixing the 401.
 
-**2. `src/pages/InterviewTracking.tsx`** — Update the FM filter logic to check `interview_fm_overrides` first. If an interview has an override, use that FM; otherwise fall back to `team_assignments` by `interviewer_code`.
+### Changes
 
-**3. `src/pages/FieldManagerDashboard.tsx`** — After fetching interviews by team codes, also fetch any interviews with overrides pointing to this FM. Exclude interviews that have overrides pointing to a *different* FM. This ensures:
-- The 1 reassigned interview appears on Manager A's dashboard
-- The other 9 interviews stay on Manager B's dashboard
-- The reassigned interview no longer shows on Manager B's dashboard
+**1. `supabase/functions/check-field-audit/index.ts**`
 
-### How It Works (Your Example)
+- Replace `getClaims` with `getUser()` for proper auth validation
+- Add better error logging (log the response body on 401 to help debug)
+- Log the `folder_name` being queried for debugging
 
-1. Agent 730 is assigned to Manager B in `team_assignments`
-2. Manager B clicks "Reassign FM" on the errored interview → selects Manager A
-3. A row is inserted into `interview_fm_overrides`: `{ audit_id: <that interview>, field_manager_id: Manager A's ID }`
-4. Manager A's dashboard: fetches team codes + override interviews → sees the 1 reassigned interview
-5. Manager B's dashboard: fetches team codes (still includes Agent 730) but excludes interviews with overrides to other FMs → sees 9 interviews
+**2. Update `AVTOOL_API_KEY` secret**
 
-### Files Modified
+- If the key has expired or been rotated, you'll need to provide the new key
 
-| File | Change |
-|------|--------|
-| **New migration** | Create `interview_fm_overrides` table with RLS |
-| `src/components/tracking/ReassignFMDialog.tsx` | Insert into overrides table instead of updating team_assignments |
-| `src/pages/InterviewTracking.tsx` | FM filter respects overrides |
-| `src/pages/FieldManagerDashboard.tsx` | Include override interviews, exclude overridden-away interviews |
+### Next Step
 
+I need to know: **Has the AVTool API key changed recently?** If so, please provide the updated key so I can update the secret. If you believe the key is still valid, I'll fix the code issues and add logging so we can see the exact error response from AVTool.  
+  
+The API key did not change and it is stillvalid.
