@@ -1,82 +1,47 @@
 
-Goal: restore the field-audit check in a way that works on Lovable Cloud and does not depend on any mistaken assumption about a direct Supabase project connection.
 
-What I found:
-- Your app is already using Lovable Cloud correctly. The backend/runtime is there.
-- The current failure is not “Lovable Cloud vs Supabase”. It is specifically the external AVTool request failing.
-- The deployed logs already show the real cause: the AVTool endpoint returns `401 Unauthorized` with `{"message":"Invalid API key","hint":"Double check your Supabase anon or service_role API key."}`
-- So recreating the function from scratch is possible, but if it still calls the same AVTool REST endpoint with the same invalid credential, it will fail again.
+## Fix: Switch to AVTool's dedicated `get-field-audit` edge function
 
-Best way forward:
-1. Rebuild the field-audit function cleanly from scratch as a fresh implementation.
-2. Keep it on Lovable Cloud, but treat AVTool as an external backend.
-3. Add clearer result states so the UI distinguishes:
-   - record found
-   - record not found
-   - external auth/config failure
-4. Keep the manual retry icon on the review page.
-5. Verify the AVTool credential format and endpoint during deployment testing.
+### Root Cause (now confirmed)
 
-Planned implementation:
-1. Replace `supabase/functions/check-field-audit/index.ts` with a clean version
-   - validate request body safely
-   - validate caller auth with `getUser()`
-   - normalize `file_name` to `folder_name`
-   - call AVTool REST with the configured URL/key
-   - return structured output like:
-     - `{ found: true, ... }`
-     - `{ found: false, reason: "not_found" }`
-     - `{ found: false, reason: "external_auth_error" }`
-     - `{ found: false, reason: "external_config_error" }`
-   - improve logs without exposing secrets
-
-2. Update the review page behavior in `src/pages/ReviewInterview.tsx`
-   - keep the retry icon beside “No Field Audit”
-   - show a clearer message when the check failed because AVTool auth/config is broken, instead of pretending the interview was not audited
-   - keep “Field Audited” logic status-agnostic: if AVTool has any matching row, show audited
-
-3. Test the function properly after deploy
-   - invoke it directly with one of:
-     - `NG71_772_20260401_1357`
-     - `NG71_772_20260402_1205`
-     - `NG71_794_20260306_2321`
-   - inspect logs immediately
-   - verify whether the result is:
-     - success
-     - not found
-     - invalid AVTool credential
-     - wrong AVTool URL/table/column mismatch
-
-4. If the AVTool key is still rejected, follow one of these two paths:
-   - Preferred: update `AVTOOL_API_KEY` with the correct AVTool project key
-   - Fallback: switch integration method away from AVTool REST auth entirely, for example to a dedicated backend function on the AVTool side that exposes only the lookup you need
-
-Important reality check:
-- There is a way forward.
-- Recreating the function is worthwhile for cleanliness and better debugging.
-- But recreating it alone will not solve the issue if the AVTool project is still rejecting the credential.
-- The current evidence points to an external AVTool auth problem, not a Lovable Cloud problem.
-
-Recommended decision:
-- I recommend we proceed with a fresh rebuild of the function plus better UI error states.
-- Then, if the AVTool credential still fails, we will know with certainty the remaining issue is entirely on the AVTool side or the key value itself.
-
-Technical details:
-- Current frontend call site:
-  - `src/pages/ReviewInterview.tsx`
-  - `supabase.functions.invoke('check-field-audit', { body: { file_name } })`
-- Current edge function:
-  - `supabase/functions/check-field-audit/index.ts`
-- Current deployment config already includes:
-  - `[functions.check-field-audit] verify_jwt = false`
-- Current logs prove external rejection:
-```text
-AVTool REST query error: 401 Unauthorized
-AVTool response body: {"message":"Invalid API key","hint":"Double check your Supabase `anon` or `service_role` API key."}
+Our `check-field-audit` function calls AVTool's PostgREST endpoint:
 ```
+GET {AVTOOL_SUPABASE_URL}/rest/v1/interviews?folder_name=eq.{name}
+```
+That endpoint requires an AVTool Supabase anon/service_role JWT, which we don't have. PostgREST's rejection (`"Invalid API key"`) is what's been blocking us all along.
 
-If approved, I will:
-1. rebuild `check-field-audit` from scratch,
-2. preserve the retry button,
-3. make the UI show “lookup failed” vs “not audited” correctly,
-4. deploy and test against the three sample interview IDs.
+AVTool exposes a **dedicated edge function** instead: `/functions/v1/get-field-audit` with a simple shared `api_key` header — no JWT needed.
+
+### Changes
+
+**1. `supabase/functions/check-field-audit/index.ts`** — rewrite the AVTool call:
+- Endpoint: `POST {AVTOOL_SUPABASE_URL}/functions/v1/get-field-audit`
+- Headers: `Content-Type: application/json`, `api_key: {AVTOOL_API_KEY}`
+- Body: `{ "folder_name": "<file_name minus .pdf>" }`
+- Drop the `Authorization: Bearer ...` header and the `?folder_name=eq...` query
+- Map response: `{ found: true, status, reviewed_at, reviewed_by, created_at }` or `{ found: false }`
+- Keep structured error reasons (`external_auth_error` on 401, `external_error` on other non-2xx, `external_config_error` if secrets missing)
+
+**2. Secret update**
+- The current `AVTOOL_API_KEY` is the wrong type of credential. AVTool's developer mentioned a new `FIELD_AUDIT_API_KEY`. After the code change, ask the user for that shared key and overwrite `AVTOOL_API_KEY` with it (keeping the same secret name to avoid touching more code).
+
+**3. No frontend changes**
+- `ReviewInterview.tsx` already handles `found / not_found / external_auth_error / external_config_error` and has the manual retry icon. Nothing to change there.
+
+### Verification Steps (after deploy)
+
+1. Deploy `check-field-audit`.
+2. Invoke with `folder_name = NG71_738_20260416_1519` (known-good sample from AVTool) — expect `found: true`.
+3. Invoke with the three originally-failing IDs:
+   - `NG71_772_20260401_1357`
+   - `NG71_772_20260402_1205`
+   - `NG71_794_20260306_2321`
+4. Open the review page for one of them and confirm the green "Field Audited" badge.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `supabase/functions/check-field-audit/index.ts` | Switch from PostgREST `/rest/v1/interviews` to edge function `/functions/v1/get-field-audit` with `api_key` header and JSON body |
+| Secret `AVTOOL_API_KEY` | Replace value with the new shared `FIELD_AUDIT_API_KEY` from AVTool |
+
