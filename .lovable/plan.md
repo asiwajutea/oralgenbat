@@ -1,47 +1,66 @@
 
 
-## Fix: Switch to AVTool's dedicated `get-field-audit` edge function
+## Upload Tracking Page — Add Interview List Breakdown
 
-### Root Cause (now confirmed)
+### Goal
+Add a compact, expandable list of individual interviews below the existing summary stats and trend charts on `/upload-tracking`. Keep all existing summary/chart UI as-is.
 
-Our `check-field-audit` function calls AVTool's PostgREST endpoint:
-```
-GET {AVTOOL_SUPABASE_URL}/rest/v1/interviews?folder_name=eq.{name}
-```
-That endpoint requires an AVTool Supabase anon/service_role JWT, which we don't have. PostgREST's rejection (`"Invalid API key"`) is what's been blocking us all along.
+### Data layer
 
-AVTool exposes a **dedicated edge function** instead: `/functions/v1/get-field-audit` with a simple shared `api_key` header — no JWT needed.
+Create a new RPC `get_upload_tracking_interviews` (read-only, SECURITY DEFINER, scoped to date range and pagination) that returns one row per audit with:
 
-### Changes
+| Field | Source |
+|------|--------|
+| `audit_id` | `audits.id` |
+| `file_name` (folder name, no `.pdf`) | `audits.file_name` |
+| `uploaded_at` | `audits.uploaded_at` |
+| `status` | `audits.status` |
+| `is_re_audit`, `re_audit_count` | `audits.*` |
+| `artifact_correction` (array of artifact tags) | `audits.artifact_correction` |
+| `review_comment` (failure reason) | `audits.review_comment` |
+| `action_plan` | `audits.action_plan` |
+| `passed_with_failures` | `audits.passed_with_failures` |
+| `interviewee_name` (informant) | `interview_metadata.interviewee_name` |
+| `field_manager` | `interview_metadata.field_manager` |
+| `total_names` | `interview_metadata.total_names` |
+| `total_count` | window count for pagination |
 
-**1. `supabase/functions/check-field-audit/index.ts`** — rewrite the AVTool call:
-- Endpoint: `POST {AVTOOL_SUPABASE_URL}/functions/v1/get-field-audit`
-- Headers: `Content-Type: application/json`, `api_key: {AVTOOL_API_KEY}`
-- Body: `{ "folder_name": "<file_name minus .pdf>" }`
-- Drop the `Authorization: Bearer ...` header and the `?folder_name=eq...` query
-- Map response: `{ found: true, status, reviewed_at, reviewed_by, created_at }` or `{ found: false }`
-- Keep structured error reasons (`external_auth_error` on 401, `external_error` on other non-2xx, `external_config_error` if secrets missing)
+Args: `p_start_date`, `p_end_date`, `p_search` (optional folder name filter), `p_status` (optional), `p_limit`, `p_offset`. Excludes burned audits.
 
-**2. Secret update**
-- The current `AVTOOL_API_KEY` is the wrong type of credential. AVTool's developer mentioned a new `FIELD_AUDIT_API_KEY`. After the code change, ask the user for that shared key and overwrite `AVTOOL_API_KEY` with it (keeping the same secret name to avoid touching more code).
+### New hook
+`useUploadTrackingInterviews(startDate, endDate, page, pageSize, search, status)` in `src/hooks/useUploadTracking.ts`.
 
-**3. No frontend changes**
-- `ReviewInterview.tsx` already handles `found / not_found / external_auth_error / external_config_error` and has the manual retry icon. Nothing to change there.
+### UI changes — `src/pages/UploadTrackingDashboard.tsx`
 
-### Verification Steps (after deploy)
+Add a new "Interview Breakdown" `Card` after the existing "Detailed Breakdown" period table, containing:
 
-1. Deploy `check-field-audit`.
-2. Invoke with `folder_name = NG71_738_20260416_1519` (known-good sample from AVTool) — expect `found: true`.
-3. Invoke with the three originally-failing IDs:
-   - `NG71_772_20260401_1357`
-   - `NG71_772_20260402_1205`
-   - `NG71_794_20260306_2321`
-4. Open the review page for one of them and confirm the green "Field Audited" badge.
+1. **Compact toolbar** — search input (folder name), status filter dropdown, page size selector.
+2. **Compact table** with columns:
+   - Folder name (monospace, small)
+   - Informant (interviewee name) — truncate with tooltip
+   - Field Manager — truncate
+   - Names — right-aligned number
+   - Status — colored badge (green/red/amber/gray)
+   - Re-audit — small "↻ ×N" badge only when `re_audit_count > 0`
+   - Artifacts — small inline badges for each entry in `artifact_correction` (e.g. PDF, ZIP, Audio, Photos), only shown when present
+   - Action — single icon button "View" that opens a popover/dialog with: failure reason (`review_comment`), action plan, override reason (if `passed_with_failures`)
+3. Pagination bar (Prev / Next, current page indicator, total count). Default 25 rows/page.
+4. Reuses the date range already selected at the top of the page (`startDate` / `endDate`), so the list always matches the active period.
+5. Compact density: `text-xs`, `py-1.5` cells, single-line rows with truncation; mobile-friendly horizontal scroll.
 
-### Files Modified
+### Files
 
 | File | Change |
 |------|--------|
-| `supabase/functions/check-field-audit/index.ts` | Switch from PostgREST `/rest/v1/interviews` to edge function `/functions/v1/get-field-audit` with `api_key` header and JSON body |
-| Secret `AVTOOL_API_KEY` | Replace value with the new shared `FIELD_AUDIT_API_KEY` from AVTool |
+| `supabase/migrations/<new>.sql` | Create `get_upload_tracking_interviews` RPC |
+| `src/hooks/useUploadTracking.ts` | Add `useUploadTrackingInterviews` query hook |
+| `src/components/upload-tracking/InterviewBreakdownTable.tsx` | New compact table + toolbar + failure-reason popover |
+| `src/pages/UploadTrackingDashboard.tsx` | Mount the new component below existing breakdown, pass active date range |
+
+### Out of scope
+- No changes to existing summary cards, charts, or period table.
+- No edits to global `audits` queries elsewhere.
+- No CSV export in this round (can be added later if you want).
+
+Approve and I'll build it.
 
