@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     });
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      console.error('Caller auth failed:', authError?.message);
+      console.error('[check-field-audit] Caller auth failed:', authError?.message);
       return respond({ error: 'Unauthorized' }, 401);
     }
 
@@ -63,29 +63,28 @@ Deno.serve(async (req) => {
       });
     }
 
-    // --- Query AVTool REST API ---
-    const restUrl = `${avtoolUrl}/rest/v1/interviews?folder_name=eq.${encodeURIComponent(folderName)}&select=id,folder_name,status,reviewed_at,reviewed_by,created_at`;
-    console.log(`[check-field-audit] Querying AVTool: ${restUrl}`);
+    // --- Call AVTool dedicated edge function ---
+    const endpoint = `${avtoolUrl.replace(/\/+$/, '')}/functions/v1/get-field-audit`;
+    console.log(`[check-field-audit] POST ${endpoint}`);
 
-    const avtoolResponse = await fetch(restUrl, {
-      method: 'GET',
+    const avtoolResponse = await fetch(endpoint, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': avtoolApiKey,
-        'Authorization': `Bearer ${avtoolApiKey}`,
+        'api_key': avtoolApiKey,
       },
+      body: JSON.stringify({ folder_name: folderName }),
     });
 
     if (!avtoolResponse.ok) {
       const errorBody = await avtoolResponse.text();
       console.error(`[check-field-audit] AVTool error ${avtoolResponse.status}: ${errorBody}`);
 
-      // Distinguish auth errors from other errors
       if (avtoolResponse.status === 401 || avtoolResponse.status === 403) {
         return respond({
           found: false,
           reason: 'external_auth_error',
-          message: 'AVTool rejected the credentials. The API key may need to be updated.',
+          message: 'AVTool rejected the credentials. The shared api_key may need to be updated.',
         });
       }
 
@@ -96,18 +95,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const rows = await avtoolResponse.json();
-    console.log(`[check-field-audit] AVTool returned ${Array.isArray(rows) ? rows.length : 0} rows for "${folderName}"`);
+    const data = await avtoolResponse.json();
+    console.log(`[check-field-audit] AVTool response for "${folderName}":`, JSON.stringify(data));
 
-    if (Array.isArray(rows) && rows.length > 0) {
-      const row = rows[0];
+    if (data && data.found === true) {
       return respond({
         found: true,
-        status: row.status ?? null,
-        folder_name: row.folder_name ?? folderName,
-        reviewed_at: row.reviewed_at ?? null,
-        reviewed_by: row.reviewed_by ?? null,
-        created_at: row.created_at ?? null,
+        status: data.status ?? null,
+        folder_name: folderName,
+        reviewed_at: data.reviewed_at ?? null,
+        reviewed_by: data.reviewed_by ?? null,
+        created_at: data.created_at ?? null,
       });
     }
 
