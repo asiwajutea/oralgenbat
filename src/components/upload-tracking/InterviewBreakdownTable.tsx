@@ -578,18 +578,66 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
                 </div>
               )}
 
-              {selected.artifact_correction && selected.artifact_correction.length > 0 && (
-                <div className="text-xs">
-                  <p className="text-muted-foreground mb-1">Affected Artifacts</p>
+              {/* Artifact corrections — viewable to all, editable for admin/super_admin */}
+              <div className="text-xs">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-muted-foreground">Artifacts Needing Correction</p>
+                  {canEditArtifacts && !editingArtifacts && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => {
+                        setDraftArtifacts(selected.artifact_correction || []);
+                        setEditingArtifacts(true);
+                      }}
+                    >
+                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                    </Button>
+                  )}
+                </div>
+
+                {editingArtifacts ? (
+                  <div className="space-y-2 bg-muted/40 rounded p-2">
+                    {ARTIFACT_TAGS.map((tag) => {
+                      const checked = draftArtifacts.includes(tag.value);
+                      return (
+                        <label key={tag.value} className="flex items-center gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              setDraftArtifacts((prev) =>
+                                v ? [...prev, tag.value] : prev.filter((x) => x !== tag.value)
+                              );
+                            }}
+                          />
+                          <span className={cn("text-[11px] px-1.5 py-0.5 rounded border font-semibold", ARTIFACT_COLORS[tag.value])}>
+                            {tag.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={savingArtifacts} onClick={() => setEditingArtifacts(false)}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" className="h-7 text-xs" disabled={savingArtifacts} onClick={handleSaveArtifacts}>
+                        {savingArtifacts ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />} Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : selected.artifact_correction && selected.artifact_correction.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {selected.artifact_correction.map((a, i) => (
                       <span key={i} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium", ARTIFACT_COLORS[a] || "bg-muted text-muted-foreground border-border")}>
-                        {a}
+                        {ARTIFACT_LABEL[a] || a}
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-muted-foreground italic">No artifact corrections needed</p>
+                )}
+              </div>
 
               {selected.review_comment && (
                 <div className="text-xs">
