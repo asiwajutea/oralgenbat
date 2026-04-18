@@ -148,8 +148,8 @@ const UploadTrackingDashboard = () => {
         <SummaryCard data={summary?.last365Days} icon={<Users className="h-5 w-5" />} />
       </div>
 
-      {/* Period Selector */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+      {/* Period Selector — sticky so users can change duration at any time */}
+      <div className="sticky top-0 z-30 -mx-2 sm:mx-0 px-2 sm:px-0 py-2 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-b border-border/50 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
         <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)} className="w-full sm:w-auto">
           <TabsList className="w-full sm:w-auto grid grid-cols-4 sm:flex">
             <TabsTrigger value="7d" className="text-xs sm:text-sm">7 Days</TabsTrigger>
