@@ -107,6 +107,13 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
   const [artifact, setArtifact] = useState<string>("all");
   const [selected, setSelected] = useState<UploadInterviewRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [editingArtifacts, setEditingArtifacts] = useState(false);
+  const [draftArtifacts, setDraftArtifacts] = useState<string[]>([]);
+  const [savingArtifacts, setSavingArtifacts] = useState(false);
+
+  const { userRole } = useAuth();
+  const queryClient = useQueryClient();
+  const canEditArtifacts = userRole === "admin" || userRole === "super_admin";
 
   const { data, isLoading } = useUploadTrackingInterviews(
     startDate,
@@ -117,6 +124,36 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
     status === "all" ? null : status,
     artifact === "all" ? null : artifact,
   );
+
+  // Reset editor state whenever a different interview is opened
+  useEffect(() => {
+    setEditingArtifacts(false);
+    setDraftArtifacts(selected?.artifact_correction || []);
+  }, [selected?.audit_id]);
+
+  const handleSaveArtifacts = async () => {
+    if (!selected) return;
+    setSavingArtifacts(true);
+    try {
+      const newValue = draftArtifacts.length > 0 ? draftArtifacts : null;
+      const { error } = await supabase
+        .from("audits")
+        .update({
+          artifact_correction: newValue,
+          last_modified: new Date().toISOString(),
+        })
+        .eq("id", selected.audit_id);
+      if (error) throw error;
+      toast({ title: "Artifacts updated", description: "Artifact corrections saved." });
+      setSelected({ ...selected, artifact_correction: newValue });
+      setEditingArtifacts(false);
+      queryClient.invalidateQueries({ queryKey: ["upload-tracking-interviews"] });
+    } catch (err: any) {
+      toast({ title: "Save failed", description: err?.message || "Could not update artifacts.", variant: "destructive" });
+    } finally {
+      setSavingArtifacts(false);
+    }
+  };
 
   const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0;
   const totalPages = Math.ceil(totalCount / pageSize);
