@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Eye, ChevronLeft, ChevronRight, Search, RotateCcw, AlertTriangle,
-  CheckCircle2, XCircle, Clock, FileDown, Loader2, ExternalLink,
+  CheckCircle2, XCircle, Clock, FileDown, Loader2, ExternalLink, Pencil, Save,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -22,6 +23,20 @@ import {
 import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+
+// Canonical artifact-correction tags stored in DB and their friendly labels
+const ARTIFACT_TAGS = [
+  { value: "scanned_pdf", label: "PDF" },
+  { value: "mobile_metadata", label: "Metadata" },
+  { value: "no_field_audit", label: "No Field Audit" },
+] as const;
+
+const ARTIFACT_LABEL: Record<string, string> = Object.fromEntries(
+  ARTIFACT_TAGS.map((t) => [t.value, t.label])
+);
 
 interface Props {
   startDate: Date;
@@ -39,19 +54,13 @@ const STATUS_OPTIONS = [
 
 const ARTIFACT_OPTIONS = [
   { value: "all", label: "All Artifacts" },
-  { value: "PDF", label: "PDF" },
-  { value: "ZIP", label: "ZIP" },
-  { value: "Audio", label: "Audio" },
-  { value: "Photos", label: "Photos" },
-  { value: "Metadata", label: "Metadata" },
+  ...ARTIFACT_TAGS.map((t) => ({ value: t.value, label: `Needs ${t.label}` })),
 ];
 
 const ARTIFACT_COLORS: Record<string, string> = {
-  PDF: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/40",
-  ZIP: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40",
-  Audio: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40",
-  Photos: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
-  Metadata: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40",
+  scanned_pdf: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/40",
+  mobile_metadata: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40",
+  no_field_audit: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
 };
 
 // Display label combining DB status with override flag
