@@ -86,3 +86,61 @@ export function useUploadTrackingTrend(
     staleTime: 1000 * 60 * 5,
   });
 }
+
+export interface UploadInterviewRow {
+  audit_id: string;
+  file_name: string;
+  uploaded_at: string;
+  status: string;
+  is_re_audit: boolean;
+  re_audit_count: number;
+  artifact_correction: string[] | null;
+  review_comment: string | null;
+  action_plan: string | null;
+  passed_with_failures: boolean;
+  pass_override_reason: string | null;
+  pass_override_action_plan: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  interviewee_name: string | null;
+  field_manager: string | null;
+  interviewer_name: string | null;
+  interviewer_code: string | null;
+  interview_location: string | null;
+  total_names: number | null;
+  total_count: number;
+}
+
+export function useUploadTrackingInterviews(
+  startDate: Date,
+  endDate: Date,
+  page: number,
+  pageSize: number,
+  search: string,
+  status: string | null
+) {
+  return useQuery({
+    queryKey: [
+      "upload-tracking-interviews",
+      format(startDate, "yyyy-MM-dd"),
+      format(endDate, "yyyy-MM-dd"),
+      page,
+      pageSize,
+      search,
+      status,
+    ],
+    queryFn: async (): Promise<UploadInterviewRow[]> => {
+      const { data, error } = await supabase.rpc("get_upload_tracking_interviews", {
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+        p_search: search.trim() || null,
+        p_status: status || null,
+        p_limit: pageSize,
+        p_offset: page * pageSize,
+      });
+      if (error) throw error;
+      return (data || []) as UploadInterviewRow[];
+    },
+    staleTime: 1000 * 60 * 2,
+  });
+}

@@ -1695,6 +1695,39 @@ export type Database = {
           total_size_bytes: number
         }[]
       }
+      get_upload_tracking_interviews: {
+        Args: {
+          p_end_date: string
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+          p_start_date: string
+          p_status?: string
+        }
+        Returns: {
+          action_plan: string
+          artifact_correction: string[]
+          audit_id: string
+          field_manager: string
+          file_name: string
+          interview_location: string
+          interviewee_name: string
+          interviewer_code: string
+          interviewer_name: string
+          is_re_audit: boolean
+          pass_override_action_plan: string
+          pass_override_reason: string
+          passed_with_failures: boolean
+          re_audit_count: number
+          review_comment: string
+          reviewed_at: string
+          reviewed_by: string
+          status: Database["public"]["Enums"]["audit_status"]
+          total_count: number
+          total_names: number
+          uploaded_at: string
+        }[]
+      }
       get_upload_tracking_stats: {
         Args: {
           p_end_date: string
