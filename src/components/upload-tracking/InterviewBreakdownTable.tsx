@@ -280,7 +280,8 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
           y += 4.5;
 
           if (a.artifact_correction?.length) {
-            doc.text(`Affected Artifacts: ${a.artifact_correction.join(", ")}`, margin, y);
+            const friendly = a.artifact_correction.map((t) => ARTIFACT_LABEL[t] || t).join(", ");
+            doc.text(`Artifacts Needing Correction: ${friendly}`, margin, y);
             y += 4.5;
           }
 
