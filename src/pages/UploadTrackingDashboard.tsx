@@ -373,6 +373,9 @@ const UploadTrackingDashboard = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Interview-level Breakdown */}
+      <InterviewBreakdownTable startDate={startDate} endDate={endDate} />
     </div>
   );
 };
