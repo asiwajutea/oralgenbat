@@ -117,7 +117,8 @@ export function useUploadTrackingInterviews(
   page: number,
   pageSize: number,
   search: string,
-  status: string | null
+  status: string | null,
+  artifact: string | null = null,
 ) {
   return useQuery({
     queryKey: [
@@ -128,6 +129,7 @@ export function useUploadTrackingInterviews(
       pageSize,
       search,
       status,
+      artifact,
     ],
     queryFn: async (): Promise<UploadInterviewRow[]> => {
       const { data, error } = await supabase.rpc("get_upload_tracking_interviews", {
@@ -137,10 +139,41 @@ export function useUploadTrackingInterviews(
         p_status: status || null,
         p_limit: pageSize,
         p_offset: page * pageSize,
-      });
+        p_artifact: artifact || null,
+      } as any);
       if (error) throw error;
       return (data || []) as UploadInterviewRow[];
     },
     staleTime: 1000 * 60 * 2,
   });
+}
+
+// Fetch ALL interviews matching filters (for PDF export). Bypasses pagination.
+export async function fetchAllUploadTrackingInterviews(
+  startDate: Date,
+  endDate: Date,
+  search: string,
+  status: string | null,
+  artifact: string | null,
+): Promise<UploadInterviewRow[]> {
+  const PAGE = 1000;
+  let offset = 0;
+  const all: UploadInterviewRow[] = [];
+  while (true) {
+    const { data, error } = await supabase.rpc("get_upload_tracking_interviews", {
+      p_start_date: startDate.toISOString(),
+      p_end_date: endDate.toISOString(),
+      p_search: search.trim() || null,
+      p_status: status || null,
+      p_limit: PAGE,
+      p_offset: offset,
+      p_artifact: artifact || null,
+    } as any);
+    if (error) throw error;
+    const rows = (data || []) as UploadInterviewRow[];
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
 }
