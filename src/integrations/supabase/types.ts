@@ -1697,6 +1697,7 @@ export type Database = {
       }
       get_upload_tracking_interviews: {
         Args: {
+          p_artifact?: string
           p_end_date: string
           p_limit?: number
           p_offset?: number
