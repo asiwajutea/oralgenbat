@@ -13,6 +13,7 @@ import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, Cartesia
 import { Upload, FileText, Users, CalendarIcon, ArrowUpDown, TrendingUp, AlertTriangle } from "lucide-react";
 import { format, subDays, subWeeks, startOfDay, startOfWeek } from "date-fns";
 import { cn } from "@/lib/utils";
+import { InterviewBreakdownTable } from "@/components/upload-tracking/InterviewBreakdownTable";
 
 type Period = "7d" | "13w" | "365d" | "custom";
 
