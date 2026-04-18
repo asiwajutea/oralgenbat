@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Eye, ChevronLeft, ChevronRight, Search, RotateCcw, AlertTriangle,
-  CheckCircle2, XCircle, Clock, FileDown, Loader2, ExternalLink,
+  CheckCircle2, XCircle, Clock, FileDown, Loader2, ExternalLink, Pencil, Save,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -22,6 +23,20 @@ import {
 import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+
+// Canonical artifact-correction tags stored in DB and their friendly labels
+const ARTIFACT_TAGS = [
+  { value: "scanned_pdf", label: "PDF" },
+  { value: "mobile_metadata", label: "Metadata" },
+  { value: "no_field_audit", label: "No Field Audit" },
+] as const;
+
+const ARTIFACT_LABEL: Record<string, string> = Object.fromEntries(
+  ARTIFACT_TAGS.map((t) => [t.value, t.label])
+);
 
 interface Props {
   startDate: Date;
@@ -39,19 +54,13 @@ const STATUS_OPTIONS = [
 
 const ARTIFACT_OPTIONS = [
   { value: "all", label: "All Artifacts" },
-  { value: "PDF", label: "PDF" },
-  { value: "ZIP", label: "ZIP" },
-  { value: "Audio", label: "Audio" },
-  { value: "Photos", label: "Photos" },
-  { value: "Metadata", label: "Metadata" },
+  ...ARTIFACT_TAGS.map((t) => ({ value: t.value, label: `Needs ${t.label}` })),
 ];
 
 const ARTIFACT_COLORS: Record<string, string> = {
-  PDF: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/40",
-  ZIP: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40",
-  Audio: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40",
-  Photos: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
-  Metadata: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40",
+  scanned_pdf: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/40",
+  mobile_metadata: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/40",
+  no_field_audit: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
 };
 
 // Display label combining DB status with override flag
@@ -98,6 +107,13 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
   const [artifact, setArtifact] = useState<string>("all");
   const [selected, setSelected] = useState<UploadInterviewRow | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [editingArtifacts, setEditingArtifacts] = useState(false);
+  const [draftArtifacts, setDraftArtifacts] = useState<string[]>([]);
+  const [savingArtifacts, setSavingArtifacts] = useState(false);
+
+  const { userRole } = useAuth();
+  const queryClient = useQueryClient();
+  const canEditArtifacts = userRole === "admin" || userRole === "super_admin";
 
   const { data, isLoading } = useUploadTrackingInterviews(
     startDate,
@@ -108,6 +124,36 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
     status === "all" ? null : status,
     artifact === "all" ? null : artifact,
   );
+
+  // Reset editor state whenever a different interview is opened
+  useEffect(() => {
+    setEditingArtifacts(false);
+    setDraftArtifacts(selected?.artifact_correction || []);
+  }, [selected?.audit_id]);
+
+  const handleSaveArtifacts = async () => {
+    if (!selected) return;
+    setSavingArtifacts(true);
+    try {
+      const newValue = draftArtifacts.length > 0 ? draftArtifacts : null;
+      const { error } = await supabase
+        .from("audits")
+        .update({
+          artifact_correction: newValue,
+          last_modified: new Date().toISOString(),
+        })
+        .eq("id", selected.audit_id);
+      if (error) throw error;
+      toast({ title: "Artifacts updated", description: "Artifact corrections saved." });
+      setSelected({ ...selected, artifact_correction: newValue });
+      setEditingArtifacts(false);
+      queryClient.invalidateQueries({ queryKey: ["upload-tracking-interviews"] });
+    } catch (err: any) {
+      toast({ title: "Save failed", description: err?.message || "Could not update artifacts.", variant: "destructive" });
+    } finally {
+      setSavingArtifacts(false);
+    }
+  };
 
   const totalCount = data && data.length > 0 ? Number(data[0].total_count) : 0;
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -234,7 +280,8 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
           y += 4.5;
 
           if (a.artifact_correction?.length) {
-            doc.text(`Affected Artifacts: ${a.artifact_correction.join(", ")}`, margin, y);
+            const friendly = a.artifact_correction.map((t) => ARTIFACT_LABEL[t] || t).join(", ");
+            doc.text(`Artifacts Needing Correction: ${friendly}`, margin, y);
             y += 4.5;
           }
 
@@ -447,8 +494,8 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
                           {artifacts.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {artifacts.map((a, i) => (
-                                <span key={i} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-semibold", ARTIFACT_COLORS[a] || "bg-muted text-muted-foreground border-border")}>
-                                  {a}
+                                <span key={i} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-semibold whitespace-nowrap", ARTIFACT_COLORS[a] || "bg-muted text-muted-foreground border-border")}>
+                                  {ARTIFACT_LABEL[a] || a}
                                 </span>
                               ))}
                             </div>
@@ -532,18 +579,66 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
                 </div>
               )}
 
-              {selected.artifact_correction && selected.artifact_correction.length > 0 && (
-                <div className="text-xs">
-                  <p className="text-muted-foreground mb-1">Affected Artifacts</p>
+              {/* Artifact corrections — viewable to all, editable for admin/super_admin */}
+              <div className="text-xs">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-muted-foreground">Artifacts Needing Correction</p>
+                  {canEditArtifacts && !editingArtifacts && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => {
+                        setDraftArtifacts(selected.artifact_correction || []);
+                        setEditingArtifacts(true);
+                      }}
+                    >
+                      <Pencil className="h-3 w-3 mr-1" /> Edit
+                    </Button>
+                  )}
+                </div>
+
+                {editingArtifacts ? (
+                  <div className="space-y-2 bg-muted/40 rounded p-2">
+                    {ARTIFACT_TAGS.map((tag) => {
+                      const checked = draftArtifacts.includes(tag.value);
+                      return (
+                        <label key={tag.value} className="flex items-center gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              setDraftArtifacts((prev) =>
+                                v ? [...prev, tag.value] : prev.filter((x) => x !== tag.value)
+                              );
+                            }}
+                          />
+                          <span className={cn("text-[11px] px-1.5 py-0.5 rounded border font-semibold", ARTIFACT_COLORS[tag.value])}>
+                            {tag.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={savingArtifacts} onClick={() => setEditingArtifacts(false)}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" className="h-7 text-xs" disabled={savingArtifacts} onClick={handleSaveArtifacts}>
+                        {savingArtifacts ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />} Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : selected.artifact_correction && selected.artifact_correction.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {selected.artifact_correction.map((a, i) => (
                       <span key={i} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-medium", ARTIFACT_COLORS[a] || "bg-muted text-muted-foreground border-border")}>
-                        {a}
+                        {ARTIFACT_LABEL[a] || a}
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-muted-foreground italic">No artifact corrections needed</p>
+                )}
+              </div>
 
               {selected.review_comment && (
                 <div className="text-xs">
