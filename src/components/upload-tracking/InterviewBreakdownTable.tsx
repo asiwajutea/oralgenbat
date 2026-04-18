@@ -456,8 +456,8 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
                           {artifacts.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {artifacts.map((a, i) => (
-                                <span key={i} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-semibold", ARTIFACT_COLORS[a] || "bg-muted text-muted-foreground border-border")}>
-                                  {a}
+                                <span key={i} className={cn("text-[10px] px-1.5 py-0.5 rounded border font-semibold whitespace-nowrap", ARTIFACT_COLORS[a] || "bg-muted text-muted-foreground border-border")}>
+                                  {ARTIFACT_LABEL[a] || a}
                                 </span>
                               ))}
                             </div>
