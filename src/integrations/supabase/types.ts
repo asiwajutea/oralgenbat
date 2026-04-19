@@ -83,6 +83,39 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_feature_settings: {
+        Row: {
+          audio_summary_enabled: boolean
+          error_suggestion_enabled: boolean
+          fraud_analysis_enabled: boolean
+          id: string
+          invoice_parsing_enabled: boolean
+          pdf_analysis_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          audio_summary_enabled?: boolean
+          error_suggestion_enabled?: boolean
+          fraud_analysis_enabled?: boolean
+          id?: string
+          invoice_parsing_enabled?: boolean
+          pdf_analysis_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          audio_summary_enabled?: boolean
+          error_suggestion_enabled?: boolean
+          fraud_analysis_enabled?: boolean
+          id?: string
+          invoice_parsing_enabled?: boolean
+          pdf_analysis_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       announcement_dismissals: {
         Row: {
           acknowledged: boolean | null
