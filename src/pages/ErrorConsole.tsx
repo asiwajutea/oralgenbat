@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { format, subDays, subHours, isAfter } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import ReactMarkdown from "react-markdown";
+import { useAiSettings } from "@/hooks/useAiSettings";
 
 interface ErrorLog {
   id: string;
@@ -41,6 +42,8 @@ const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3
 const ErrorConsole = () => {
   const { user, userRole, loading } = useAuth();
   const queryClient = useQueryClient();
+  const { data: aiSettings } = useAiSettings();
+  const errorAiEnabled = aiSettings?.error_suggestion_enabled !== false;
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -519,19 +522,21 @@ const ErrorConsole = () => {
                               >
                                 <StickyNote className="h-3.5 w-3.5 mr-1" /> Note
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={getSuggestion.isPending}
-                                onClick={(e) => { e.stopPropagation(); getSuggestion.mutate(err); }}
-                              >
-                                {getSuggestion.isPending ? (
-                                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                                ) : (
-                                  <Sparkles className="h-3.5 w-3.5 mr-1" />
-                                )}
-                                {err.suggested_fix ? "Refresh Fix" : "Get AI Fix"}
-                              </Button>
+                              {errorAiEnabled && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={getSuggestion.isPending}
+                                  onClick={(e) => { e.stopPropagation(); getSuggestion.mutate(err); }}
+                                >
+                                  {getSuggestion.isPending ? (
+                                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="h-3.5 w-3.5 mr-1" />
+                                  )}
+                                  {err.suggested_fix ? "Refresh Fix" : "Get AI Fix"}
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </TableCell>
