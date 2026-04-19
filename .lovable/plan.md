@@ -1,74 +1,73 @@
-## Upload Tracking Page — Add Interview List Breakdown
-
-### Goal
-
-Add a compact, expandable list of individual interviews below the existing summary stats and trend charts on `/upload-tracking`. Keep all existing summary/chart UI as-is.
-
-### Data layer
-
-Create a new RPC `get_upload_tracking_interviews` (read-only, SECURITY DEFINER, scoped to date range and pagination) that returns one row per audit with:
 
 
-| Field                                          | Source                                |
-| ---------------------------------------------- | ------------------------------------- |
-| `audit_id`                                     | `audits.id`                           |
-| `file_name` (folder name, no `.pdf`)           | `audits.file_name`                    |
-| `uploaded_at`                                  | `audits.uploaded_at`                  |
-| `status`                                       | `audits.status`                       |
-| `is_re_audit`, `re_audit_count`                | `audits.*`                            |
-| `artifact_correction` (array of artifact tags) | `audits.artifact_correction`          |
-| `review_comment` (failure reason)              | `audits.review_comment`               |
-| `action_plan`                                  | `audits.action_plan`                  |
-| `passed_with_failures`                         | `audits.passed_with_failures`         |
-| `interviewee_name` (informant)                 | `interview_metadata.interviewee_name` |
-| `field_manager`                                | `interview_metadata.field_manager`    |
-| `total_names`                                  | `interview_metadata.total_names`      |
-| `total_count`                                  | window count for pagination           |
+## Goal
+1. Make the **Analyze PDF** button gracefully fall back to manual scoring whenever AI is unavailable (credit exhaustion, rate limit, network, or any error).
+2. Add a **Super Admin → AI Settings** page where each AI-powered section can be toggled on/off. When OFF, the section's button is hidden/disabled and only manual entry is shown.
 
+## AI-powered sections identified
+| Key | Where it's used | Edge function | Manual fallback today? |
+|---|---|---|---|
+| `pdf_analysis` | Review page → "Analyze PDF" / "Re-analyze" | `analyze-pdf` | Manual sliders exist (improve trigger) |
+| `audio_summary` | Review page → "Confirm Durations" auto-runs AI | `regenerate-audio-summary` | Durations save anyway (already silent fallback) |
+| `fraud_analysis` | Agent Fraud Analysis page (auto-runs) | `fraud-analysis` | Indicators/charts still render — just no AI narrative |
+| `error_suggestion` | Error Console → "Get AI suggestion" button | `suggest-error-fix` | Note field is manual |
+| `invoice_parsing` | Payment → Upload Invoice PDF | `parse-invoice-pdf` | Manual Invoice Entry dialog already exists |
 
-Args: `p_start_date`, `p_end_date`, `p_search` (optional folder name filter), `p_status` (optional), `p_limit`, `p_offset`. Excludes burned audits.
+## Changes
 
-### New hook
+### 1. Database (migration)
+New table `ai_feature_settings` (single-row config) with one boolean column per feature:
+```
+pdf_analysis_enabled, audio_summary_enabled, fraud_analysis_enabled,
+error_suggestion_enabled, invoice_parsing_enabled
+```
+RLS: SELECT for any authenticated user; UPDATE only for `super_admin`. Seed one row with all `true`.
 
-`useUploadTrackingInterviews(startDate, endDate, page, pageSize, search, status)` in `src/hooks/useUploadTracking.ts`.
+### 2. Hook
+`src/hooks/useAiSettings.ts` — React Query hook returning the settings row (cached, 5 min stale). Used by every AI trigger point.
 
-### UI changes — `src/pages/UploadTrackingDashboard.tsx`
+### 3. New page — Super Admin AI Settings
+`src/pages/AISettings.tsx` (route `/admin/ai-settings`, guarded by existing `AdminRoute` + role check for `super_admin`).
+- One card per feature with a `Switch` (uses existing `src/components/ui/switch.tsx`) and short description of what the manual fallback looks like.
+- Save updates row via `supabase.from('ai_feature_settings').update(...)`.
+- Add a link in `UserMenu.tsx` (Super Admin only) and a `<Route>` in `App.tsx`.
 
-Add a new "Interview Breakdown" `Card` after the existing "Detailed Breakdown" period table, containing:
+### 4. PDF Analysis — make manual scoring always reachable
+- `PDFAnalysisPanel.tsx`: when `pdf_analysis_enabled === false`, hide the "Analyze PDF" / "Re-analyze" buttons and **auto-open the edit-scores form** so the auditor can enter clarity + legibility manually and save.
+- `ReviewInterview.tsx` `handleAnalyzePDF`: any non-success outcome (current `ai_unavailable`, plus `error`/`data?.error`/network throw) sets `aiUnavailable = true` so manual scoring opens automatically — closing the gap when the function throws before reaching the graceful path.
+- Existing "Edit Scores" flow already persists to `interview_metadata` with `pdf_scores_manually_adjusted = true` — no changes needed there.
 
-1. **Compact toolbar** — search input (folder name), status filter dropdown, page size selector.
-2. **Compact table** with columns:
-  - Folder name (monospace, small)
-  - Informant (interviewee name) — truncate with tooltip
-  - Field Manager — truncate
-  - Names — right-aligned number
-  - Status — colored badge (green/red/amber/gray)
-  - Re-audit — small "↻ ×N" badge only when `re_audit_count > 0`
-  - Artifacts — small inline badges for each entry in `artifact_correction` (e.g. PDF, ZIP, Audio, Photos), only shown when present
-  - Action — single icon button "View" that opens a popover/dialog with: failure reason (`review_comment`), action plan, override reason (if `passed_with_failures`)
-3. Pagination bar (Prev / Next, current page indicator, total count). Default 25 rows/page.
-4. Reuses the date range already selected at the top of the page (`startDate` / `endDate`), so the list always matches the active period.
-5. Compact density: `text-xs`, `py-1.5` cells, single-line rows with truncation; mobile-friendly horizontal scroll.
+### 5. Audio Summary
+- `AudioPlayerPanel.tsx`: skip the `regenerate-audio-summary` invoke when `audio_summary_enabled === false`. Durations + noise levels still save (they already do).
+- Add a small "Manual quality notes" textarea on the panel that is only shown when AI is off, saved into `interview_metadata.audio_quality_summary`.
 
-### Files
+### 6. Fraud AI narrative
+- `AgentFraudAnalysis.tsx`: when `fraud_analysis_enabled === false`, skip the `useQuery` (set `enabled: false`) and hide `ActionPlanCard`. Indicators still render. Add a small inline note "AI narrative disabled by admin."
 
+### 7. Error suggestion
+- `ErrorConsole.tsx`: hide the "Get AI suggestion" button when `error_suggestion_enabled === false`. The existing "Add note" flow remains as the manual path.
 
-| File                                                         | Change                                                                   |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `supabase/migrations/<new>.sql`                              | Create `get_upload_tracking_interviews` RPC                              |
-| `src/hooks/useUploadTracking.ts`                             | Add `useUploadTrackingInterviews` query hook                             |
-| `src/components/upload-tracking/InterviewBreakdownTable.tsx` | New compact table + toolbar + failure-reason popover                     |
-| `src/pages/UploadTrackingDashboard.tsx`                      | Mount the new component below existing breakdown, pass active date range |
+### 8. Invoice parsing
+- `InvoiceUploadDialog.tsx`: when `invoice_parsing_enabled === false`, hide the upload-PDF tab/button and surface only the existing `ManualInvoiceEntryDialog` path (link/button "Enter invoice manually").
 
+## Files
 
-Other considerations:  
-1. Add the field manager, interviewers, location to the stat summary card.  
-2. Although the design should be compact, however I want to be able to see the information at a glance and make decision on their performances.  
-  
-Out of scope
+| File | Change |
+|---|---|
+| `supabase/migrations/<new>.sql` | Create `ai_feature_settings` table + RLS + seed |
+| `src/hooks/useAiSettings.ts` | New hook |
+| `src/pages/AISettings.tsx` | New super admin page |
+| `src/App.tsx` | Add `/admin/ai-settings` route |
+| `src/components/UserMenu.tsx` | Add "AI Settings" link for super_admin |
+| `src/components/review/PDFAnalysisPanel.tsx` | Respect toggle; auto-edit mode when off |
+| `src/pages/ReviewInterview.tsx` | Treat all analyze-pdf failures as `aiUnavailable` |
+| `src/components/review/AudioPlayerPanel.tsx` | Skip AI summary when off; manual notes textarea |
+| `src/pages/AgentFraudAnalysis.tsx` | Disable AI query when off |
+| `src/pages/ErrorConsole.tsx` | Hide AI suggestion button when off |
+| `src/components/payment/InvoiceUploadDialog.tsx` | Hide PDF parsing when off |
 
-- No changes to existing summary cards, charts, or period table.
-- No edits to global `audits` queries elsewhere.
-- No CSV export in this round (can be added later if you want).
+## Out of scope
+- Per-user toggles (this is global super-admin only).
+- Edge function code changes — toggles are enforced client-side; functions remain untouched.
+- Removing existing graceful 402/429 handling in edge functions (still useful as a backstop).
 
-Approve and I'll build it.
