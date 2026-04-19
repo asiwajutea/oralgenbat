@@ -298,6 +298,25 @@ export const AudioPlayerPanel = ({
           />
         </div>
 
+        {/* Manual quality notes — only when AI summary is disabled by admin */}
+        {!audioAiEnabled && (
+          <div className="space-y-2 p-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+            <Label htmlFor="manual-audio-notes" className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Manual Audio Quality Notes
+            </Label>
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              AI summary is disabled by admin. Please describe overall audio quality, clarity, and any issues observed.
+            </p>
+            <Textarea
+              id="manual-audio-notes"
+              value={manualNotes}
+              onChange={(e) => setManualNotes(e.target.value)}
+              placeholder="e.g. Family story is clear with mild background noise. Pedigree segment has audible voices throughout."
+              rows={4}
+            />
+          </div>
+        )}
+
         <Button
           onClick={handleConfirmDurations}
           disabled={isConfirming || familyNoiseLevel === null || pedigreeNoiseLevel === null}
