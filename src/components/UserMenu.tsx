@@ -14,7 +14,7 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, Shield, User, Moon, Sun, Building2, Check, Trophy } from "lucide-react";
+import { LogOut, Shield, User, Moon, Sun, Building2, Check, Trophy, Sparkles } from "lucide-react";
 import { useTheme } from "next-themes";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -208,6 +208,12 @@ const UserMenu = () => {
               <Shield className="mr-2 h-4 w-4" />
               <span>Admin Dashboard</span>
             </DropdownMenuItem>
+            {userRole === 'super_admin' && (
+              <DropdownMenuItem onClick={() => navigate('/admin/ai-settings')}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                <span>AI Settings</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
           </>
         )}
