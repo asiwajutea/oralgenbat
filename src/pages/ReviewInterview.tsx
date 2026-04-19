@@ -26,6 +26,7 @@ import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAiSettings } from "@/hooks/useAiSettings";
 
 // Ref for scrolling to checklist
 type ChecklistRef = {scrollToChecklist: () => void;expandChecklist: () => void;} | null;
@@ -60,6 +61,8 @@ const ReviewInterview = () => {
     userRole,
     user
   } = useAuth();
+  const { data: aiSettings } = useAiSettings();
+  const pdfAiEnabled = aiSettings?.pdf_analysis_enabled !== false;
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
@@ -809,7 +812,7 @@ const ReviewInterview = () => {
                 });
               }} /> : <AudioAnalysisPanel metadata={metadata} />}
               
-              {metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null || aiUnavailable ?
+              {metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null || aiUnavailable || !pdfAiEnabled ?
               <PDFAnalysisPanel
                 metadata={metadata}
                 auditId={auditId!}
