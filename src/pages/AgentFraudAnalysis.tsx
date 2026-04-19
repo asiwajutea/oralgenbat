@@ -20,6 +20,9 @@ import { format, startOfWeek } from "date-fns";
 import { Loader2 } from "lucide-react";
 import { generateFraudReportPdf } from "@/utils/generateFraudReportPdf";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import { useAiSettings } from "@/hooks/useAiSettings";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Sparkles } from "lucide-react";
 
 const COLORS = ['#22c55e', '#ef4444', '#f97316', '#3b82f6'];
 
@@ -31,6 +34,8 @@ const AgentFraudAnalysis = () => {
   const [period, setPeriod] = useState<TimePeriod>('13weeks');
 
   const { data: fraudProfile, isLoading: profileLoading } = useFraudAnalytics(interviewerCode!, period);
+  const { data: aiSettings } = useAiSettings();
+  const fraudAiEnabled = aiSettings?.fraud_analysis_enabled !== false;
 
   const { data: aiAnalysis, isLoading: aiLoading } = useQuery({
     queryKey: ['fraud-ai-analysis', interviewerCode, period],
@@ -44,7 +49,7 @@ const AgentFraudAnalysis = () => {
       if (error) throw error;
       return data;
     },
-    enabled: !!fraudProfile,
+    enabled: !!fraudProfile && fraudAiEnabled,
   });
 
   // Pass/Fail distribution data
@@ -147,16 +152,27 @@ const AgentFraudAnalysis = () => {
         score={fraudProfile.overallFraudScore}
       />
 
-      {/* AI Summary */}
-      <FraudSummaryCard
-        summary={aiAnalysis?.summary || null}
-        concerningPatterns={aiAnalysis?.concerningPatterns || []}
-        isLoading={aiLoading}
-      />
+      {/* AI Summary - only when fraud AI is enabled */}
+      {fraudAiEnabled ? (
+        <>
+          <FraudSummaryCard
+            summary={aiAnalysis?.summary || null}
+            concerningPatterns={aiAnalysis?.concerningPatterns || []}
+            isLoading={aiLoading}
+          />
 
-      {/* Action Plan */}
-      {aiAnalysis?.actionPlan && (
-        <ActionPlanCard actionPlan={aiAnalysis.actionPlan} />
+          {/* Action Plan */}
+          {aiAnalysis?.actionPlan && (
+            <ActionPlanCard actionPlan={aiAnalysis.actionPlan} />
+          )}
+        </>
+      ) : (
+        <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+          <Sparkles className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800 dark:text-amber-200">
+            AI narrative is disabled by an administrator. Fraud indicators and charts below are still active.
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Fraud Indicators Grid */}
