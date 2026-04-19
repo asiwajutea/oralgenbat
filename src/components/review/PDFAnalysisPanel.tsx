@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { FileCheck, PenTool, RefreshCw, Loader2, Edit2, Save, X, AlertTriangle }
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAiSettings } from "@/hooks/useAiSettings";
 
 interface PDFAnalysisPanelProps {
   metadata: {
@@ -24,13 +25,25 @@ interface PDFAnalysisPanelProps {
 }
 
 export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh, aiUnavailable = false }: PDFAnalysisPanelProps) => {
+  const { data: aiSettings } = useAiSettings();
+  const aiDisabledByAdmin = aiSettings?.pdf_analysis_enabled === false;
+  // Effective unavailability — either AI failed at runtime OR super admin disabled it.
+  const aiOff = aiUnavailable || aiDisabledByAdmin;
+
   const [isReanalyzing, setIsReanalyzing] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(aiUnavailable && metadata.pdf_clarity_score === null);
+  const [isEditMode, setIsEditMode] = useState(aiOff && metadata.pdf_clarity_score === null);
   const [isSaving, setIsSaving] = useState(false);
   // Use 50 as default when AI unavailable and no scores exist
-  const defaultScore = aiUnavailable && metadata.pdf_clarity_score === null ? 50 : 0;
+  const defaultScore = aiOff && metadata.pdf_clarity_score === null ? 50 : 0;
   const [editClarityScore, setEditClarityScore] = useState(metadata.pdf_clarity_score ?? defaultScore);
   const [editLegibilityScore, setEditLegibilityScore] = useState(metadata.pdf_handwriting_legibility ?? defaultScore);
+
+  // If admin toggles AI off after mount and no scores exist yet, auto-open edit mode
+  useEffect(() => {
+    if (aiDisabledByAdmin && metadata.pdf_clarity_score === null && !isEditMode) {
+      setIsEditMode(true);
+    }
+  }, [aiDisabledByAdmin, metadata.pdf_clarity_score, isEditMode]);
 
   const clarityScore = metadata.pdf_clarity_score ?? 0;
   const legibilityScore = metadata.pdf_handwriting_legibility ?? 0;
@@ -167,20 +180,22 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh, aiUnavailable =
                   <Edit2 className="h-3.5 w-3.5" />
                   Edit Scores
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReanalyze}
-                  disabled={isReanalyzing}
-                  className="gap-1.5 h-8"
-                >
-                  {isReanalyzing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  Re-analyze
-                </Button>
+                {!aiDisabledByAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReanalyze}
+                    disabled={isReanalyzing}
+                    className="gap-1.5 h-8"
+                  >
+                    {isReanalyzing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Re-analyze
+                  </Button>
+                )}
               </>
             ) : (
               <>
@@ -212,12 +227,14 @@ export const PDFAnalysisPanel = ({ metadata, auditId, onRefresh, aiUnavailable =
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* AI Unavailable Alert - show when passed as prop or detected during re-analyze */}
-        {aiUnavailable && !metadata.pdf_scores_manually_adjusted && (
+        {/* AI Unavailable Alert - show when passed as prop, detected at runtime, or disabled by admin */}
+        {aiOff && !metadata.pdf_scores_manually_adjusted && (
           <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
             <AlertTriangle className="h-4 w-4 text-amber-600" />
             <AlertDescription className="text-amber-800 dark:text-amber-200">
-              AI analysis is currently unavailable. Please use the sliders below to enter manual scores and save.
+              {aiDisabledByAdmin
+                ? "AI PDF analysis has been disabled by an administrator. Please use the sliders below to enter manual scores and save."
+                : "AI analysis is currently unavailable. Please use the sliders below to enter manual scores and save."}
             </AlertDescription>
           </Alert>
         )}
