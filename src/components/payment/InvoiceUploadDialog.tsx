@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Upload, FileText, Check, AlertCircle, Loader2, X } from "lucide-react";
+import { Upload, FileText, Check, AlertCircle, Loader2, X, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAiSettings } from "@/hooks/useAiSettings";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export interface ParsedInvoiceEntry {
   folderName: string;
@@ -42,6 +44,8 @@ interface InvoiceUploadDialogProps {
 }
 
 export const InvoiceUploadDialog = ({ open, onOpenChange, onUploadComplete }: InvoiceUploadDialogProps) => {
+  const { data: aiSettings } = useAiSettings();
+  const invoiceAiEnabled = aiSettings?.invoice_parsing_enabled !== false;
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -208,7 +212,15 @@ export const InvoiceUploadDialog = ({ open, onOpenChange, onUploadComplete }: In
         </DialogHeader>
 
         <div className="space-y-4">
-          {!parsedData ? (
+          {!invoiceAiEnabled ? (
+            <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+              <Sparkles className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                AI invoice parsing has been disabled by an administrator. Please close this dialog and use
+                <span className="font-medium"> "Manual Invoice Entry"</span> to add payment records.
+              </AlertDescription>
+            </Alert>
+          ) : !parsedData ? (
             <>
               {/* Upload area */}
               <div

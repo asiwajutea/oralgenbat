@@ -54,6 +54,7 @@ import DuplicateInterviews from "./pages/DuplicateInterviews";
 import BurnQueue from "./pages/BurnQueue";
 import UploadTrackingDashboard from "./pages/UploadTrackingDashboard";
 import ErrorConsole from "./pages/ErrorConsole";
+import AISettings from "./pages/AISettings";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 
@@ -396,6 +397,16 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <ErrorConsole />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/ai-settings"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <AISettings />
                   </Layout>
                 </ProtectedRoute>
               }

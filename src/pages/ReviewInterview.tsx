@@ -26,6 +26,7 @@ import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAiSettings } from "@/hooks/useAiSettings";
 
 // Ref for scrolling to checklist
 type ChecklistRef = {scrollToChecklist: () => void;expandChecklist: () => void;} | null;
@@ -60,6 +61,8 @@ const ReviewInterview = () => {
     userRole,
     user
   } = useAuth();
+  const { data: aiSettings } = useAiSettings();
+  const pdfAiEnabled = aiSettings?.pdf_analysis_enabled !== false;
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
@@ -386,27 +389,29 @@ const ReviewInterview = () => {
         body: { auditId }
       });
 
-      // Handle any invoke errors
+      // Any invoke error -> fall back to manual scoring
       if (error) {
         console.error('PDF analysis invoke error:', error);
-        toast.error('Failed to analyze PDF. Please try again or use manual scoring.');
+        setAiUnavailable(true);
+        toast.info('AI analysis unavailable. Please use manual scoring below.');
         return;
       }
 
-      // Check if AI is unavailable (graceful degradation)
+      // Graceful degradation flag from edge function
       if (data?.ai_unavailable) {
         setAiUnavailable(true);
         toast.info(data.message || "AI analysis unavailable. Please use manual scoring below.");
         return;
       }
 
-      // Check if there was an error in the response
+      // Edge function reported an error -> also fall back to manual
       if (data?.error) {
-        toast.error(data.error);
+        console.error('PDF analysis returned error:', data.error);
+        setAiUnavailable(true);
+        toast.info('AI analysis unavailable. Please use manual scoring below.');
         return;
       }
 
-      // Success
       if (data?.success) {
         toast.success('PDF analyzed successfully');
         queryClient.invalidateQueries({
@@ -415,7 +420,8 @@ const ReviewInterview = () => {
       }
     } catch (err) {
       console.error('PDF analysis error:', err);
-      toast.error('Failed to analyze PDF. Please try again or use manual scoring.');
+      setAiUnavailable(true);
+      toast.info('AI analysis unavailable. Please use manual scoring below.');
     } finally {
       setIsAnalyzingPDF(false);
     }
@@ -806,7 +812,7 @@ const ReviewInterview = () => {
                 });
               }} /> : <AudioAnalysisPanel metadata={metadata} />}
               
-              {metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null || aiUnavailable ?
+              {metadata.pdf_clarity_score !== null || metadata.pdf_handwriting_legibility !== null || aiUnavailable || !pdfAiEnabled ?
               <PDFAnalysisPanel
                 metadata={metadata}
                 auditId={auditId!}

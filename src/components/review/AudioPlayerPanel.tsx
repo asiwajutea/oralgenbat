@@ -3,11 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Volume2, Music, CheckCircle, Loader2, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { useAiSettings } from "@/hooks/useAiSettings";
 
 interface AudioPlayerPanelProps {
   auditId: string;
@@ -30,12 +32,16 @@ export const AudioPlayerPanel = ({
   pedigreeUrl,
   onDurationConfirmed,
 }: AudioPlayerPanelProps) => {
+  const { data: aiSettings } = useAiSettings();
+  const audioAiEnabled = aiSettings?.audio_summary_enabled !== false;
+
   const [familyMin, setFamilyMin] = useState(0);
   const [familySec, setFamilySec] = useState(0);
   const [pedigreeMin, setPedigreeMin] = useState(0);
   const [pedigreeSec, setPedigreeSec] = useState(0);
   const [familyNoiseLevel, setFamilyNoiseLevel] = useState<number | null>(null);
   const [pedigreeNoiseLevel, setPedigreeNoiseLevel] = useState<number | null>(null);
+  const [manualNotes, setManualNotes] = useState("");
   const [isConfirming, setIsConfirming] = useState(false);
   
   const familyAudioRef = useRef<HTMLAudioElement>(null);
@@ -82,43 +88,47 @@ export const AudioPlayerPanel = ({
 
     setIsConfirming(true);
     try {
-      // Step 1: Save durations and noise levels to database
+      // Step 1: Save durations, noise levels, and (if AI off) manual notes to database
+      const updatePayload: Record<string, unknown> = {
+        family_story_duration: familyDuration,
+        pedigree_segment_duration: pedigreeDuration,
+        family_story_noise_level: familyNoisePercentage,
+        pedigree_segment_noise_level: pedigreeNoisePercentage,
+        duration_manually_confirmed: true,
+      };
+      if (!audioAiEnabled && manualNotes.trim()) {
+        updatePayload.audio_quality_summary = manualNotes.trim();
+      }
+
       const { error } = await supabase
         .from("interview_metadata")
-        .update({
-          family_story_duration: familyDuration,
-          pedigree_segment_duration: pedigreeDuration,
-          family_story_noise_level: familyNoisePercentage,
-          pedigree_segment_noise_level: pedigreeNoisePercentage,
-          duration_manually_confirmed: true,
-        })
+        .update(updatePayload)
         .eq("audit_id", auditId);
 
       if (error) throw error;
 
-      // Step 2: Regenerate AI summary with confirmed durations and noise levels
-      const { error: summaryError } = await supabase.functions.invoke('regenerate-audio-summary', {
-        body: { 
-          auditId, 
-          familyStoryDuration: familyDuration, 
-          pedigreeDuration,
-          familyNoiseLevel: familyNoisePercentage,
-          pedigreeNoiseLevel: pedigreeNoisePercentage,
-        }
-      });
+      // Step 2: Skip AI summary entirely if admin disabled it
+      if (audioAiEnabled) {
+        const { error: summaryError } = await supabase.functions.invoke('regenerate-audio-summary', {
+          body: { 
+            auditId, 
+            familyStoryDuration: familyDuration, 
+            pedigreeDuration,
+            familyNoiseLevel: familyNoisePercentage,
+            pedigreeNoiseLevel: pedigreeNoisePercentage,
+          }
+        });
 
-      if (summaryError) {
-        console.warn("Summary regeneration failed:", summaryError);
-        // Check for specific error types
-        const errorMessage = summaryError.message || '';
-        if (errorMessage.includes('402') || errorMessage.includes('credits') || errorMessage.includes('Payment')) {
-          // Silent for auditors - just log. Admin notification is handled by edge function
-          console.log("AI credits exhausted - auditor will provide manual feedback if needed");
-          // Don't show any error toast to auditors
-        } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
-          toast.warning("AI service is busy. Durations saved, summary will be generated later.");
+        if (summaryError) {
+          console.warn("Summary regeneration failed:", summaryError);
+          const errorMessage = summaryError.message || '';
+          if (errorMessage.includes('402') || errorMessage.includes('credits') || errorMessage.includes('Payment')) {
+            console.log("AI credits exhausted - auditor will provide manual feedback if needed");
+          } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+            toast.warning("AI service is busy. Durations saved, summary will be generated later.");
+          }
+          // Don't fail the whole operation - durations are saved
         }
-        // Don't fail the whole operation - durations are saved
       }
 
       toast.success("Audio durations and noise levels confirmed");
@@ -287,6 +297,25 @@ export const AudioPlayerPanel = ({
             label="Rate Noise Level"
           />
         </div>
+
+        {/* Manual quality notes — only when AI summary is disabled by admin */}
+        {!audioAiEnabled && (
+          <div className="space-y-2 p-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+            <Label htmlFor="manual-audio-notes" className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Manual Audio Quality Notes
+            </Label>
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              AI summary is disabled by admin. Please describe overall audio quality, clarity, and any issues observed.
+            </p>
+            <Textarea
+              id="manual-audio-notes"
+              value={manualNotes}
+              onChange={(e) => setManualNotes(e.target.value)}
+              placeholder="e.g. Family story is clear with mild background noise. Pedigree segment has audible voices throughout."
+              rows={4}
+            />
+          </div>
+        )}
 
         <Button
           onClick={handleConfirmDurations}
