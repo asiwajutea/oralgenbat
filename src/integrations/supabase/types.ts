@@ -410,6 +410,7 @@ export type Database = {
           reviewed_by: string | null
           status: Database["public"]["Enums"]["audit_status"]
           uploaded_at: string
+          uploaded_by: string | null
         }
         Insert: {
           action_plan?: string | null
@@ -437,6 +438,7 @@ export type Database = {
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
           uploaded_at?: string
+          uploaded_by?: string | null
         }
         Update: {
           action_plan?: string | null
@@ -464,8 +466,17 @@ export type Database = {
           reviewed_by?: string | null
           status?: Database["public"]["Enums"]["audit_status"]
           uploaded_at?: string
+          uploaded_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "audits_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       budget_targets: {
         Row: {
@@ -1692,6 +1703,7 @@ export type Database = {
           status: Database["public"]["Enums"]["audit_status"]
           total_count: number
           uploaded_at: string
+          uploaded_by_name: string
         }[]
       }
       get_review_stats: {
@@ -1760,6 +1772,7 @@ export type Database = {
           total_count: number
           total_names: number
           uploaded_at: string
+          uploaded_by_name: string
         }[]
       }
       get_upload_tracking_stats: {
@@ -1796,6 +1809,10 @@ export type Database = {
           _submitted_by_role: Database["public"]["Enums"]["app_role"]
         }
         Returns: undefined
+      }
+      user_can_view_audit_for_tracking: {
+        Args: { _audit_id: string; _file_name: string; _user_id: string }
+        Returns: boolean
       }
     }
     Enums: {
