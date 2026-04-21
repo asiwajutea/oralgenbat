@@ -108,6 +108,7 @@ export interface UploadInterviewRow {
   interviewer_code: string | null;
   interview_location: string | null;
   total_names: number | null;
+  uploaded_by_name: string | null;
   total_count: number;
 }
 
