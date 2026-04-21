@@ -45,6 +45,7 @@ export const CombinedUploadDialog = ({
   onOpenChange: controlledOnOpenChange,
   onUploadProgress,
 }: CombinedUploadDialogProps) => {
+  const { user } = useAuth();
   const [internalOpen, setInternalOpen] = useState(false);
   const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
@@ -212,6 +213,7 @@ export const CombinedUploadDialog = ({
           file_name: pair.fileName,
           file_url: pdfPublicUrl,
           status: "Pending",
+          uploaded_by: user?.id ?? null,
         })
         .select()
         .single();
