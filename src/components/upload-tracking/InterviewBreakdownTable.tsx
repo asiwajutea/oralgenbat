@@ -454,6 +454,9 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
                             <TooltipContent><span className="font-mono text-xs">{folder}</span></TooltipContent>
                           </Tooltip>
                           <div className="text-[11px] text-muted-foreground">{format(new Date(row.uploaded_at), "MMM dd, HH:mm")}</div>
+                          {row.uploaded_by_name && (
+                            <div className="text-[10px] text-muted-foreground/80 italic truncate max-w-[160px]">by {row.uploaded_by_name}</div>
+                          )}
                         </TableCell>
                         <TableCell className="py-2.5 text-sm max-w-[160px] truncate">
                           {row.interviewee_name ? (
@@ -569,6 +572,10 @@ export function InterviewBreakdownTable({ startDate, endDate }: Props) {
                 <div>
                   <p className="text-muted-foreground">Location</p>
                   <p className="font-medium">{selected.interview_location || "—"}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-muted-foreground">First uploaded by</p>
+                  <p className="font-medium">{selected.uploaded_by_name || <span className="text-muted-foreground italic">Unknown</span>}</p>
                 </div>
               </div>
 

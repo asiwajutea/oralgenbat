@@ -16,6 +16,7 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface UploadDialogProps {
   onUploadComplete: () => void;
@@ -32,6 +33,7 @@ export const UploadDialog = ({
   onOpenChange: controlledOnOpenChange,
   onUploadProgress,
 }: UploadDialogProps) => {
+  const { user } = useAuth();
   const [internalOpen, setInternalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -201,6 +203,7 @@ export const UploadDialog = ({
           file_name: fileName,
           file_url: publicUrl,
           status: "Pending",
+          uploaded_by: user?.id ?? null,
         });
 
         if (dbError) throw dbError;
