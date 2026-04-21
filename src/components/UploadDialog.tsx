@@ -201,6 +201,7 @@ export const UploadDialog = ({
           file_name: fileName,
           file_url: publicUrl,
           status: "Pending",
+          uploaded_by: user?.id ?? null,
         });
 
         if (dbError) throw dbError;
