@@ -1740,6 +1740,16 @@ export type Database = {
           total_size_bytes: number
         }[]
       }
+      get_upload_tracking_error_stats: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: {
+          completed_checklists: number
+          failed_questions: number
+          first_audits_failed: number
+          first_audits_total: number
+          total_questions: number
+        }[]
+      }
       get_upload_tracking_interviews: {
         Args: {
           p_artifact?: string
