@@ -178,3 +178,45 @@ export async function fetchAllUploadTrackingInterviews(
   }
   return all;
 }
+
+export interface UploadTrackingErrorStats {
+  completed_checklists: number;
+  total_questions: number;
+  failed_questions: number;
+  first_audits_total: number;
+  first_audits_failed: number;
+}
+
+export function useUploadTrackingErrorStats(startDate: Date, endDate: Date) {
+  return useQuery({
+    queryKey: [
+      "upload-tracking-error-stats",
+      format(startDate, "yyyy-MM-dd"),
+      format(endDate, "yyyy-MM-dd"),
+    ],
+    queryFn: async (): Promise<UploadTrackingErrorStats> => {
+      const { data, error } = await supabase.rpc("get_upload_tracking_error_stats", {
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+      } as any);
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        completed_checklists: Number(row?.completed_checklists ?? 0),
+        total_questions: Number(row?.total_questions ?? 0),
+        failed_questions: Number(row?.failed_questions ?? 0),
+        first_audits_total: Number(row?.first_audits_total ?? 0),
+        first_audits_failed: Number(row?.first_audits_failed ?? 0),
+      };
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+// Lifetime variant — useful for home dashboards
+export function useLifetimeErrorStats() {
+  const start = new Date("1970-01-01T00:00:00Z");
+  const end = new Date();
+  end.setDate(end.getDate() + 1);
+  return useUploadTrackingErrorStats(start, end);
+}

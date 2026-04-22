@@ -8,9 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { useUploadTrackingSummary, useUploadTrackingTrend } from "@/hooks/useUploadTracking";
+import { useUploadTrackingSummary, useUploadTrackingTrend, useUploadTrackingErrorStats } from "@/hooks/useUploadTracking";
 import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Upload, FileText, Users, CalendarIcon, ArrowUpDown, TrendingUp, AlertTriangle } from "lucide-react";
+import { Upload, FileText, Users, CalendarIcon, ArrowUpDown, TrendingUp, AlertTriangle, ShieldAlert, XOctagon } from "lucide-react";
 import { format, subDays, subWeeks, startOfDay, startOfWeek } from "date-fns";
 import { cn } from "@/lib/utils";
 import { InterviewBreakdownTable } from "@/components/upload-tracking/InterviewBreakdownTable";
@@ -46,6 +46,7 @@ const UploadTrackingDashboard = () => {
   }, [period, customRange, now]);
 
   const { data: trendData, isLoading: trendLoading } = useUploadTrackingTrend(startDate, endDate, granularity);
+  const { data: errorStats, isLoading: errorStatsLoading } = useUploadTrackingErrorStats(startDate, endDate);
 
   const chartData = useMemo(() => {
     if (!trendData) return [];
@@ -146,6 +147,69 @@ const UploadTrackingDashboard = () => {
         <SummaryCard data={summary?.thisWeek} icon={<CalendarIcon className="h-5 w-5" />} />
         <SummaryCard data={summary?.last13Weeks} icon={<TrendingUp className="h-5 w-5" />} />
         <SummaryCard data={summary?.last365Days} icon={<Users className="h-5 w-5" />} />
+      </div>
+
+      {/* Quality Signal Cards — respect the active period filter below */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+        <Card className="hover:shadow-lg transition-shadow border-l-4 border-l-amber-500">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-muted-foreground">Errors Detected</p>
+                {errorStatsLoading ? (
+                  <Skeleton className="h-8 w-32 mt-1" />
+                ) : (
+                  <>
+                    <h3 className="text-2xl sm:text-3xl font-bold mt-1">
+                      {(errorStats?.failed_questions ?? 0).toLocaleString()}
+                      <span className="text-base sm:text-lg text-muted-foreground font-normal">
+                        {" / "}{(errorStats?.total_questions ?? 0).toLocaleString()}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {errorStats && errorStats.total_questions > 0
+                        ? `${((errorStats.failed_questions / errorStats.total_questions) * 100).toFixed(1)}% of checks failed`
+                        : "No completed reviews in this period"}
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="p-2 sm:p-3 bg-amber-500/10 rounded-lg text-amber-600 dark:text-amber-500 shrink-0">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow border-l-4 border-l-red-500">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-muted-foreground">First-Audit Failures</p>
+                {errorStatsLoading ? (
+                  <Skeleton className="h-8 w-32 mt-1" />
+                ) : (
+                  <>
+                    <h3 className="text-2xl sm:text-3xl font-bold mt-1">
+                      {(errorStats?.first_audits_failed ?? 0).toLocaleString()}
+                      <span className="text-base sm:text-lg text-muted-foreground font-normal">
+                        {" / "}{(errorStats?.first_audits_total ?? 0).toLocaleString()}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {errorStats && errorStats.first_audits_total > 0
+                        ? `${((errorStats.first_audits_failed / errorStats.first_audits_total) * 100).toFixed(1)}% failed first try`
+                        : "No first audits in this period"}
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="p-2 sm:p-3 bg-red-500/10 rounded-lg text-red-600 dark:text-red-500 shrink-0">
+                <XOctagon className="h-5 w-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Period Selector — sticky so users can change duration at any time */}
