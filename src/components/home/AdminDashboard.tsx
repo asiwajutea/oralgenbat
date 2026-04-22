@@ -20,7 +20,9 @@ import {
   BarChart3,
   ArrowRight,
   Megaphone,
-  ListChecks
+  ListChecks,
+  ShieldAlert,
+  XOctagon
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -30,6 +32,7 @@ import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 import PaymentStatsCards from "@/components/home/PaymentStatsCards";
 import { useChecklistSummary, useChecklistScope, type ChecklistPeriod } from "@/hooks/useChecklistAnalytics";
+import { useLifetimeErrorStats } from "@/hooks/useUploadTracking";
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,6 +41,7 @@ const AdminDashboard = () => {
   const [checklistPeriod, setChecklistPeriod] = useState<ChecklistPeriod>('13weeks');
   const checklistScope = useChecklistScope();
   const { data: checklistSummary } = useChecklistSummary(checklistPeriod, checklistScope);
+  const { data: errorStats } = useLifetimeErrorStats();
 
   // Get system-wide stats
   const { data: stats } = useQuery({
