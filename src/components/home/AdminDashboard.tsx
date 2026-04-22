@@ -266,6 +266,63 @@ const AdminDashboard = () => {
       {/* Critical Fraud Alerts */}
       <CriticalAgentsCard />
 
+      {/* Quality Signals (lifetime) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5" />
+              Quality Signals (Lifetime)
+            </CardTitle>
+            <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => navigate("/upload-tracking")}>
+              View details <ArrowRight className="h-3 w-3" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-4 rounded-lg border border-l-4 border-l-amber-500 bg-muted/30">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Errors Detected</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(errorStats?.failed_questions ?? 0).toLocaleString()}
+                    <span className="text-sm text-muted-foreground font-normal">
+                      {" / "}{(errorStats?.total_questions ?? 0).toLocaleString()}
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {errorStats && errorStats.total_questions > 0
+                      ? `${((errorStats.failed_questions / errorStats.total_questions) * 100).toFixed(1)}% of checks failed`
+                      : "No data yet"}
+                  </p>
+                </div>
+                <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-500 shrink-0" />
+              </div>
+            </div>
+            <div className="p-4 rounded-lg border border-l-4 border-l-red-500 bg-muted/30">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">First-Audit Failures</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {(errorStats?.first_audits_failed ?? 0).toLocaleString()}
+                    <span className="text-sm text-muted-foreground font-normal">
+                      {" / "}{(errorStats?.first_audits_total ?? 0).toLocaleString()}
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {errorStats && errorStats.first_audits_total > 0
+                      ? `${((errorStats.first_audits_failed / errorStats.first_audits_total) * 100).toFixed(1)}% failed first try`
+                      : "No data yet"}
+                  </p>
+                </div>
+                <XOctagon className="h-5 w-5 text-red-600 dark:text-red-500 shrink-0" />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Action Buttons */}
