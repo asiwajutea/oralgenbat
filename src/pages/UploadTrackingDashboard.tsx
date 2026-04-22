@@ -8,9 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { useUploadTrackingSummary, useUploadTrackingTrend } from "@/hooks/useUploadTracking";
+import { useUploadTrackingSummary, useUploadTrackingTrend, useUploadTrackingErrorStats } from "@/hooks/useUploadTracking";
 import { BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Upload, FileText, Users, CalendarIcon, ArrowUpDown, TrendingUp, AlertTriangle } from "lucide-react";
+import { Upload, FileText, Users, CalendarIcon, ArrowUpDown, TrendingUp, AlertTriangle, ShieldAlert, XOctagon } from "lucide-react";
 import { format, subDays, subWeeks, startOfDay, startOfWeek } from "date-fns";
 import { cn } from "@/lib/utils";
 import { InterviewBreakdownTable } from "@/components/upload-tracking/InterviewBreakdownTable";
