@@ -1,73 +1,65 @@
 
 
-## Goal
-1. Make the **Analyze PDF** button gracefully fall back to manual scoring whenever AI is unavailable (credit exhaustion, rate limit, network, or any error).
-2. Add a **Super Admin → AI Settings** page where each AI-powered section can be toggled on/off. When OFF, the section's button is hidden/disabled and only manual entry is shown.
+## Add Error Detection Stats — Upload Tracking + Admin/Super-Admin Home
 
-## AI-powered sections identified
-| Key | Where it's used | Edge function | Manual fallback today? |
-|---|---|---|---|
-| `pdf_analysis` | Review page → "Analyze PDF" / "Re-analyze" | `analyze-pdf` | Manual sliders exist (improve trigger) |
-| `audio_summary` | Review page → "Confirm Durations" auto-runs AI | `regenerate-audio-summary` | Durations save anyway (already silent fallback) |
-| `fraud_analysis` | Agent Fraud Analysis page (auto-runs) | `fraud-analysis` | Indicators/charts still render — just no AI narrative |
-| `error_suggestion` | Error Console → "Get AI suggestion" button | `suggest-error-fix` | Note field is manual |
-| `invoice_parsing` | Payment → Upload Invoice PDF | `parse-invoice-pdf` | Manual Invoice Entry dialog already exists |
+### What you'll see
 
-## Changes
+Two new metric cards on the **Upload Tracking** page (and a compact summary on the **Admin / Super Admin home dashboard**):
 
-### 1. Database (migration)
-New table `ai_feature_settings` (single-row config) with one boolean column per feature:
-```
-pdf_analysis_enabled, audio_summary_enabled, fraud_analysis_enabled,
-error_suggestion_enabled, invoice_parsing_enabled
-```
-RLS: SELECT for any authenticated user; UPDATE only for `super_admin`. Seed one row with all `true`.
+1. **Errors Detected** — total checklist questions answered "No" across all completed reviews in the selected period, shown as `X / Y` (where Y = total questions answered = interviews-reviewed × 14). Includes a percentage.
+2. **First-Audit Failures** — number of interviews whose **first** completed audit checklist had at least one failure, plus a percentage of all first audits in the period.
 
-### 2. Hook
-`src/hooks/useAiSettings.ts` — React Query hook returning the settings row (cached, 5 min stale). Used by every AI trigger point.
+Both cards respect:
+- The active **date range** selector at the top of Upload Tracking (7d / 13w / 365d / Custom).
+- The same **role-based scoping** already used by the Upload Tracking page (so Field Managers, Contractors, Sub-Contractors only see their own scope; Admin/Super-Admin/QA see everything).
 
-### 3. New page — Super Admin AI Settings
-`src/pages/AISettings.tsx` (route `/admin/ai-settings`, guarded by existing `AdminRoute` + role check for `super_admin`).
-- One card per feature with a `Switch` (uses existing `src/components/ui/switch.tsx`) and short description of what the manual fallback looks like.
-- Save updates row via `supabase.from('ai_feature_settings').update(...)`.
-- Add a link in `UserMenu.tsx` (Super Admin only) and a `<Route>` in `App.tsx`.
+The Admin/Super-Admin home dashboard gets a smaller "Errors Detected (lifetime)" + "First-Audit Failures (lifetime)" block, with a link → Upload Tracking for the date-filtered breakdown.
 
-### 4. PDF Analysis — make manual scoring always reachable
-- `PDFAnalysisPanel.tsx`: when `pdf_analysis_enabled === false`, hide the "Analyze PDF" / "Re-analyze" buttons and **auto-open the edit-scores form** so the auditor can enter clarity + legibility manually and save.
-- `ReviewInterview.tsx` `handleAnalyzePDF`: any non-success outcome (current `ai_unavailable`, plus `error`/`data?.error`/network throw) sets `aiUnavailable = true` so manual scoring opens automatically — closing the gap when the function throws before reaching the graceful path.
-- Existing "Edit Scores" flow already persists to `interview_metadata` with `pdf_scores_manually_adjusted = true` — no changes needed there.
+### Definitions
 
-### 5. Audio Summary
-- `AudioPlayerPanel.tsx`: skip the `regenerate-audio-summary` invoke when `audio_summary_enabled === false`. Durations + noise levels still save (they already do).
-- Add a small "Manual quality notes" textarea on the panel that is only shown when AI is off, saved into `interview_metadata.audio_quality_summary`.
+- **Error** = one checklist question answered `"no"` (per `audit_checklist_progress.items[].answer`).
+- **Maximum possible errors** = `completed_checklists_in_period × 14`.
+- **First-audit failure** = an interview whose earliest `is_completed = true` checklist row has `has_failures = true`. Re-audits are excluded from the denominator and numerator.
+- Date filter is applied to the **audit's `uploaded_at`** (matches the rest of the Upload Tracking page) — not to when the review happened — so the cards stay in sync with the volume cards above them.
 
-### 6. Fraud AI narrative
-- `AgentFraudAnalysis.tsx`: when `fraud_analysis_enabled === false`, skip the `useQuery` (set `enabled: false`) and hide `ActionPlanCard`. Indicators still render. Add a small inline note "AI narrative disabled by admin."
+### Database — one new RPC
 
-### 7. Error suggestion
-- `ErrorConsole.tsx`: hide the "Get AI suggestion" button when `error_suggestion_enabled === false`. The existing "Add note" flow remains as the manual path.
+`get_upload_tracking_error_stats(p_start_date timestamptz, p_end_date timestamptz)` returns one row:
 
-### 8. Invoice parsing
-- `InvoiceUploadDialog.tsx`: when `invoice_parsing_enabled === false`, hide the upload-PDF tab/button and surface only the existing `ManualInvoiceEntryDialog` path (link/button "Enter invoice manually").
+| Column | Meaning |
+|---|---|
+| `completed_checklists` | # completed checklist runs for audits uploaded in the range |
+| `total_questions` | `completed_checklists × 14` |
+| `failed_questions` | total `"no"` answers across those checklists |
+| `first_audits_total` | # audits in range whose earliest checklist is completed |
+| `first_audits_failed` | of those, how many had `has_failures = true` |
 
-## Files
+Server-side scoping reuses the existing `user_can_view_audit_for_tracking()` helper so the same role rules apply automatically. Admin / Super-Admin / QA bypass the scope check.
+
+A **lifetime** variant (no date params) is exposed by calling the same RPC with `p_start_date = '1970-01-01'` and `p_end_date = NOW() + 1 day` — no second function needed.
+
+### Frontend changes
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<new>.sql` | Create `ai_feature_settings` table + RLS + seed |
-| `src/hooks/useAiSettings.ts` | New hook |
-| `src/pages/AISettings.tsx` | New super admin page |
-| `src/App.tsx` | Add `/admin/ai-settings` route |
-| `src/components/UserMenu.tsx` | Add "AI Settings" link for super_admin |
-| `src/components/review/PDFAnalysisPanel.tsx` | Respect toggle; auto-edit mode when off |
-| `src/pages/ReviewInterview.tsx` | Treat all analyze-pdf failures as `aiUnavailable` |
-| `src/components/review/AudioPlayerPanel.tsx` | Skip AI summary when off; manual notes textarea |
-| `src/pages/AgentFraudAnalysis.tsx` | Disable AI query when off |
-| `src/pages/ErrorConsole.tsx` | Hide AI suggestion button when off |
-| `src/components/payment/InvoiceUploadDialog.tsx` | Hide PDF parsing when off |
+| `supabase/migrations/<new>.sql` | Create `get_upload_tracking_error_stats` RPC |
+| `src/hooks/useUploadTracking.ts` | Add `useUploadTrackingErrorStats(startDate, endDate)` hook |
+| `src/pages/UploadTrackingDashboard.tsx` | Render two new cards in the Summary Cards grid (above the sticky period selector), wired to the active `startDate`/`endDate` |
+| `src/components/home/AdminDashboard.tsx` | Add a compact "Quality Signals" card row showing lifetime Errors Detected (`X / Y · Z%`) + First-Audit Failures (`X / Y · Z%`), with "View details →" linking to `/upload-tracking` |
 
-## Out of scope
-- Per-user toggles (this is global super-admin only).
-- Edge function code changes — toggles are enforced client-side; functions remain untouched.
-- Removing existing graceful 402/429 handling in edge functions (still useful as a backstop).
+### Card visual
+
+```
+┌───────────────────────────┐  ┌───────────────────────────┐
+│ Errors Detected           │  │ First-Audit Failures      │
+│ 783 / 7,782               │  │ 412 / 940                 │
+│ 10.1% of checks failed    │  │ 43.8% failed first try    │
+└───────────────────────────┘  └───────────────────────────┘
+```
+
+### Out of scope
+
+- No changes to the existing volume cards, charts, period table, or interview breakdown table.
+- No per-question breakdown here (already covered by Checklist Performance Analytics).
+- Re-audit failures are not counted toward "first-audit failures" by design.
 
