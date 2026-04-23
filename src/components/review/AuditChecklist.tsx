@@ -359,11 +359,27 @@ export const AuditChecklist = ({
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
       // Save progress
-      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      const hasAnyFailures = updatedItems.some(isFailureAnswer);
       saveProgress(updatedItems, nextIndex, false, hasAnyFailures, "");
+      // If the new question is Q14 and we are auto-flagged, pre-select "yes"
+      const nextItem = updatedItems[nextIndex];
+      if (nextItem && nextItem.id === 14 && !nextItem.answer && autoFlagged) {
+        const flagged = [...updatedItems];
+        flagged[nextIndex] = { ...nextItem, answer: "yes" };
+        setItems(flagged);
+        setShowCommentBox(true);
+        setCurrentComment("");
+        saveProgress(flagged, nextIndex, false, true, "");
+      } else if (isFailureAnswer(nextItem)) {
+        setShowCommentBox(true);
+        setCurrentComment(nextItem.comment || "");
+      } else {
+        setShowCommentBox(false);
+        setCurrentComment("");
+      }
     } else {
       // Checklist complete - compile results
-      const failedItems = updatedItems.filter((item) => item.answer === "no");
+      const failedItems = updatedItems.filter(isFailureAnswer);
       const hasFailures = failedItems.length > 0;
 
       let failureComments = "";
