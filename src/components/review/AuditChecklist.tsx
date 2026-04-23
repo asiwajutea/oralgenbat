@@ -424,7 +424,7 @@ export const AuditChecklist = ({
       case "C":
         return "bg-amber-500/10 text-amber-600 border-amber-500/20";
       case "D":
-        return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";  // kept for backwards compat
+        return "bg-red-500/10 text-red-600 border-red-500/20";
       default:
         return "bg-muted text-muted-foreground";
     }
@@ -433,9 +433,23 @@ export const AuditChecklist = ({
   // State for reviewing individual questions after completion
   const [reviewingIndex, setReviewingIndex] = useState<number | null>(null);
 
+  // When auto-flagged and the user lands on Q14 with no saved answer, default to "yes"
+  useEffect(() => {
+    if (!autoFlagged) return;
+    const cur = items[currentIndex];
+    if (cur && cur.id === 14 && !cur.answer) {
+      const updated = [...items];
+      updated[currentIndex] = { ...cur, answer: "yes" };
+      setItems(updated);
+      setShowCommentBox(true);
+      saveProgress(updated, currentIndex, false, true, "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFlagged, currentIndex]);
+
   if (isCompleted) {
-    const failedItems = items.filter((item) => item.answer === "no");
-    const passedItems = items.filter((item) => item.answer === "yes");
+    const failedItems = items.filter(isFailureAnswer);
+    const passedItems = items.filter((item) => item.answer && !isFailureAnswer(item));
 
     // If reviewing a specific question
     if (reviewingIndex !== null) {
