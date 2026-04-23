@@ -490,17 +490,21 @@ export const AuditChecklist = ({
             
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Answer:</span>
-              {reviewItem.answer === "yes" ? (
-                <Badge className="bg-green-100 text-green-700">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Yes
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <XCircle className="h-3 w-3 mr-1" />
-                  No
-                </Badge>
-              )}
+              {(() => {
+                const failed = isFailureAnswer(reviewItem);
+                const label = reviewItem.answer === "yes" ? "Yes" : "No";
+                return failed ? (
+                  <Badge variant="destructive">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    {label}
+                  </Badge>
+                ) : (
+                  <Badge className="bg-green-100 text-green-700">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    {label}
+                  </Badge>
+                );
+              })()}
             </div>
             
             {reviewItem.comment && (
