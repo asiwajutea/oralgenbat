@@ -22,6 +22,7 @@ import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
 import { ReviewTimer } from "@/components/review/ReviewTimer";
+import { FraudFlagBanner, FraudCollision } from "@/components/review/FraudFlagBanner";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
@@ -279,6 +280,28 @@ const ReviewInterview = () => {
     enabled: !!audit?.file_name,
     staleTime: 5 * 60 * 1000,
     retry: 1
+  });
+
+  // Auto fraud detection: same agent + same day + within 30 min
+  const { data: fraudFlag, isLoading: fraudFlagLoading } = useQuery({
+    queryKey: ["fraud-flag", auditId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("detect_interview_fraud_flag" as any, {
+        p_audit_id: auditId,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row as {
+        is_flagged: boolean;
+        interviewer_code: string | null;
+        contractor_id: string | null;
+        interview_date: string | null;
+        interview_time: string | null;
+        collisions: FraudCollision[];
+      } | null;
+    },
+    enabled: !!auditId && !!metadata,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Awaiting review count query (for completion page)
@@ -697,8 +720,13 @@ const ReviewInterview = () => {
         {/* Sticky Section - Checklist & Actions only */}
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background border-b border-border shadow-sm">
           {/* Audit Checklist for auditors on unreviewed interviews - only show if metadata is uploaded */}
-          {isAuditor && !isReviewed && metadata && <div className="p-3 sm:p-4" ref={checklistRef}>
-              <AuditChecklist auditId={auditId!} interviewId={audit.file_name} initialProgress={checklistProgress} isSticky={isSticky} onComplete={(hasFailures, comments) => {
+          {isAuditor && !isReviewed && metadata && <div className="p-3 sm:p-4 space-y-3" ref={checklistRef}>
+              <FraudFlagBanner
+                isFlagged={!!fraudFlag?.is_flagged}
+                collisions={fraudFlag?.collisions ?? []}
+                isLoading={fraudFlagLoading}
+              />
+              <AuditChecklist auditId={auditId!} interviewId={audit.file_name} initialProgress={checklistProgress} isSticky={isSticky} autoFlagged={!!fraudFlag?.is_flagged} fraudCollisionCount={fraudFlag?.collisions?.length ?? 0} onComplete={(hasFailures, comments) => {
                 setChecklistCompleted(true);
                 setHasChecklistFailures(hasFailures);
                 setChecklistComments(comments);

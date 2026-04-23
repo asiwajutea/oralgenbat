@@ -119,6 +119,14 @@ const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
     categoryLabel: "Media Verification",
     question: "Can the Field Agent and interviewee be clearly and easily heard in both the Family Story and Pedigree audio files?",
   },
+  // D. Fraud Check (auditor judgement)
+  {
+    id: 14,
+    category: "D",
+    categoryLabel: "Fraud Check",
+    question:
+      "Do you believe this interview contains any fraud or padding (e.g. rushed entry, duplicated content, suspicious timing)?",
+  },
 ];
 
 interface AuditChecklistProps {
@@ -130,6 +138,8 @@ interface AuditChecklistProps {
   isSticky?: boolean;
   onAbandonReview?: () => void;
   isAbandoning?: boolean;
+  autoFlagged?: boolean;
+  fraudCollisionCount?: number;
 }
 
 export const AuditChecklist = ({ 
@@ -141,11 +151,21 @@ export const AuditChecklist = ({
   isSticky = false,
   onAbandonReview,
   isAbandoning = false,
+  autoFlagged = false,
+  fraudCollisionCount = 0,
 }: AuditChecklistProps) => {
   const { user } = useAuth();
   const [items, setItems] = useState<ChecklistItem[]>(() => {
     if (initialProgress?.items && Array.isArray(initialProgress.items)) {
-      return initialProgress.items as ChecklistItem[];
+      const saved = initialProgress.items as ChecklistItem[];
+      // Merge any newly added checklist items (e.g. Q14) that aren't in saved progress
+      const savedIds = new Set(saved.map((s) => s.id));
+      const merged = [...saved];
+      CHECKLIST_ITEMS.forEach((tpl) => {
+        if (!savedIds.has(tpl.id)) merged.push({ ...tpl });
+      });
+      merged.sort((a, b) => a.id - b.id);
+      return merged;
     }
     return CHECKLIST_ITEMS.map((item) => ({ ...item }));
   });
@@ -154,10 +174,25 @@ export const AuditChecklist = ({
   const [showCommentBox, setShowCommentBox] = useState(false);
   const [isOpen, setIsOpen] = useState(!isCompleted);
 
+  // Q14 has inverted semantics: "yes" means fraud suspected = failure
+  const isFailureAnswer = (item: ChecklistItem | undefined) => {
+    if (!item || !item.answer) return false;
+    if (item.id === 14) return item.answer === "yes";
+    return item.answer === "no";
+  };
+  const failureTriggerAnswer = (id: number): "yes" | "no" => (id === 14 ? "yes" : "no");
+
   // Initialize from saved progress when it loads
   useEffect(() => {
     if (initialProgress?.items && Array.isArray(initialProgress.items)) {
-      setItems(initialProgress.items as ChecklistItem[]);
+      const saved = initialProgress.items as ChecklistItem[];
+      const savedIds = new Set(saved.map((s) => s.id));
+      const merged = [...saved];
+      CHECKLIST_ITEMS.forEach((tpl) => {
+        if (!savedIds.has(tpl.id)) merged.push({ ...tpl });
+      });
+      merged.sort((a, b) => a.id - b.id);
+      setItems(merged);
       setCurrentIndex(initialProgress.current_index);
       
       // If already completed, call onComplete and collapse
@@ -225,7 +260,7 @@ export const AuditChecklist = ({
     if (currentIndex > 0) {
       // Save any pending comment before navigating
       let updatedItems = [...items];
-      if (currentComment.trim() && currentItem.answer === "no") {
+      if (currentComment.trim() && isFailureAnswer(currentItem)) {
         updatedItems[currentIndex] = {
           ...updatedItems[currentIndex],
           comment: currentComment.trim(),
@@ -236,9 +271,9 @@ export const AuditChecklist = ({
       const prevIndex = currentIndex - 1;
       setCurrentIndex(prevIndex);
       
-      // Restore comment for the previous question if it exists and was answered "no"
+      // Restore comment for the previous question if it was a failure answer
       const prevItem = updatedItems[prevIndex];
-      if (prevItem.answer === "no") {
+      if (isFailureAnswer(prevItem)) {
         setShowCommentBox(true);
         setCurrentComment(prevItem.comment || "");
       } else {
@@ -247,7 +282,7 @@ export const AuditChecklist = ({
       }
       
       // Save progress when going back
-      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      const hasAnyFailures = updatedItems.some(isFailureAnswer);
       saveProgress(updatedItems, prevIndex, false, hasAnyFailures, "");
     }
   };
@@ -262,7 +297,7 @@ export const AuditChecklist = ({
     if (items[currentIndex + 1]?.answer) {
       // Save any pending comment before navigating
       let updatedItems = [...items];
-      if (currentComment.trim() && currentItem.answer === "no") {
+      if (currentComment.trim() && isFailureAnswer(currentItem)) {
         updatedItems[currentIndex] = {
           ...updatedItems[currentIndex],
           comment: currentComment.trim(),
@@ -273,9 +308,9 @@ export const AuditChecklist = ({
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
       
-      // Restore comment for the next question if it exists and was answered "no"
+      // Restore comment for the next question if it was a failure answer
       const nextItem = updatedItems[nextIndex];
-      if (nextItem.answer === "no") {
+      if (isFailureAnswer(nextItem)) {
         setShowCommentBox(true);
         setCurrentComment(nextItem.comment || "");
       } else {
@@ -284,7 +319,7 @@ export const AuditChecklist = ({
       }
       
       // Save progress when going forward
-      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      const hasAnyFailures = updatedItems.some(isFailureAnswer);
       saveProgress(updatedItems, nextIndex, false, hasAnyFailures, "");
     }
   };
@@ -294,7 +329,7 @@ export const AuditChecklist = ({
     updatedItems[currentIndex] = { ...updatedItems[currentIndex], answer };
     setItems(updatedItems);
 
-    if (answer === "no") {
+    if (answer === failureTriggerAnswer(currentItem.id)) {
       setShowCommentBox(true);
       // Save progress with current state
       saveProgress(updatedItems, currentIndex, false, true, "");
@@ -324,11 +359,27 @@ export const AuditChecklist = ({
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
       // Save progress
-      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      const hasAnyFailures = updatedItems.some(isFailureAnswer);
       saveProgress(updatedItems, nextIndex, false, hasAnyFailures, "");
+      // If the new question is Q14 and we are auto-flagged, pre-select "yes"
+      const nextItem = updatedItems[nextIndex];
+      if (nextItem && nextItem.id === 14 && !nextItem.answer && autoFlagged) {
+        const flagged = [...updatedItems];
+        flagged[nextIndex] = { ...nextItem, answer: "yes" };
+        setItems(flagged);
+        setShowCommentBox(true);
+        setCurrentComment("");
+        saveProgress(flagged, nextIndex, false, true, "");
+      } else if (isFailureAnswer(nextItem)) {
+        setShowCommentBox(true);
+        setCurrentComment(nextItem.comment || "");
+      } else {
+        setShowCommentBox(false);
+        setCurrentComment("");
+      }
     } else {
       // Checklist complete - compile results
-      const failedItems = updatedItems.filter((item) => item.answer === "no");
+      const failedItems = updatedItems.filter(isFailureAnswer);
       const hasFailures = failedItems.length > 0;
 
       let failureComments = "";
@@ -373,7 +424,7 @@ export const AuditChecklist = ({
       case "C":
         return "bg-amber-500/10 text-amber-600 border-amber-500/20";
       case "D":
-        return "bg-emerald-500/10 text-emerald-600 border-emerald-500/20";  // kept for backwards compat
+        return "bg-red-500/10 text-red-600 border-red-500/20";
       default:
         return "bg-muted text-muted-foreground";
     }
@@ -382,9 +433,23 @@ export const AuditChecklist = ({
   // State for reviewing individual questions after completion
   const [reviewingIndex, setReviewingIndex] = useState<number | null>(null);
 
+  // When auto-flagged and the user lands on Q14 with no saved answer, default to "yes"
+  useEffect(() => {
+    if (!autoFlagged) return;
+    const cur = items[currentIndex];
+    if (cur && cur.id === 14 && !cur.answer) {
+      const updated = [...items];
+      updated[currentIndex] = { ...cur, answer: "yes" };
+      setItems(updated);
+      setShowCommentBox(true);
+      saveProgress(updated, currentIndex, false, true, "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFlagged, currentIndex]);
+
   if (isCompleted) {
-    const failedItems = items.filter((item) => item.answer === "no");
-    const passedItems = items.filter((item) => item.answer === "yes");
+    const failedItems = items.filter(isFailureAnswer);
+    const passedItems = items.filter((item) => item.answer && !isFailureAnswer(item));
 
     // If reviewing a specific question
     if (reviewingIndex !== null) {
@@ -425,17 +490,21 @@ export const AuditChecklist = ({
             
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Answer:</span>
-              {reviewItem.answer === "yes" ? (
-                <Badge className="bg-green-100 text-green-700">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Yes
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <XCircle className="h-3 w-3 mr-1" />
-                  No
-                </Badge>
-              )}
+              {(() => {
+                const failed = isFailureAnswer(reviewItem);
+                const label = reviewItem.answer === "yes" ? "Yes" : "No";
+                return failed ? (
+                  <Badge variant="destructive">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    {label}
+                  </Badge>
+                ) : (
+                  <Badge className="bg-green-100 text-green-700">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    {label}
+                  </Badge>
+                );
+              })()}
             </div>
             
             {reviewItem.comment && (
@@ -690,7 +759,13 @@ export const AuditChecklist = ({
             {showCommentBox && (
               <div className="space-y-3 pt-3 border-t border-border">
                 <Textarea
-                  placeholder="Describe what was wrong (optional)..."
+                  placeholder={
+                    currentItem.id === 14 && autoFlagged
+                      ? `Describe the suspected fraud (auto-flagged due to ${fraudCollisionCount} close interview${fraudCollisionCount === 1 ? "" : "s"})...`
+                      : currentItem.id === 14
+                        ? "Describe the suspected fraud (optional)..."
+                        : "Describe what was wrong (optional)..."
+                  }
                   value={currentComment}
                   onChange={(e) => setCurrentComment(e.target.value)}
                   className="min-h-[80px] text-sm"
