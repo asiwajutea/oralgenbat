@@ -151,11 +151,21 @@ export const AuditChecklist = ({
   isSticky = false,
   onAbandonReview,
   isAbandoning = false,
+  autoFlagged = false,
+  fraudCollisionCount = 0,
 }: AuditChecklistProps) => {
   const { user } = useAuth();
   const [items, setItems] = useState<ChecklistItem[]>(() => {
     if (initialProgress?.items && Array.isArray(initialProgress.items)) {
-      return initialProgress.items as ChecklistItem[];
+      const saved = initialProgress.items as ChecklistItem[];
+      // Merge any newly added checklist items (e.g. Q14) that aren't in saved progress
+      const savedIds = new Set(saved.map((s) => s.id));
+      const merged = [...saved];
+      CHECKLIST_ITEMS.forEach((tpl) => {
+        if (!savedIds.has(tpl.id)) merged.push({ ...tpl });
+      });
+      merged.sort((a, b) => a.id - b.id);
+      return merged;
     }
     return CHECKLIST_ITEMS.map((item) => ({ ...item }));
   });
