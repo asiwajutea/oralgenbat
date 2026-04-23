@@ -759,7 +759,13 @@ export const AuditChecklist = ({
             {showCommentBox && (
               <div className="space-y-3 pt-3 border-t border-border">
                 <Textarea
-                  placeholder="Describe what was wrong (optional)..."
+                  placeholder={
+                    currentItem.id === 14 && autoFlagged
+                      ? `Describe the suspected fraud (auto-flagged due to ${fraudCollisionCount} close interview${fraudCollisionCount === 1 ? "" : "s"})...`
+                      : currentItem.id === 14
+                        ? "Describe the suspected fraud (optional)..."
+                        : "Describe what was wrong (optional)..."
+                  }
                   value={currentComment}
                   onChange={(e) => setCurrentComment(e.target.value)}
                   className="min-h-[80px] text-sm"
