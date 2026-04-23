@@ -174,10 +174,25 @@ export const AuditChecklist = ({
   const [showCommentBox, setShowCommentBox] = useState(false);
   const [isOpen, setIsOpen] = useState(!isCompleted);
 
+  // Q14 has inverted semantics: "yes" means fraud suspected = failure
+  const isFailureAnswer = (item: ChecklistItem | undefined) => {
+    if (!item || !item.answer) return false;
+    if (item.id === 14) return item.answer === "yes";
+    return item.answer === "no";
+  };
+  const failureTriggerAnswer = (id: number): "yes" | "no" => (id === 14 ? "yes" : "no");
+
   // Initialize from saved progress when it loads
   useEffect(() => {
     if (initialProgress?.items && Array.isArray(initialProgress.items)) {
-      setItems(initialProgress.items as ChecklistItem[]);
+      const saved = initialProgress.items as ChecklistItem[];
+      const savedIds = new Set(saved.map((s) => s.id));
+      const merged = [...saved];
+      CHECKLIST_ITEMS.forEach((tpl) => {
+        if (!savedIds.has(tpl.id)) merged.push({ ...tpl });
+      });
+      merged.sort((a, b) => a.id - b.id);
+      setItems(merged);
       setCurrentIndex(initialProgress.current_index);
       
       // If already completed, call onComplete and collapse
