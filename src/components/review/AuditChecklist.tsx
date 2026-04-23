@@ -260,7 +260,7 @@ export const AuditChecklist = ({
     if (currentIndex > 0) {
       // Save any pending comment before navigating
       let updatedItems = [...items];
-      if (currentComment.trim() && currentItem.answer === "no") {
+      if (currentComment.trim() && isFailureAnswer(currentItem)) {
         updatedItems[currentIndex] = {
           ...updatedItems[currentIndex],
           comment: currentComment.trim(),
@@ -271,9 +271,9 @@ export const AuditChecklist = ({
       const prevIndex = currentIndex - 1;
       setCurrentIndex(prevIndex);
       
-      // Restore comment for the previous question if it exists and was answered "no"
+      // Restore comment for the previous question if it was a failure answer
       const prevItem = updatedItems[prevIndex];
-      if (prevItem.answer === "no") {
+      if (isFailureAnswer(prevItem)) {
         setShowCommentBox(true);
         setCurrentComment(prevItem.comment || "");
       } else {
@@ -282,7 +282,7 @@ export const AuditChecklist = ({
       }
       
       // Save progress when going back
-      const hasAnyFailures = updatedItems.some((item) => item.answer === "no");
+      const hasAnyFailures = updatedItems.some(isFailureAnswer);
       saveProgress(updatedItems, prevIndex, false, hasAnyFailures, "");
     }
   };
