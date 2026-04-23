@@ -282,6 +282,28 @@ const ReviewInterview = () => {
     retry: 1
   });
 
+  // Auto fraud detection: same agent + same day + within 30 min
+  const { data: fraudFlag, isLoading: fraudFlagLoading } = useQuery({
+    queryKey: ["fraud-flag", auditId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("detect_interview_fraud_flag" as any, {
+        p_audit_id: auditId,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row as {
+        is_flagged: boolean;
+        interviewer_code: string | null;
+        contractor_id: string | null;
+        interview_date: string | null;
+        interview_time: string | null;
+        collisions: FraudCollision[];
+      } | null;
+    },
+    enabled: !!auditId && !!metadata,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // Awaiting review count query (for completion page)
   const { data: awaitingCount } = useQuery({
     queryKey: ["awaiting-review-count"],
