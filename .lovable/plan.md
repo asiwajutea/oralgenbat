@@ -1,65 +1,81 @@
 
 
-## Add Error Detection Stats — Upload Tracking + Admin/Super-Admin Home
+## Auto Fraud Detection on Review Page + Q14 Fraud Question
 
-### What you'll see
+### Goal
+When an auditor opens an interview, automatically check whether the same agent conducted **another interview within 30 minutes on the same day** and:
+1. Show a clear fraud-flag banner on the review page listing the colliding interview(s).
+2. Add a **new checklist question (Q14)**: *"Do you believe this interview contains any fraud or padding?"* — defaults to **Yes** when auto-flagged, otherwise **No**. Auditor can override either way.
+3. Existing **Pass-with-Override** flow already lets auditors pass flagged interviews — no change needed there.
 
-Two new metric cards on the **Upload Tracking** page (and a compact summary on the **Admin / Super Admin home dashboard**):
+### Detection logic (server-side RPC)
 
-1. **Errors Detected** — total checklist questions answered "No" across all completed reviews in the selected period, shown as `X / Y` (where Y = total questions answered = interviews-reviewed × 14). Includes a percentage.
-2. **First-Audit Failures** — number of interviews whose **first** completed audit checklist had at least one failure, plus a percentage of all first audits in the period.
-
-Both cards respect:
-- The active **date range** selector at the top of Upload Tracking (7d / 13w / 365d / Custom).
-- The same **role-based scoping** already used by the Upload Tracking page (so Field Managers, Contractors, Sub-Contractors only see their own scope; Admin/Super-Admin/QA see everything).
-
-The Admin/Super-Admin home dashboard gets a smaller "Errors Detected (lifetime)" + "First-Audit Failures (lifetime)" block, with a link → Upload Tracking for the date-filtered breakdown.
-
-### Definitions
-
-- **Error** = one checklist question answered `"no"` (per `audit_checklist_progress.items[].answer`).
-- **Maximum possible errors** = `completed_checklists_in_period × 14`.
-- **First-audit failure** = an interview whose earliest `is_completed = true` checklist row has `has_failures = true`. Re-audits are excluded from the denominator and numerator.
-- Date filter is applied to the **audit's `uploaded_at`** (matches the rest of the Upload Tracking page) — not to when the review happened — so the cards stay in sync with the volume cards above them.
-
-### Database — one new RPC
-
-`get_upload_tracking_error_stats(p_start_date timestamptz, p_end_date timestamptz)` returns one row:
+New RPC `detect_interview_fraud_flag(p_audit_id uuid)` returns:
 
 | Column | Meaning |
 |---|---|
-| `completed_checklists` | # completed checklist runs for audits uploaded in the range |
-| `total_questions` | `completed_checklists × 14` |
-| `failed_questions` | total `"no"` answers across those checklists |
-| `first_audits_total` | # audits in range whose earliest checklist is completed |
-| `first_audits_failed` | of those, how many had `has_failures = true` |
+| `is_flagged` | true when ≥1 collision found |
+| `interviewer_code` | parsed from current interview |
+| `interview_date` | parsed |
+| `interview_time` | parsed |
+| `collisions` | jsonb array `[{audit_id, file_name, total_names, interview_time, minutes_apart}]` |
 
-Server-side scoping reuses the existing `user_can_view_audit_for_tracking()` helper so the same role rules apply automatically. Admin / Super-Admin / QA bypass the scope check.
+Steps inside the RPC:
+1. Look up current `interview_metadata` for `p_audit_id` to get `contractor_id`, `interviewer_code`, `interview_date`, `interview_time`.
+2. If any of those is missing, fall back to parsing `audits.file_name` with the standard `NGXX_XXXX_YYYYMMDD_HHMM` pattern.
+3. Find other rows in `interview_metadata` where:
+   - same `interviewer_code` (and same `contractor_id` when available)
+   - same `interview_date`
+   - `audit_id <> p_audit_id`
+   - `ABS(EXTRACT(EPOCH FROM (interview_time - p_time))) <= 1800` (30 minutes)
+   - audit not in `burn_queue` (active)
+4. Return collisions joined with `audits.file_name` and `interview_metadata.total_names`, ordered by minutes_apart ascending.
 
-A **lifetime** variant (no date params) is exposed by calling the same RPC with `p_start_date = '1970-01-01'` and `p_end_date = NOW() + 1 day` — no second function needed.
+`SECURITY DEFINER`, `STABLE`, granted to `authenticated`.
 
-### Frontend changes
+> Note: this is a read-only flag. We will **not** mutate audit status here. The "automatic flag" is computed on the fly each time the page loads, so it stays correct as new uploads arrive.
+
+### Frontend
+
+**New component** `src/components/review/FraudFlagBanner.tsx`
+- Red/amber `Alert` with `AlertTriangle` icon.
+- Header: *"Possible fraud detected — same agent ran another interview within 30 minutes."*
+- Lists each collision: file name (linked to that review page), total names, interview time, minutes apart.
+- Hidden when `is_flagged === false` or query is loading.
+
+**`ReviewInterview.tsx`**
+- New `useQuery` keyed on `["fraud-flag", auditId]` calling the RPC. `enabled` only after `metadata` is loaded. Stale time 5 min.
+- Render `<FraudFlagBanner …/>` directly above the `AuditChecklist` inside the sticky section (so auditors see it even after scrolling).
+- Pass `autoFlagged: boolean` into `<AuditChecklist />` so it knows to default Q14 to "yes".
+
+**`AuditChecklist.tsx`**
+- Add Q14 to `CHECKLIST_ITEMS`:
+  ```
+  { id: 14, category: "D", categoryLabel: "Fraud Check",
+    question: "Do you believe this interview contains any fraud or padding (e.g. rushed entry, duplicated content, suspicious timing)?" }
+  ```
+  Note: question semantics are **inverted** — "Yes" = fraud suspected (a failure), "No" = clean.
+- Treat Q14 as a failure when answer === `"yes"` (opposite of the other questions). Update the failure-counting logic in `proceedToNext`/summary to special-case `id === 14`.
+- New prop `autoFlagged?: boolean`. When true and Q14 is reached for the first time (no saved answer yet), pre-select `"yes"` and **auto-open the comment box** with placeholder *"Describe the suspected fraud (auto-flagged due to <N> close interview(s))…"*. Auditor can switch the radio to "No" to override.
+- The comment captured here flows into the existing `failure_comments` block under section **D: Fraud Check**, which already feeds `ReviewActions` → `pass_override_reason` / fail comment formatting.
+- Add category "D" color to `getCategoryColor` (red): `bg-red-500/10 text-red-600 border-red-500/20` (replaces the current emerald "D" placeholder).
+
+**`ReviewActions.tsx`** — no logic changes. Existing pass / fail / pass-with-override paths already consume `checklistComments` and `hasChecklistFailures`, so a Q14 "yes" naturally:
+- counts as a checklist failure → same prompt to fail or pass-with-override
+- the failure comment lists Q14 in section D so the override reason captures it
+
+### Files
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<new>.sql` | Create `get_upload_tracking_error_stats` RPC |
-| `src/hooks/useUploadTracking.ts` | Add `useUploadTrackingErrorStats(startDate, endDate)` hook |
-| `src/pages/UploadTrackingDashboard.tsx` | Render two new cards in the Summary Cards grid (above the sticky period selector), wired to the active `startDate`/`endDate` |
-| `src/components/home/AdminDashboard.tsx` | Add a compact "Quality Signals" card row showing lifetime Errors Detected (`X / Y · Z%`) + First-Audit Failures (`X / Y · Z%`), with "View details →" linking to `/upload-tracking` |
-
-### Card visual
-
-```
-┌───────────────────────────┐  ┌───────────────────────────┐
-│ Errors Detected           │  │ First-Audit Failures      │
-│ 783 / 7,782               │  │ 412 / 940                 │
-│ 10.1% of checks failed    │  │ 43.8% failed first try    │
-└───────────────────────────┘  └───────────────────────────┘
-```
+| `supabase/migrations/<new>.sql` | Create `detect_interview_fraud_flag` RPC + grant |
+| `src/components/review/FraudFlagBanner.tsx` | New banner component |
+| `src/pages/ReviewInterview.tsx` | Fetch fraud flag, render banner above checklist, pass `autoFlagged` |
+| `src/components/review/AuditChecklist.tsx` | Add Q14, inverted-answer handling, `autoFlagged` default, category D color |
 
 ### Out of scope
-
-- No changes to the existing volume cards, charts, period table, or interview breakdown table.
-- No per-question breakdown here (already covered by Checklist Performance Analytics).
-- Re-audit failures are not counted toward "first-audit failures" by design.
+- No persistent "fraud_flagged" column on `audits` (flag is recomputed live).
+- No cross-day or cross-agent detection; collisions limited to same agent + same date + ≤30 min.
+- No changes to existing fraud analytics dashboards or AI fraud narrative — those keep working as-is.
+- No edits to `ReviewActions.tsx` — existing pass/fail/override flow already covers flagged interviews.
 
