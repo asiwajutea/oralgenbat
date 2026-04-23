@@ -720,8 +720,13 @@ const ReviewInterview = () => {
         {/* Sticky Section - Checklist & Actions only */}
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background border-b border-border shadow-sm">
           {/* Audit Checklist for auditors on unreviewed interviews - only show if metadata is uploaded */}
-          {isAuditor && !isReviewed && metadata && <div className="p-3 sm:p-4" ref={checklistRef}>
-              <AuditChecklist auditId={auditId!} interviewId={audit.file_name} initialProgress={checklistProgress} isSticky={isSticky} onComplete={(hasFailures, comments) => {
+          {isAuditor && !isReviewed && metadata && <div className="p-3 sm:p-4 space-y-3" ref={checklistRef}>
+              <FraudFlagBanner
+                isFlagged={!!fraudFlag?.is_flagged}
+                collisions={fraudFlag?.collisions ?? []}
+                isLoading={fraudFlagLoading}
+              />
+              <AuditChecklist auditId={auditId!} interviewId={audit.file_name} initialProgress={checklistProgress} isSticky={isSticky} autoFlagged={!!fraudFlag?.is_flagged} fraudCollisionCount={fraudFlag?.collisions?.length ?? 0} onComplete={(hasFailures, comments) => {
                 setChecklistCompleted(true);
                 setHasChecklistFailures(hasFailures);
                 setChecklistComments(comments);
