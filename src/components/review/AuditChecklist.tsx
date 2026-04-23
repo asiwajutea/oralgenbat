@@ -119,6 +119,14 @@ const CHECKLIST_ITEMS: Omit<ChecklistItem, "answer" | "comment">[] = [
     categoryLabel: "Media Verification",
     question: "Can the Field Agent and interviewee be clearly and easily heard in both the Family Story and Pedigree audio files?",
   },
+  // D. Fraud Check (auditor judgement)
+  {
+    id: 14,
+    category: "D",
+    categoryLabel: "Fraud Check",
+    question:
+      "Do you believe this interview contains any fraud or padding (e.g. rushed entry, duplicated content, suspicious timing)?",
+  },
 ];
 
 interface AuditChecklistProps {
@@ -130,6 +138,8 @@ interface AuditChecklistProps {
   isSticky?: boolean;
   onAbandonReview?: () => void;
   isAbandoning?: boolean;
+  autoFlagged?: boolean;
+  fraudCollisionCount?: number;
 }
 
 export const AuditChecklist = ({ 
