@@ -1650,6 +1650,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      detect_interview_fraud_flag: {
+        Args: { p_audit_id: string }
+        Returns: {
+          collisions: Json
+          contractor_id: string
+          interview_date: string
+          interview_time: string
+          interviewer_code: string
+          is_flagged: boolean
+        }[]
+      }
       get_cleanable_audit_files: {
         Args: { contractor_filter?: string; min_age_days?: number }
         Returns: {
