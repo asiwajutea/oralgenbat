@@ -207,17 +207,17 @@ const AuditorDashboard = () => {
                 <Clock className="h-5 w-5 text-blue-600" />
                 <CardTitle className="text-lg">In Progress</CardTitle>
               </div>
-              <Badge className="bg-blue-100 text-blue-700">{inProgressInterviews.length}</Badge>
+              <Badge className="bg-blue-100 text-blue-700">{visibleInProgress.length}</Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {inProgressInterviews.length === 0 ? (
+            {visibleInProgress.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-6">
                 No interviews currently in progress
               </p>
             ) : (
               <div className="space-y-2">
-                {inProgressInterviews.map((interview) => (
+                {visibleInProgress.map((interview) => (
                   <div 
                     key={interview.id}
                     className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
