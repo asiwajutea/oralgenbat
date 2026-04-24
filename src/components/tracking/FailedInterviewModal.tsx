@@ -486,6 +486,7 @@ export function FailedInterviewModal({
                         _submitted_by: session.user.id,
                         _submitted_by_role: userRole as any,
                         _comment: submissionComment,
+                        _re_audit_note: reauditNote.trim() || null,
                       });
                       if (error) throw error;
                       queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
