@@ -22,6 +22,20 @@ const AuditorDashboard = () => {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
 
+  // Burned audit IDs to exclude from lists/counts
+  const { data: burnedIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b: any) => b.audit_id);
+    },
+    staleTime: 60_000,
+  });
+  const burnedSet = new Set(burnedIds);
+
   // Get interviews approved in last 24 hours - auditor's own
   const { data: recentlyApproved = [] } = useQuery({
     queryKey: ["auditor-approved-24h", profile?.full_name],
@@ -87,23 +101,29 @@ const AuditorDashboard = () => {
   });
 
   // Get pending interviews count
-  const { data: pendingCount = 0 } = useQuery({
-    queryKey: ["auditor-pending-count", profile?.active_contractor_id || profile?.contractor_id],
+  const { data: pendingIds = [] } = useQuery({
+    queryKey: ["auditor-pending-ids", profile?.active_contractor_id || profile?.contractor_id],
     queryFn: async () => {
       const contractorId = profile?.active_contractor_id || profile?.contractor_id;
-      if (!contractorId) return 0;
-      
-      const { count, error } = await supabase
+      if (!contractorId) return [] as { id: string }[];
+
+      const { data, error } = await supabase
         .from("audits")
-        .select("id", { count: "exact", head: true })
+        .select("id")
         .eq("status", "Pending")
         .ilike("file_name", `${contractorId}%`);
-      
+
       if (error) throw error;
-      return count || 0;
+      return data || [];
     },
     enabled: !!profile,
   });
+
+  // Apply burn-queue filtering to all derived lists
+  const visibleRecentlyApproved = recentlyApproved.filter((a: any) => !burnedSet.has(a.id));
+  const visibleInProgress = inProgressInterviews.filter((a: any) => !burnedSet.has(a.id));
+  const visibleReAudits = reAuditInterviews.filter((a: any) => !burnedSet.has(a.id));
+  const pendingCount = pendingIds.filter((a: any) => !burnedSet.has(a.id)).length;
 
   return (
     <div className="space-y-6">
@@ -149,17 +169,17 @@ const AuditorDashboard = () => {
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
                 <CardTitle className="text-lg">Approved (24h)</CardTitle>
               </div>
-              <Badge className="bg-green-100 text-green-700">{recentlyApproved.length}</Badge>
+              <Badge className="bg-green-100 text-green-700">{visibleRecentlyApproved.length}</Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {recentlyApproved.length === 0 ? (
+            {visibleRecentlyApproved.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-6">
                 No interviews approved in the last 24 hours
               </p>
             ) : (
               <div className="space-y-2">
-                {recentlyApproved.map((interview) => (
+                {visibleRecentlyApproved.map((interview) => (
                   <div 
                     key={interview.id}
                     className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
@@ -187,17 +207,17 @@ const AuditorDashboard = () => {
                 <Clock className="h-5 w-5 text-blue-600" />
                 <CardTitle className="text-lg">In Progress</CardTitle>
               </div>
-              <Badge className="bg-blue-100 text-blue-700">{inProgressInterviews.length}</Badge>
+              <Badge className="bg-blue-100 text-blue-700">{visibleInProgress.length}</Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {inProgressInterviews.length === 0 ? (
+            {visibleInProgress.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-6">
                 No interviews currently in progress
               </p>
             ) : (
               <div className="space-y-2">
-                {inProgressInterviews.map((interview) => (
+                {visibleInProgress.map((interview) => (
                   <div 
                     key={interview.id}
                     className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
@@ -223,17 +243,17 @@ const AuditorDashboard = () => {
                 <AlertTriangle className="h-5 w-5 text-orange-600" />
                 <CardTitle className="text-lg">Re-Audits</CardTitle>
               </div>
-              <Badge className="bg-orange-100 text-orange-700">{reAuditInterviews.length}</Badge>
+              <Badge className="bg-orange-100 text-orange-700">{visibleReAudits.length}</Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {reAuditInterviews.length === 0 ? (
+            {visibleReAudits.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-6">
                 No pending re-audits
               </p>
             ) : (
               <div className="space-y-2">
-                {reAuditInterviews.map((interview) => (
+                {visibleReAudits.map((interview) => (
                   <div 
                     key={interview.id}
                     className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"

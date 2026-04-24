@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,17 +50,35 @@ const ContractorDashboard = () => {
     enabled: !!effectiveContractorId,
   });
 
+  // Fetch burned audit IDs to exclude from lists/stats
+  const { data: burnedAuditIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b: any) => b.audit_id);
+    },
+    staleTime: 60_000,
+  });
+  const burnedSet = useMemo(() => new Set(burnedAuditIds), [burnedAuditIds]);
+  const visibleAudits = useMemo(
+    () => (audits || []).filter((a: any) => !burnedSet.has(a.id)),
+    [audits, burnedSet]
+  );
+
   // Calculate statistics
   const stats = {
-    total: audits?.length || 0,
-    awaiting: audits?.filter((a) => a.status === "Awaiting Review").length || 0,
-    reaudit: audits?.filter((a) => a.is_re_audit && a.status === "Awaiting Review").length || 0,
-    passed: audits?.filter((a) => a.status === "Audit Passed").length || 0,
-    failed: audits?.filter((a) => a.status === "Audit Failed").length || 0,
+    total: visibleAudits.length,
+    awaiting: visibleAudits.filter((a) => a.status === "Awaiting Review").length,
+    reaudit: visibleAudits.filter((a) => a.is_re_audit && a.status === "Awaiting Review").length,
+    passed: visibleAudits.filter((a) => a.status === "Audit Passed").length,
+    failed: visibleAudits.filter((a) => a.status === "Audit Failed").length,
   };
 
   // Get field manager breakdown
-  const fieldManagerStats = audits?.reduce((acc: any, audit: any) => {
+  const fieldManagerStats = visibleAudits.reduce((acc: any, audit: any) => {
     const fm = audit.interview_metadata?.field_manager || "Unknown";
     if (!acc[fm]) {
       acc[fm] = { total: 0, passed: 0, failed: 0 };
@@ -225,7 +243,7 @@ const ContractorDashboard = () => {
                   </div>
                 ) : (
                   <AuditTable
-                    audits={audits || []}
+                    audits={visibleAudits}
                     onReaudit={handleReaudit}
                     showReauditAction
                     hideReviewButton

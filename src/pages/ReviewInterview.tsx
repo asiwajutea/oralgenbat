@@ -23,6 +23,7 @@ import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
 import { ReviewTimer } from "@/components/review/ReviewTimer";
 import { FraudFlagBanner, FraudCollision } from "@/components/review/FraudFlagBanner";
+import { ReAuditNoteBanner } from "@/components/review/ReAuditNoteBanner";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
@@ -721,6 +722,9 @@ const ReviewInterview = () => {
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background border-b border-border shadow-sm">
           {/* Audit Checklist for auditors on unreviewed interviews - only show if metadata is uploaded */}
           {isAuditor && !isReviewed && metadata && <div className="p-3 sm:p-4 space-y-3" ref={checklistRef}>
+              {audit?.is_re_audit && audit?.status === 'Awaiting Review' && (
+                <ReAuditNoteBanner auditId={auditId!} />
+              )}
               <FraudFlagBanner
                 isFlagged={!!fraudFlag?.is_flagged}
                 collisions={fraudFlag?.collisions ?? []}

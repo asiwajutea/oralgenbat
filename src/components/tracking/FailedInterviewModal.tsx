@@ -58,6 +58,7 @@ export function FailedInterviewModal({
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [comment, setComment] = useState("");
+  const [reauditNote, setReauditNote] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ label: string; progress: number } | null>(null);
 
@@ -273,6 +274,7 @@ export function FailedInterviewModal({
     setPdfFile(null);
     setZipFile(null);
     setComment("");
+    setReauditNote("");
     setUploadStatus(null);
   };
 
@@ -464,6 +466,20 @@ export function FailedInterviewModal({
           </div>
 
           {/* Actions */}
+          <div className="space-y-2 pt-2">
+            <Label htmlFor="reaudit-note">Special note for the reviewer (optional)</Label>
+            <Textarea
+              id="reaudit-note"
+              placeholder="Leave a brief instruction for the next auditor (e.g. 'Please re-check section B carefully')."
+              value={reauditNote}
+              onChange={(e) => setReauditNote(e.target.value)}
+              maxLength={1000}
+              rows={2}
+            />
+            <p className="text-xs text-muted-foreground">
+              Shown to the reviewer as a closable banner. Includes your name.
+            </p>
+          </div>
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
               Cancel
@@ -484,6 +500,7 @@ export function FailedInterviewModal({
                         _submitted_by: session.user.id,
                         _submitted_by_role: userRole as any,
                         _comment: submissionComment,
+                        _re_audit_note: reauditNote.trim() || null,
                       });
                       if (error) throw error;
                       queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });

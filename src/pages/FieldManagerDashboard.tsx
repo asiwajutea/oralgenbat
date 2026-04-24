@@ -79,6 +79,20 @@ const FieldManagerDashboard = () => {
     fmOverrides.filter((o: any) => o.field_manager_id !== session?.user.id).map((o: any) => o.audit_id)
   );
 
+  // Fetch burned audit IDs to exclude from lists/stats
+  const { data: burnedAuditIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b: any) => b.audit_id);
+    },
+    staleTime: 60_000,
+  });
+  const burnedSet = useMemo(() => new Set(burnedAuditIds), [burnedAuditIds]);
+
   // Fetch audits for team members
   const { data: teamAudits, isLoading: loadingAudits, refetch } = useQuery({
     queryKey: ["field-manager-audits", teamMembers, filters],
@@ -161,8 +175,8 @@ const FieldManagerDashboard = () => {
     // Add override audits that aren't already in base
     const baseIds = new Set(base.map((a: any) => a.id));
     const extras = overrideAudits.filter((a: any) => !baseIds.has(a.id));
-    return [...base, ...extras];
-  }, [teamAudits, overrideAudits, overridesAwayFromMe]);
+    return [...base, ...extras].filter((a: any) => !burnedSet.has(a.id));
+  }, [teamAudits, overrideAudits, overridesAwayFromMe, burnedSet]);
 
   // Calculate statistics from team data
   const stats = {

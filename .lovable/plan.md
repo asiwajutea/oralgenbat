@@ -1,81 +1,92 @@
+## 1. Exclude burned interviews from role dashboards ("My Dashboard")
 
+The dedicated role dashboards still pull burned audits because they don't subtract `burn_queue.audit_id` (where `restored_at IS NULL`). Apply the same filter pattern used elsewhere.
 
-## Auto Fraud Detection on Review Page + Q14 Fraud Question
+Files to update:
 
-### Goal
-When an auditor opens an interview, automatically check whether the same agent conducted **another interview within 30 minutes on the same day** and:
-1. Show a clear fraud-flag banner on the review page listing the colliding interview(s).
-2. Add a **new checklist question (Q14)**: *"Do you believe this interview contains any fraud or padding?"* — defaults to **Yes** when auto-flagged, otherwise **No**. Auditor can override either way.
-3. Existing **Pass-with-Override** flow already lets auditors pass flagged interviews — no change needed there.
-
-### Detection logic (server-side RPC)
-
-New RPC `detect_interview_fraud_flag(p_audit_id uuid)` returns:
-
-| Column | Meaning |
+| File | Where |
 |---|---|
-| `is_flagged` | true when ≥1 collision found |
-| `interviewer_code` | parsed from current interview |
-| `interview_date` | parsed |
-| `interview_time` | parsed |
-| `collisions` | jsonb array `[{audit_id, file_name, total_names, interview_time, minutes_apart}]` |
+| `src/pages/FieldManagerDashboard.tsx` | `teamAudits` query + `overrideAudits` query |
+| `src/pages/ContractorDashboard.tsx` | `audits` query |
+| `src/components/home/AuditorDashboard.tsx` | `recentlyApproved`, `inProgressInterviews`, `reAuditInterviews`, `pendingCount` |
+| `src/components/home/ContractorDashboard.tsx` | `recentActivity` query (and any other audit list/stat) |
 
-Steps inside the RPC:
-1. Look up current `interview_metadata` for `p_audit_id` to get `contractor_id`, `interviewer_code`, `interview_date`, `interview_time`.
-2. If any of those is missing, fall back to parsing `audits.file_name` with the standard `NGXX_XXXX_YYYYMMDD_HHMM` pattern.
-3. Find other rows in `interview_metadata` where:
-   - same `interviewer_code` (and same `contractor_id` when available)
-   - same `interview_date`
-   - `audit_id <> p_audit_id`
-   - `ABS(EXTRACT(EPOCH FROM (interview_time - p_time))) <= 1800` (30 minutes)
-   - audit not in `burn_queue` (active)
-4. Return collisions joined with `audits.file_name` and `interview_metadata.total_names`, ordered by minutes_apart ascending.
+Approach: add a small shared `useQuery` keyed `["burned-audit-ids"]` that selects `audit_id` from `burn_queue` where `restored_at IS NULL` (60s `staleTime`), then filter the audit lists client-side. For `pendingCount` (currently a `head/count` query), switch to a list-of-ids query and compute `.length` after filtering.
 
-`SECURITY DEFINER`, `STABLE`, granted to `authenticated`.
+Stats derived from `audits` follow automatically because they read the filtered list.
 
-> Note: this is a read-only flag. We will **not** mutate audit status here. The "automatic flag" is computed on the fly each time the page loads, so it stays correct as new uploads arrive.
+Out of scope: `Index.tsx`, `InterviewTracking.tsx`, `AdminDashboard`, `QAManagerDashboard`, `DataEntryClerkDashboard` already exclude burns via direct queries or RPCs.
 
-### Frontend
+## 2. Restore-from-burn dialog: optional re-audit + special note
 
-**New component** `src/components/review/FraudFlagBanner.tsx`
-- Red/amber `Alert` with `AlertTriangle` icon.
-- Header: *"Possible fraud detected — same agent ran another interview within 30 minutes."*
-- Lists each collision: file name (linked to that review page), total names, interview time, minutes apart.
-- Hidden when `is_flagged === false` or query is loading.
+### Database
 
-**`ReviewInterview.tsx`**
-- New `useQuery` keyed on `["fraud-flag", auditId]` calling the RPC. `enabled` only after `metadata` is loaded. Stale time 5 min.
-- Render `<FraudFlagBanner …/>` directly above the `AuditChecklist` inside the sticky section (so auditors see it even after scrolling).
-- Pass `autoFlagged: boolean` into `<AuditChecklist />` so it knows to default Q14 to "yes".
+Add a column `re_audit_note text` (nullable) to `re_audit_submissions` so a one-shot instruction from the requester travels with the submission and is shown on the review page.
 
-**`AuditChecklist.tsx`**
-- Add Q14 to `CHECKLIST_ITEMS`:
-  ```
-  { id: 14, category: "D", categoryLabel: "Fraud Check",
-    question: "Do you believe this interview contains any fraud or padding (e.g. rushed entry, duplicated content, suspicious timing)?" }
-  ```
-  Note: question semantics are **inverted** — "Yes" = fraud suspected (a failure), "No" = clean.
-- Treat Q14 as a failure when answer === `"yes"` (opposite of the other questions). Update the failure-counting logic in `proceedToNext`/summary to special-case `id === 14`.
-- New prop `autoFlagged?: boolean`. When true and Q14 is reached for the first time (no saved answer yet), pre-select `"yes"` and **auto-open the comment box** with placeholder *"Describe the suspected fraud (auto-flagged due to <N> close interview(s))…"*. Auditor can switch the radio to "No" to override.
-- The comment captured here flows into the existing `failure_comments` block under section **D: Fraud Check**, which already feeds `ReviewActions` → `pass_override_reason` / fail comment formatting.
-- Add category "D" color to `getCategoryColor` (red): `bg-red-500/10 text-red-600 border-red-500/20` (replaces the current emerald "D" placeholder).
+> Why a separate column: `submission_comment` is already used for the technical/audit message in re-audit history; the note is a distinct human instruction to the reviewer. Keeping them separate avoids overloading meaning and keeps existing UI intact.
 
-**`ReviewActions.tsx`** — no logic changes. Existing pass / fail / pass-with-override paths already consume `checklistComments` and `hasChecklistFailures`, so a Q14 "yes" naturally:
-- counts as a checklist failure → same prompt to fail or pass-with-override
-- the failure comment lists Q14 in section D so the override reason captures it
+Update the existing RPC `mark_audit_for_reaudit` to accept an optional `_re_audit_note text DEFAULT NULL` and store it on the inserted row. Backwards-compatible with all existing callers.
 
-### Files
+### `BurnQueue.tsx` — restore dialog
+
+Replace the inline single-row restore with a new local dialog (`RestoreFromBurnDialog`).
+
+Dialog UI:
+- Title: *Restore Interview*
+- Radio group:
+  - **Just restore** (default) — interview returns to its prior status, no re-audit triggered.
+  - **Restore and send for re-audit immediately** — interview is restored, status flipped to `Awaiting Review`, `is_re_audit = true`, `re_audit_count` incremented, prior checklist progress wiped (mirrors the failed-modal flow).
+- Optional textarea **Special note for the reviewer (optional)** (max 1,000 chars). Subtitle: *"Visible to the next auditor as a closable banner. Includes your name."*
+- Submit / Cancel.
+
+Behaviour on submit:
+- **Just restore**: existing path — `update burn_queue set restored_at, restored_by`. If a note was entered, also `insert into re_audit_submissions (audit_id, submitted_by, submitted_by_role, replaced_pdf:false, replaced_zip:false, submission_comment: 'Restored from burn queue (no re-audit requested)', re_audit_note: <note>)` so the note is captured and shown to whoever opens the interview next.
+- **Restore + re-audit**: do the burn-queue update, then call `supabase.rpc('mark_audit_for_reaudit', { _audit_id, _submitted_by, _submitted_by_role, _comment: 'Restored from burn queue and resubmitted for re-audit', _re_audit_note: <note or null> })`. Additionally `delete from audit_checklist_progress where audit_id = _audit_id` to mirror the failed-modal flow.
+
+Bulk restore:
+- Stays simple ("Just restore" semantics, no per-row note prompt) — avoids a confusing dialog flow per row. We update the bulk button tooltip to make this clear: *"Bulk restore returns interviews to their previous status. Use the row action for per-interview options."*
+
+### `FailedInterviewModal.tsx` — "Request Re-Audit (No Correction)" path
+
+Today the button passes a hard-coded `submissionComment` into `mark_audit_for_reaudit`. Add a special-note flow:
+
+- Add a small textarea **Special note for the reviewer (optional)** directly above the existing "Request Re-Audit (No Correction)" button. Use a new state `reauditNote` (the existing `comment` field is the regular submission comment for the file-replace path and stays unchanged).
+- When the no-correction button is clicked, call the RPC with `_re_audit_note: reauditNote || null`. Existing comment composition is preserved.
+- The regular file-replace submission keeps using `submission_comment` only and is unaffected.
+
+## 3. Special-note banner on the review page
+
+Add `src/components/review/ReAuditNoteBanner.tsx`:
+
+- Props: `auditId: string`.
+- Internally: `useQuery` keyed `["reaudit-note", auditId]` selects the most recent `re_audit_submissions` row where `audit_id = auditId AND re_audit_note IS NOT NULL` ordered by `submitted_at desc limit 1`. Separately fetches the submitter's `full_name` from `profiles`.
+- Renders a dismissible amber `Alert` (`AlertCircle` icon) with:
+  - Title: *Special note from {full_name}* (fallback: "team member")
+  - Body: the note, `whitespace-pre-wrap`
+  - Subtle timestamp ("Sent <relative>")
+  - **X** close button. Dismissal stored per-submission in `sessionStorage` (`reaudit-note-dismissed:{submission_id}`) so reopening the page later re-shows the note — we don't want the auditor to lose it permanently.
+- Self-hides when no note exists, so it's a no-op for normal re-audits.
+
+Integration in `src/pages/ReviewInterview.tsx`:
+- Render `<ReAuditNoteBanner auditId={auditId!} />` only when `audit?.is_re_audit === true && audit?.status === 'Awaiting Review'`. Place it directly above `<FraudFlagBanner …/>` inside the sticky checklist section so the auditor sees it before starting the checklist.
+
+## Files
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<new>.sql` | Create `detect_interview_fraud_flag` RPC + grant |
-| `src/components/review/FraudFlagBanner.tsx` | New banner component |
-| `src/pages/ReviewInterview.tsx` | Fetch fraud flag, render banner above checklist, pass `autoFlagged` |
-| `src/components/review/AuditChecklist.tsx` | Add Q14, inverted-answer handling, `autoFlagged` default, category D color |
+| `supabase/migrations/<new>.sql` | Add `re_audit_note text` to `re_audit_submissions`; replace `mark_audit_for_reaudit` to accept `_re_audit_note text default null` |
+| `src/pages/BurnQueue.tsx` | New restore dialog (single-row), bulk restore unchanged |
+| `src/components/tracking/FailedInterviewModal.tsx` | Add `reauditNote` state + textarea above no-correction button; pass to RPC |
+| `src/pages/FieldManagerDashboard.tsx` | Filter out burned audits |
+| `src/pages/ContractorDashboard.tsx` | Filter out burned audits |
+| `src/components/home/AuditorDashboard.tsx` | Filter out burned audits in all four queries |
+| `src/components/home/ContractorDashboard.tsx` | Filter `recentActivity` against burns |
+| `src/components/review/ReAuditNoteBanner.tsx` | New banner component |
+| `src/pages/ReviewInterview.tsx` | Mount the banner above `FraudFlagBanner` for re-audit awaiting review |
 
-### Out of scope
-- No persistent "fraud_flagged" column on `audits` (flag is recomputed live).
-- No cross-day or cross-agent detection; collisions limited to same agent + same date + ≤30 min.
-- No changes to existing fraud analytics dashboards or AI fraud narrative — those keep working as-is.
-- No edits to `ReviewActions.tsx` — existing pass/fail/override flow already covers flagged interviews.
+## Out of scope
 
+- Per-row note prompt inside bulk restore — bulk stays as a simple "just restore" action.
+- Permanently dismissing notes — we use session storage so the next visit re-shows it.
+- Extra notification channel when a special note is added — covered by the existing re-audit notification flow.
+- Changes to `ReAuditDialog.tsx` (contractor file-replace dialog) — not in user's request.
