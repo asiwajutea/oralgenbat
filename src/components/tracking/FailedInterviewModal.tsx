@@ -274,6 +274,7 @@ export function FailedInterviewModal({
     setPdfFile(null);
     setZipFile(null);
     setComment("");
+    setReauditNote("");
     setUploadStatus(null);
   };
 
