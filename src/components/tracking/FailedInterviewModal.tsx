@@ -58,6 +58,7 @@ export function FailedInterviewModal({
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [comment, setComment] = useState("");
+  const [reauditNote, setReauditNote] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ label: string; progress: number } | null>(null);
 
