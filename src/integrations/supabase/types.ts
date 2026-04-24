@@ -1189,6 +1189,7 @@ export type Database = {
           id: string
           new_pdf_url: string | null
           new_zip_url: string | null
+          re_audit_note: string | null
           replaced_pdf: boolean | null
           replaced_zip: boolean | null
           submission_comment: string | null
@@ -1201,6 +1202,7 @@ export type Database = {
           id?: string
           new_pdf_url?: string | null
           new_zip_url?: string | null
+          re_audit_note?: string | null
           replaced_pdf?: boolean | null
           replaced_zip?: boolean | null
           submission_comment?: string | null
@@ -1213,6 +1215,7 @@ export type Database = {
           id?: string
           new_pdf_url?: string | null
           new_zip_url?: string | null
+          re_audit_note?: string | null
           replaced_pdf?: boolean | null
           replaced_zip?: boolean | null
           submission_comment?: string | null
@@ -1820,17 +1823,30 @@ export type Database = {
         Returns: boolean
       }
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
-      mark_audit_for_reaudit: {
-        Args: {
-          _audit_id: string
-          _comment: string
-          _new_pdf_url?: string
-          _new_zip_url?: string
-          _submitted_by: string
-          _submitted_by_role: Database["public"]["Enums"]["app_role"]
-        }
-        Returns: undefined
-      }
+      mark_audit_for_reaudit:
+        | {
+            Args: {
+              _audit_id: string
+              _comment: string
+              _new_pdf_url?: string
+              _new_zip_url?: string
+              _submitted_by: string
+              _submitted_by_role: Database["public"]["Enums"]["app_role"]
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              _audit_id: string
+              _comment: string
+              _new_pdf_url?: string
+              _new_zip_url?: string
+              _re_audit_note?: string
+              _submitted_by: string
+              _submitted_by_role: Database["public"]["Enums"]["app_role"]
+            }
+            Returns: undefined
+          }
       user_can_view_audit_for_tracking: {
         Args: { _audit_id: string; _file_name: string; _user_id: string }
         Returns: boolean
