@@ -46,6 +46,8 @@ import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
 
 const BURN_DAYS = 90;
 
