@@ -544,11 +544,11 @@ const ContractorDashboard = () => {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <CardContent>
-              {recentActivity.length === 0 ? (
+              {visibleRecentActivity.length === 0 ? (
                 <p className="text-muted-foreground text-center py-4">No recent activity.</p>
               ) : (
                 <div className="space-y-3">
-                  {recentActivity.map((audit) => (
+                  {visibleRecentActivity.map((audit) => (
                     <div key={audit.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                       <div className="flex items-center gap-3">
                         {audit.status === "Audit Passed" ? (
