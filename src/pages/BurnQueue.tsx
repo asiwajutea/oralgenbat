@@ -48,6 +48,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const BURN_DAYS = 90;
 
@@ -902,7 +910,7 @@ const BurnQueue = () => {
                                 {isAdmin && !isRestored && (
                                   <>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => restoreMutation.mutate(item.id)}>
+                                    <DropdownMenuItem onClick={() => openRestoreDialog({ id: item.id, audit_id: item.audit_id, file_name: item.file_name })}>
                                       <RotateCcw className="h-4 w-4 mr-2" /> Restore
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
@@ -987,6 +995,66 @@ const BurnQueue = () => {
           interview={selectedFailedInterview}
         />
       )}
+
+      {/* Restore Dialog */}
+      <Dialog open={!!restoreTarget} onOpenChange={(o) => !o && !restoreSubmitting && setRestoreTarget(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Restore Interview</DialogTitle>
+            <DialogDescription>
+              {restoreTarget?.file_name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <RadioGroup value={restoreMode} onValueChange={(v) => setRestoreMode(v as "just" | "reaudit")}>
+              <div className="flex items-start space-x-2 rounded-md border p-3">
+                <RadioGroupItem value="just" id="restore-just" className="mt-1" />
+                <div className="flex-1">
+                  <Label htmlFor="restore-just" className="cursor-pointer font-medium">Just restore</Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Interview returns to its previous status. No re-audit triggered.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-2 rounded-md border p-3">
+                <RadioGroupItem value="reaudit" id="restore-reaudit" className="mt-1" />
+                <div className="flex-1">
+                  <Label htmlFor="restore-reaudit" className="cursor-pointer font-medium">Restore and send for re-audit immediately</Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Status flips to "Awaiting Review", checklist progress is cleared, and re-audit count increments.
+                  </p>
+                </div>
+              </div>
+            </RadioGroup>
+
+            <div className="space-y-2">
+              <Label htmlFor="restore-note">Special note for the reviewer (optional)</Label>
+              <Textarea
+                id="restore-note"
+                value={restoreNote}
+                onChange={(e) => setRestoreNote(e.target.value.slice(0, 1000))}
+                placeholder="e.g. Please pay close attention to the audio quality on segment 2…"
+                rows={4}
+                disabled={restoreSubmitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                Visible to the next auditor as a closable banner. Includes your name. {restoreNote.length}/1000
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRestoreTarget(null)} disabled={restoreSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={submitRestoreDialog} disabled={restoreSubmitting}>
+              {restoreSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {restoreMode === "reaudit" ? "Restore & Re-audit" : "Restore"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
