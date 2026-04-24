@@ -243,17 +243,17 @@ const AuditorDashboard = () => {
                 <AlertTriangle className="h-5 w-5 text-orange-600" />
                 <CardTitle className="text-lg">Re-Audits</CardTitle>
               </div>
-              <Badge className="bg-orange-100 text-orange-700">{reAuditInterviews.length}</Badge>
+              <Badge className="bg-orange-100 text-orange-700">{visibleReAudits.length}</Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {reAuditInterviews.length === 0 ? (
+            {visibleReAudits.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-6">
                 No pending re-audits
               </p>
             ) : (
               <div className="space-y-2">
-                {reAuditInterviews.map((interview) => (
+                {visibleReAudits.map((interview) => (
                   <div 
                     key={interview.id}
                     className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
