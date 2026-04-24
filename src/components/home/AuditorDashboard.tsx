@@ -22,6 +22,20 @@ const AuditorDashboard = () => {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
 
+  // Burned audit IDs to exclude from lists/counts
+  const { data: burnedIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b: any) => b.audit_id);
+    },
+    staleTime: 60_000,
+  });
+  const burnedSet = new Set(burnedIds);
+
   // Get interviews approved in last 24 hours - auditor's own
   const { data: recentlyApproved = [] } = useQuery({
     queryKey: ["auditor-approved-24h", profile?.full_name],
