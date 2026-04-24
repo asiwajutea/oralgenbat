@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,6 +49,24 @@ const ContractorDashboard = () => {
     },
     enabled: !!effectiveContractorId,
   });
+
+  // Fetch burned audit IDs to exclude from lists/stats
+  const { data: burnedAuditIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b: any) => b.audit_id);
+    },
+    staleTime: 60_000,
+  });
+  const burnedSet = useMemo(() => new Set(burnedAuditIds), [burnedAuditIds]);
+  const visibleAudits = useMemo(
+    () => (audits || []).filter((a: any) => !burnedSet.has(a.id)),
+    [audits, burnedSet]
+  );
 
   // Calculate statistics
   const stats = {
