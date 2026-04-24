@@ -88,6 +88,70 @@ const BurnQueue = () => {
     has_pdf: boolean;
   } | null>(null);
 
+  // Restore dialog state
+  const [restoreTarget, setRestoreTarget] = useState<{ id: string; audit_id: string; file_name: string } | null>(null);
+  const [restoreMode, setRestoreMode] = useState<"just" | "reaudit">("just");
+  const [restoreNote, setRestoreNote] = useState("");
+  const [restoreSubmitting, setRestoreSubmitting] = useState(false);
+
+  const openRestoreDialog = (item: { id: string; audit_id: string; file_name: string }) => {
+    setRestoreTarget(item);
+    setRestoreMode("just");
+    setRestoreNote("");
+  };
+
+  const userRoleValue = userRole as any;
+
+  const submitRestoreDialog = async () => {
+    if (!restoreTarget || !user?.id) return;
+    setRestoreSubmitting(true);
+    try {
+      const { error: rErr } = await supabase
+        .from("burn_queue")
+        .update({ restored_at: new Date().toISOString(), restored_by: user.id })
+        .eq("id", restoreTarget.id);
+      if (rErr) throw rErr;
+
+      const note = restoreNote.trim() || null;
+
+      if (restoreMode === "reaudit") {
+        const { error: rpcErr } = await supabase.rpc("mark_audit_for_reaudit", {
+          _audit_id: restoreTarget.audit_id,
+          _submitted_by: user.id,
+          _submitted_by_role: userRoleValue,
+          _comment: "Restored from burn queue and resubmitted for re-audit",
+          _re_audit_note: note,
+        });
+        if (rpcErr) throw rpcErr;
+        await supabase.from("audit_checklist_progress").delete().eq("audit_id", restoreTarget.audit_id);
+      } else if (note) {
+        await supabase.from("re_audit_submissions").insert({
+          audit_id: restoreTarget.audit_id,
+          submitted_by: user.id,
+          submitted_by_role: userRoleValue,
+          submission_comment: "Restored from burn queue (no re-audit requested)",
+          replaced_pdf: false,
+          replaced_zip: false,
+          re_audit_note: note,
+        });
+      }
+
+      toast({
+        title: restoreMode === "reaudit" ? "Restored and sent for re-audit" : "Interview restored",
+      });
+      queryClient.invalidateQueries({ queryKey: ["burn-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["burn-queue-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      queryClient.invalidateQueries({ queryKey: ["burned-audit-ids"] });
+      setRestoreTarget(null);
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast({ title: "Failed to restore", description: err.message, variant: "destructive" });
+    } finally {
+      setRestoreSubmitting(false);
+    }
+  };
+
   // Fetch burn queue items
   const { data, isLoading } = useQuery({
     queryKey: ["burn-queue", currentPage, itemsPerPage, searchTerm, statusFilter, sortField, sortOrder],
