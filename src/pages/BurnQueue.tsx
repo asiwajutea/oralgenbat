@@ -796,7 +796,7 @@ const BurnQueue = () => {
                             <div><p className="text-muted-foreground text-xs">Reason</p><p className="font-medium">{item.reason}</p></div>
                             {isAdmin && !isRestored && (
                               <div className="flex gap-2 pt-2">
-                                <Button size="sm" variant="outline" onClick={() => restoreMutation.mutate(item.id)} disabled={restoreMutation.isPending} className="gap-1">
+                                <Button size="sm" variant="outline" onClick={() => openRestoreDialog({ id: item.id, audit_id: item.audit_id, file_name: item.file_name })} className="gap-1">
                                   <RotateCcw className="h-3 w-3" /> Restore
                                 </Button>
                                 <Button size="sm" variant="outline" onClick={() => handleViewDetails(item)} className="gap-1">
