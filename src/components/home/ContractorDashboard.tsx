@@ -223,13 +223,28 @@ const ContractorDashboard = () => {
         .ilike("file_name", `${contractorId}%`)
         .not("reviewed_at", "is", null)
         .order("reviewed_at", { ascending: false })
-        .limit(5);
+        .limit(20);
       
       if (error) throw error;
       return data || [];
     },
     enabled: !!contractorId,
   });
+
+  // Burned audit IDs to exclude
+  const { data: burnedIds = [] } = useQuery({
+    queryKey: ["burned-audit-ids"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      return (data || []).map((b: any) => b.audit_id);
+    },
+    staleTime: 60_000,
+  });
+  const burnedSet = new Set(burnedIds);
+  const visibleRecentActivity = recentActivity.filter((a: any) => !burnedSet.has(a.id)).slice(0, 5);
 
   const passRate = stats && (stats.passed + stats.failed) > 0
     ? Math.round((stats.passed / (stats.passed + stats.failed)) * 100)
