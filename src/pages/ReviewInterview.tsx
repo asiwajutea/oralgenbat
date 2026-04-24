@@ -23,6 +23,7 @@ import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
 import { ReviewTimer } from "@/components/review/ReviewTimer";
 import { FraudFlagBanner, FraudCollision } from "@/components/review/FraudFlagBanner";
+import { ReAuditNoteBanner } from "@/components/review/ReAuditNoteBanner";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { useInterviewLock } from "@/hooks/useInterviewLock";
