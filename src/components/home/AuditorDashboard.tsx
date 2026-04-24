@@ -169,17 +169,17 @@ const AuditorDashboard = () => {
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
                 <CardTitle className="text-lg">Approved (24h)</CardTitle>
               </div>
-              <Badge className="bg-green-100 text-green-700">{recentlyApproved.length}</Badge>
+              <Badge className="bg-green-100 text-green-700">{visibleRecentlyApproved.length}</Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {recentlyApproved.length === 0 ? (
+            {visibleRecentlyApproved.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-6">
                 No interviews approved in the last 24 hours
               </p>
             ) : (
               <div className="space-y-2">
-                {recentlyApproved.map((interview) => (
+                {visibleRecentlyApproved.map((interview) => (
                   <div 
                     key={interview.id}
                     className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
