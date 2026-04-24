@@ -70,15 +70,15 @@ const ContractorDashboard = () => {
 
   // Calculate statistics
   const stats = {
-    total: audits?.length || 0,
-    awaiting: audits?.filter((a) => a.status === "Awaiting Review").length || 0,
-    reaudit: audits?.filter((a) => a.is_re_audit && a.status === "Awaiting Review").length || 0,
-    passed: audits?.filter((a) => a.status === "Audit Passed").length || 0,
-    failed: audits?.filter((a) => a.status === "Audit Failed").length || 0,
+    total: visibleAudits.length,
+    awaiting: visibleAudits.filter((a) => a.status === "Awaiting Review").length,
+    reaudit: visibleAudits.filter((a) => a.is_re_audit && a.status === "Awaiting Review").length,
+    passed: visibleAudits.filter((a) => a.status === "Audit Passed").length,
+    failed: visibleAudits.filter((a) => a.status === "Audit Failed").length,
   };
 
   // Get field manager breakdown
-  const fieldManagerStats = audits?.reduce((acc: any, audit: any) => {
+  const fieldManagerStats = visibleAudits.reduce((acc: any, audit: any) => {
     const fm = audit.interview_metadata?.field_manager || "Unknown";
     if (!acc[fm]) {
       acc[fm] = { total: 0, passed: 0, failed: 0 };
