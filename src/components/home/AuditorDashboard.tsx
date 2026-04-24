@@ -101,23 +101,29 @@ const AuditorDashboard = () => {
   });
 
   // Get pending interviews count
-  const { data: pendingCount = 0 } = useQuery({
-    queryKey: ["auditor-pending-count", profile?.active_contractor_id || profile?.contractor_id],
+  const { data: pendingIds = [] } = useQuery({
+    queryKey: ["auditor-pending-ids", profile?.active_contractor_id || profile?.contractor_id],
     queryFn: async () => {
       const contractorId = profile?.active_contractor_id || profile?.contractor_id;
-      if (!contractorId) return 0;
-      
-      const { count, error } = await supabase
+      if (!contractorId) return [] as { id: string }[];
+
+      const { data, error } = await supabase
         .from("audits")
-        .select("id", { count: "exact", head: true })
+        .select("id")
         .eq("status", "Pending")
         .ilike("file_name", `${contractorId}%`);
-      
+
       if (error) throw error;
-      return count || 0;
+      return data || [];
     },
     enabled: !!profile,
   });
+
+  // Apply burn-queue filtering to all derived lists
+  const visibleRecentlyApproved = recentlyApproved.filter((a: any) => !burnedSet.has(a.id));
+  const visibleInProgress = inProgressInterviews.filter((a: any) => !burnedSet.has(a.id));
+  const visibleReAudits = reAuditInterviews.filter((a: any) => !burnedSet.has(a.id));
+  const pendingCount = pendingIds.filter((a: any) => !burnedSet.has(a.id)).length;
 
   return (
     <div className="space-y-6">
