@@ -243,7 +243,7 @@ const ContractorDashboard = () => {
                   </div>
                 ) : (
                   <AuditTable
-                    audits={audits || []}
+                    audits={visibleAudits}
                     onReaudit={handleReaudit}
                     showReauditAction
                     hideReviewButton
