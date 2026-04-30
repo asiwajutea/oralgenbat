@@ -139,9 +139,17 @@ export const ReassignFMDialog = ({
 
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1.5">New Field Manager</p>
-            <Select value={selectedFmId} onValueChange={setSelectedFmId}>
+            <Select value={selectedFmId} onValueChange={setSelectedFmId} disabled={fmLoading}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a field manager" />
+                <SelectValue placeholder={
+                  fmLoading
+                    ? "Loading field managers…"
+                    : fmError
+                      ? "Failed to load — click to retry"
+                      : fieldManagers.filter(fm => fm.id !== currentFmId).length === 0
+                        ? "No other field managers available"
+                        : "Select a field manager"
+                } />
               </SelectTrigger>
               <SelectContent>
                 {fieldManagers
@@ -151,6 +159,15 @@ export const ReassignFMDialog = ({
                   ))}
               </SelectContent>
             </Select>
+            {fmError && (
+              <button
+                type="button"
+                onClick={() => refetchFms()}
+                className="text-xs text-primary mt-1 underline"
+              >
+                Retry loading field managers
+              </button>
+            )}
           </div>
         </div>
 
