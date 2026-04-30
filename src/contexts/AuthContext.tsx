@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { logActivity, ActivityActions } from "@/lib/activityLog";
 
 interface Profile {
   id: string;
@@ -123,6 +124,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (!initialLoadDone.current) {
             setLoading(true);
           }
+          // Log explicit sign-in events (skip token refreshes)
+          if (event === "SIGNED_IN" && !initialLoadDone.current) {
+            setTimeout(() => {
+              logActivity({
+                action_type: ActivityActions.Login,
+                entity_type: "auth",
+                entity_id: session.user.id,
+                entity_label: session.user.email ?? null,
+                description: "Signed in",
+              });
+            }, 0);
+          }
           // CRITICAL: Defer Supabase calls to prevent auth deadlock
           setTimeout(() => {
             fetchProfileAndRole(session.user.id);
@@ -166,6 +179,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async (reason?: string) => {
+    // Log activity BEFORE clearing the session so RLS still allows the insert.
+    if (user?.id) {
+      try {
+        await logActivity({
+          action_type: ActivityActions.Logout,
+          entity_type: "auth",
+          entity_id: user.id,
+          entity_label: user.email ?? null,
+          description: reason ? `Signed out (${reason})` : "Signed out",
+          metadata: reason ? { reason } : {},
+        });
+      } catch {
+        // ignore
+      }
+    }
     // Update presence to offline before signing out
     if (user?.id) {
       try {

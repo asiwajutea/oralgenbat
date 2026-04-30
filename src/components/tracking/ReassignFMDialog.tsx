@@ -48,17 +48,12 @@ export const ReassignFMDialog = ({
   const { data: fieldManagers = [] } = useQuery({
     queryKey: ["canonical-field-managers"],
     queryFn: async () => {
-      const { data: fmRoles } = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "field_manager");
-      if (!fmRoles?.length) return [];
-      const fmIds = fmRoles.map(r => r.user_id);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", fmIds);
-      return (profiles || []).sort((a, b) => a.full_name.localeCompare(b.full_name));
+      const { data, error } = await supabase.rpc("get_canonical_field_managers");
+      if (error) {
+        console.error("get_canonical_field_managers failed:", error);
+        return [];
+      }
+      return (data || []) as Array<{ id: string; full_name: string }>;
     },
   });
 

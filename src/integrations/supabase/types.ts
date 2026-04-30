@@ -1430,6 +1430,45 @@ export type Database = {
           },
         ]
       }
+      user_activity_log: {
+        Row: {
+          action_type: string
+          created_at: string
+          description: string | null
+          entity_id: string | null
+          entity_label: string | null
+          entity_type: string | null
+          id: string
+          metadata: Json | null
+          user_id: string
+          user_role: Database["public"]["Enums"]["app_role"] | null
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          description?: string | null
+          entity_id?: string | null
+          entity_label?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          user_id: string
+          user_role?: Database["public"]["Enums"]["app_role"] | null
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          description?: string | null
+          entity_id?: string | null
+          entity_label?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          user_id?: string
+          user_role?: Database["public"]["Enums"]["app_role"] | null
+        }
+        Relationships: []
+      }
       user_contractor_assignments: {
         Row: {
           assigned_at: string | null
@@ -1664,6 +1703,13 @@ export type Database = {
           is_flagged: boolean
         }[]
       }
+      get_canonical_field_managers: {
+        Args: never
+        Returns: {
+          full_name: string
+          id: string
+        }[]
+      }
       get_cleanable_audit_files: {
         Args: { contractor_filter?: string; min_age_days?: number }
         Returns: {
@@ -1814,6 +1860,31 @@ export type Database = {
           total_names: number
         }[]
       }
+      get_user_activity: {
+        Args: {
+          _action_types?: string[]
+          _end_date?: string
+          _entity_types?: string[]
+          _limit?: number
+          _offset?: number
+          _search?: string
+          _start_date?: string
+          _user_id: string
+        }
+        Returns: {
+          action_type: string
+          created_at: string
+          description: string
+          entity_id: string
+          entity_label: string
+          entity_type: string
+          id: string
+          metadata: Json
+          total_count: number
+          user_id: string
+          user_role: Database["public"]["Enums"]["app_role"]
+        }[]
+      }
       get_user_display_name: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -1823,6 +1894,18 @@ export type Database = {
         Returns: boolean
       }
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
+      log_activity: {
+        Args: {
+          _action_type: string
+          _description?: string
+          _entity_id?: string
+          _entity_label?: string
+          _entity_type?: string
+          _metadata?: Json
+          _user_id: string
+        }
+        Returns: undefined
+      }
       mark_audit_for_reaudit:
         | {
             Args: {
