@@ -1,92 +1,139 @@
-## 1. Exclude burned interviews from role dashboards ("My Dashboard")
+## Two fixes: Reassign FM (FM role) + Activity History page
 
-The dedicated role dashboards still pull burned audits because they don't subtract `burn_queue.audit_id` (where `restored_at IS NULL`). Apply the same filter pattern used elsewhere.
+---
 
-Files to update:
+### Part 1: Fix "Reassign FM" for Field Managers
 
-| File | Where |
-|---|---|
-| `src/pages/FieldManagerDashboard.tsx` | `teamAudits` query + `overrideAudits` query |
-| `src/pages/ContractorDashboard.tsx` | `audits` query |
-| `src/components/home/AuditorDashboard.tsx` | `recentlyApproved`, `inProgressInterviews`, `reAuditInterviews`, `pendingCount` |
-| `src/components/home/ContractorDashboard.tsx` | `recentActivity` query (and any other audit list/stat) |
+**Root cause** (verified against DB):
+The `ReassignFMDialog` populates the "New Field Manager" dropdown by querying `user_roles` (filter `role=field_manager`) and then `profiles` (by those user_ids). RLS on both tables only allows:
+- `user_roles`: own row, or admin/super_admin
+- `profiles`: own row, sub-contractor's assigned FMs, or admin/super_admin
 
-Approach: add a small shared `useQuery` keyed `["burned-audit-ids"]` that selects `audit_id` from `burn_queue` where `restored_at IS NULL` (60s `staleTime`), then filter the audit lists client-side. For `pendingCount` (currently a `head/count` query), switch to a list-of-ids query and compute `.length` after filtering.
+A Field Manager (`eniseng@gmail.com`) is none of those, so **both queries return empty**, the Select shows no options, and the "Reassign" button stays disabled. That matches the screenshot (empty dropdown, disabled button).
 
-Stats derived from `audits` follow automatically because they read the filtered list.
+**Fix:** Add a `SECURITY DEFINER` RPC `get_canonical_field_managers()` that returns `{ id, full_name }` for every approved user with the `field_manager` role. Restrict execution to authenticated users (RLS-bypass is intentional and safe — it only exposes FM names, which are already visible across the app via `interview_metadata.field_manager`, team rosters, etc.).
 
-Out of scope: `Index.tsx`, `InterviewTracking.tsx`, `AdminDashboard`, `QAManagerDashboard`, `DataEntryClerkDashboard` already exclude burns via direct queries or RPCs.
+Then update `ReassignFMDialog.tsx` to call the RPC instead of the two raw selects. No UI changes needed.
 
-## 2. Restore-from-burn dialog: optional re-audit + special note
+Also tighten `interview_fm_overrides` UPDATE policy to add a matching `WITH CHECK` (currently missing) so upserts that hit the conflict path stay allowed for FMs.
 
-### Database
+---
 
-Add a column `re_audit_note text` (nullable) to `re_audit_submissions` so a one-shot instruction from the requester travels with the submission and is shown on the review page.
+### Part 2: Activity History page (per-user, role-aware filters)
 
-> Why a separate column: `submission_comment` is already used for the technical/audit message in re-audit history; the note is a distinct human instruction to the reviewer. Keeping them separate avoids overloading meaning and keeps existing UI intact.
+**Goal:** A page where each user can review every meaningful action they performed on the platform, with advanced filters tailored to their role. Admins/super-admins can additionally browse anyone's activity.
 
-Update the existing RPC `mark_audit_for_reaudit` to accept an optional `_re_audit_note text DEFAULT NULL` and store it on the inserted row. Backwards-compatible with all existing callers.
+**Approach:** Introduce a single append-only `user_activity_log` table and write to it from key code paths (and a few DB triggers for events that already exist as triggers). Build a `/activity` page that lists the current user's activity, plus `/activity/:userId` for admins.
 
-### `BurnQueue.tsx` — restore dialog
+#### New table: `user_activity_log`
 
-Replace the inline single-row restore with a new local dialog (`RestoreFromBurnDialog`).
+| column | type | notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid | actor (FK profiles.id) |
+| user_role | app_role | snapshot of actor's role at event time |
+| action_type | text | enum-like (see below) |
+| entity_type | text | `audit`, `interview_metadata`, `team_assignment`, `payment`, `burn_queue`, `announcement`, `user`, `auth`, `fm_override`, `re_audit_submission`, `comment`, etc. |
+| entity_id | uuid | nullable |
+| entity_label | text | human label (file_name, folder_name, target user name…) |
+| description | text | short sentence ("Reassigned NG71_711_… to Jane Doe") |
+| metadata | jsonb | structured payload (before/after, ids, override reason…) |
+| ip_address | text | optional, captured client-side header where available |
+| created_at | timestamptz default now() | indexed desc |
 
-Dialog UI:
-- Title: *Restore Interview*
-- Radio group:
-  - **Just restore** (default) — interview returns to its prior status, no re-audit triggered.
-  - **Restore and send for re-audit immediately** — interview is restored, status flipped to `Awaiting Review`, `is_re_audit = true`, `re_audit_count` incremented, prior checklist progress wiped (mirrors the failed-modal flow).
-- Optional textarea **Special note for the reviewer (optional)** (max 1,000 chars). Subtitle: *"Visible to the next auditor as a closable banner. Includes your name."*
-- Submit / Cancel.
+Indexes: `(user_id, created_at desc)`, `(action_type)`, `(entity_type, entity_id)`, `(created_at desc)`.
 
-Behaviour on submit:
-- **Just restore**: existing path — `update burn_queue set restored_at, restored_by`. If a note was entered, also `insert into re_audit_submissions (audit_id, submitted_by, submitted_by_role, replaced_pdf:false, replaced_zip:false, submission_comment: 'Restored from burn queue (no re-audit requested)', re_audit_note: <note>)` so the note is captured and shown to whoever opens the interview next.
-- **Restore + re-audit**: do the burn-queue update, then call `supabase.rpc('mark_audit_for_reaudit', { _audit_id, _submitted_by, _submitted_by_role, _comment: 'Restored from burn queue and resubmitted for re-audit', _re_audit_note: <note or null> })`. Additionally `delete from audit_checklist_progress where audit_id = _audit_id` to mirror the failed-modal flow.
+**RLS:**
+- SELECT: own rows, or admin/super_admin.
+- INSERT: any approved user for `user_id = auth.uid()` (client-side logging) + `SECURITY DEFINER` triggers (server-side).
+- No UPDATE/DELETE (append-only). Admin-only purge via separate function if ever needed.
 
-Bulk restore:
-- Stays simple ("Just restore" semantics, no per-row note prompt) — avoids a confusing dialog flow per row. We update the bulk button tooltip to make this clear: *"Bulk restore returns interviews to their previous status. Use the row action for per-interview options."*
+#### Action types (initial set)
 
-### `FailedInterviewModal.tsx` — "Request Re-Audit (No Correction)" path
+Auth: `login`, `logout`, `password_reset`
+Audits: `audit_review_started`, `audit_passed`, `audit_failed`, `audit_pass_with_override`, `audit_sent_to_burn`, `audit_restored_from_burn`, `re_audit_requested`, `re_audit_submitted`, `interview_locked`, `interview_unlocked`
+Uploads: `pdf_uploaded`, `metadata_uploaded`, `zip_uploaded`, `bulk_upload`, `interview_deleted`
+Tracking: `fm_reassigned`, `issue_flagged`, `issue_resolved`, `comment_added`, `artifact_correction_resolved`
+Team / users: `team_request_created`, `team_request_approved`, `team_request_rejected`, `user_approved`, `user_suspended`, `user_role_changed`
+Payments: `payment_created`, `invoice_uploaded`, `budget_target_set`
+Announcements & push: `announcement_created`, `push_sent`
+Settings: `notification_settings_updated`, `ai_settings_updated`
 
-Today the button passes a hard-coded `submissionComment` into `mark_audit_for_reaudit`. Add a special-note flow:
+#### Logging helper
 
-- Add a small textarea **Special note for the reviewer (optional)** directly above the existing "Request Re-Audit (No Correction)" button. Use a new state `reauditNote` (the existing `comment` field is the regular submission comment for the file-replace path and stays unchanged).
-- When the no-correction button is clicked, call the RPC with `_re_audit_note: reauditNote || null`. Existing comment composition is preserved.
-- The regular file-replace submission keeps using `submission_comment` only and is unaffected.
+`src/lib/activityLog.ts` exporting `logActivity({ action_type, entity_type, entity_id?, entity_label?, description?, metadata? })` — wraps the insert with the current user/role from `AuthContext`. Fire-and-forget, swallow errors so it never breaks user flows.
 
-## 3. Special-note banner on the review page
+Wire calls into the highest-value places first (in priority order):
+1. `AuthContext.signOut`, `Auth.tsx` (login)
+2. `ReviewActions.tsx` (pass / fail / override)
+3. `BurnQueue.tsx` (send / restore)
+4. `FailedInterviewModal.tsx` (re-audit request)
+5. `ReassignFMDialog.tsx` (FM reassignment)
+6. `BulkZipUploadDialog`, `BulkPdfUploadDialog`, `BulkMetadataUploadDialog`, `UploadDialog`, `CombinedUploadDialog`
+7. `TeamApprovals.tsx`, `TeamAssignments.tsx`
+8. `PaymentTracking.tsx`, invoice dialogs
+9. `CreateAnnouncementDialog`, push notification creator
+10. Admin actions: approve user, suspend, change role
 
-Add `src/components/review/ReAuditNoteBanner.tsx`:
+For server-only events that already have triggers (`notify_*`), add a parallel trigger that inserts an activity row, so SMS-driven status changes and bulk DB updates still appear in the log.
 
-- Props: `auditId: string`.
-- Internally: `useQuery` keyed `["reaudit-note", auditId]` selects the most recent `re_audit_submissions` row where `audit_id = auditId AND re_audit_note IS NOT NULL` ordered by `submitted_at desc limit 1`. Separately fetches the submitter's `full_name` from `profiles`.
-- Renders a dismissible amber `Alert` (`AlertCircle` icon) with:
-  - Title: *Special note from {full_name}* (fallback: "team member")
-  - Body: the note, `whitespace-pre-wrap`
-  - Subtle timestamp ("Sent <relative>")
-  - **X** close button. Dismissal stored per-submission in `sessionStorage` (`reaudit-note-dismissed:{submission_id}`) so reopening the page later re-shows the note — we don't want the auditor to lose it permanently.
-- Self-hides when no note exists, so it's a no-op for normal re-audits.
+#### UI: `/activity` page
 
-Integration in `src/pages/ReviewInterview.tsx`:
-- Render `<ReAuditNoteBanner auditId={auditId!} />` only when `audit?.is_re_audit === true && audit?.status === 'Awaiting Review'`. Place it directly above `<FraudFlagBanner …/>` inside the sticky checklist section so the auditor sees it before starting the checklist.
+Route accessible to all approved users. Layout:
 
-## Files
+- **Header**: User selector (only enabled for admin/super_admin — defaults to self for everyone else).
+- **Summary cards**: Total actions, actions today, last login, most-used action.
+- **Advanced filter sidebar (role-aware — only show filters relevant to the viewed user's role):**
 
-| File | Change |
-|---|---|
-| `supabase/migrations/<new>.sql` | Add `re_audit_note text` to `re_audit_submissions`; replace `mark_audit_for_reaudit` to accept `_re_audit_note text default null` |
-| `src/pages/BurnQueue.tsx` | New restore dialog (single-row), bulk restore unchanged |
-| `src/components/tracking/FailedInterviewModal.tsx` | Add `reauditNote` state + textarea above no-correction button; pass to RPC |
-| `src/pages/FieldManagerDashboard.tsx` | Filter out burned audits |
-| `src/pages/ContractorDashboard.tsx` | Filter out burned audits |
-| `src/components/home/AuditorDashboard.tsx` | Filter out burned audits in all four queries |
-| `src/components/home/ContractorDashboard.tsx` | Filter `recentActivity` against burns |
-| `src/components/review/ReAuditNoteBanner.tsx` | New banner component |
-| `src/pages/ReviewInterview.tsx` | Mount the banner above `FraudFlagBanner` for re-audit awaiting review |
+```text
+Common
+  Date range, Action type (multi), Search description
+Auditor
+  Status outcome (Pass / Fail / Override), Re-audit only
+Field Manager
+  Interviewer code, FM reassignments only, Team request actions
+Sub-Contractor
+  Assigned FM, Team approvals
+Contractor
+  Contractor ID scope, Upload type, Payment actions
+Data-entry / QA
+  Entry status, Flagged/resolved
+Admin / Super-admin
+  Target user, IP, All action types, Bulk actions, User management actions
+```
 
-## Out of scope
+- **Timeline table**: time, action badge, entity link (clickable: navigates to `/review/:id`, `/tracking?file=…`, etc.), description, metadata expander.
+- **Export**: CSV + PDF for the current filter (admins only get the multi-user export).
+- **Pagination**: server-side, 50/page, uses an RPC `get_user_activity(_user_id, filters…, limit, offset)` that returns rows + total_count to bypass the 1k row cap (per project rule).
 
-- Per-row note prompt inside bulk restore — bulk stays as a simple "just restore" action.
-- Permanently dismissing notes — we use session storage so the next visit re-shows it.
-- Extra notification channel when a special note is added — covered by the existing re-audit notification flow.
-- Changes to `ReAuditDialog.tsx` (contractor file-replace dialog) — not in user's request.
+Sidebar nav entry "Activity" added in `MobileNav.tsx` and `Header.tsx` (visible to everyone). Admins also get an "All Activity" entry that opens `/activity` with the user-selector unlocked.
+
+#### Out of scope (this round)
+- Backfilling historical activity (log starts from migration date).
+- Tracking pure read events (page views) — only mutations / explicit user actions are logged.
+- Real-time stream / websocket — page polls or refetches on filter change.
+
+---
+
+### Files to create / change
+
+**Migrations**
+- Add `get_canonical_field_managers()` RPC + grant.
+- Add `WITH CHECK` to `interview_fm_overrides` UPDATE policy.
+- Create `user_activity_log` table + indexes + RLS.
+- Add `get_user_activity(...)` RPC.
+- Add triggers that mirror existing `notify_*` events into `user_activity_log` (audit pass/fail, re-audit, team request status, user approved/suspended, payment created, announcement created).
+
+**New code**
+- `src/lib/activityLog.ts` — client logger.
+- `src/pages/UserActivity.tsx` — page.
+- `src/components/activity/ActivityFilters.tsx` — role-aware filter panel.
+- `src/components/activity/ActivityTimeline.tsx` — list/table.
+- `src/components/activity/ActivityExport.tsx` — CSV/PDF export.
+- Route entry in `src/App.tsx`; nav links in `Header.tsx` / `MobileNav.tsx`.
+
+**Edits**
+- `src/components/tracking/ReassignFMDialog.tsx` — call new RPC; log activity.
+- `src/contexts/AuthContext.tsx` — log login/logout.
+- `src/components/review/ReviewActions.tsx`, `src/pages/BurnQueue.tsx`, `src/components/tracking/FailedInterviewModal.tsx`, upload dialogs, team approvals, payments, announcements — log activity at success points.
+- `src/integrations/supabase/types.ts` — auto-regenerated.
