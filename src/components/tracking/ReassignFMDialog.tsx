@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -45,17 +45,27 @@ export const ReassignFMDialog = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch canonical FM list
-  const { data: fieldManagers = [] } = useQuery({
+  const { data: fieldManagers = [], isLoading: fmLoading, error: fmError, refetch: refetchFms } = useQuery({
     queryKey: ["canonical-field-managers"],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_canonical_field_managers");
       if (error) {
         console.error("get_canonical_field_managers failed:", error);
-        return [];
+        throw error;
       }
       return (data || []) as Array<{ id: string; full_name: string }>;
     },
+    enabled: open,
+    staleTime: 60_000,
+    retry: 1,
   });
+
+  // Refetch every time the dialog opens to recover from any earlier cached failure
+  useEffect(() => {
+    if (open) {
+      refetchFms();
+    }
+  }, [open, refetchFms]);
 
   const handleReassign = async () => {
     if (!selectedFmId || !auditId) return;
