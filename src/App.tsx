@@ -55,6 +55,7 @@ import BurnQueue from "./pages/BurnQueue";
 import UploadTrackingDashboard from "./pages/UploadTrackingDashboard";
 import ErrorConsole from "./pages/ErrorConsole";
 import AISettings from "./pages/AISettings";
+import UserActivity from "./pages/UserActivity";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 
@@ -407,6 +408,26 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <AISettings />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/activity"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <UserActivity />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/activity/:userId"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <UserActivity />
                   </Layout>
                 </ProtectedRoute>
               }
