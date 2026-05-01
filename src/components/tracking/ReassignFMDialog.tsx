@@ -29,6 +29,7 @@ interface ReassignFMDialogProps {
   fileName: string;
   currentFmId?: string | null;
   currentFmName?: string | null;
+  contractorId?: string | null;
 }
 
 export const ReassignFMDialog = ({
@@ -38,22 +39,25 @@ export const ReassignFMDialog = ({
   fileName,
   currentFmId,
   currentFmName,
+  contractorId,
 }: ReassignFMDialogProps) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedFmId, setSelectedFmId] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch canonical FM list
+  // Fetch contractor-scoped FM list
   const { data: fieldManagers = [], isLoading: fmLoading, error: fmError, refetch: refetchFms } = useQuery({
-    queryKey: ["canonical-field-managers"],
+    queryKey: ["assignable-field-managers", contractorId || "self"],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_canonical_field_managers");
+      const { data, error } = await supabase.rpc("get_assignable_field_managers", {
+        _for_contractor: contractorId || null,
+      });
       if (error) {
-        console.error("get_canonical_field_managers failed:", error);
+        console.error("get_assignable_field_managers failed:", error);
         throw error;
       }
-      return (data || []) as Array<{ id: string; full_name: string }>;
+      return (data || []) as Array<{ id: string; full_name: string; contractor_id: string | null }>;
     },
     enabled: open,
     staleTime: 60_000,
