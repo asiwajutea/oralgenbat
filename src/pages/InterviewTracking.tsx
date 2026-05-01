@@ -1880,6 +1880,7 @@ const InterviewTracking = () => {
               return fmId ? canonicalFms.find(fm => fm.id === fmId)?.full_name || null : null;
             })()
           }
+          contractorId={(reassignInterview as any).contractor_id || null}
         />
       )}
     </div>
