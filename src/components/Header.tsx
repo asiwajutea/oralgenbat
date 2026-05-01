@@ -4,7 +4,6 @@ import UserMenu from "@/components/UserMenu";
 import MobileNav from "@/components/MobileNav";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import NotificationBell from "@/components/NotificationBell";
-import InboxBell from "@/components/InboxBell";
 import { useAuth } from "@/contexts/AuthContext";
 import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger } from "@/components/ui/navigation-menu";
 import { Link, useLocation } from "react-router-dom";
@@ -273,7 +272,6 @@ const Header = () => {
             </div>
           )}
           <NotificationBell />
-          <InboxBell />
           <div className="hidden sm:block">
             <ThemeToggle />
           </div>
