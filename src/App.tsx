@@ -56,6 +56,7 @@ import UploadTrackingDashboard from "./pages/UploadTrackingDashboard";
 import ErrorConsole from "./pages/ErrorConsole";
 import AISettings from "./pages/AISettings";
 import UserActivity from "./pages/UserActivity";
+import Inbox from "./pages/Inbox";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 
@@ -428,6 +429,16 @@ const App = () => (
                 <ProtectedRoute>
                   <Layout>
                     <UserActivity />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/inbox"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Inbox />
                   </Layout>
                 </ProtectedRoute>
               }

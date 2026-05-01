@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,6 +29,7 @@ interface ReassignFMDialogProps {
   fileName: string;
   currentFmId?: string | null;
   currentFmName?: string | null;
+  contractorId?: string | null;
 }
 
 export const ReassignFMDialog = ({
@@ -38,24 +39,37 @@ export const ReassignFMDialog = ({
   fileName,
   currentFmId,
   currentFmName,
+  contractorId,
 }: ReassignFMDialogProps) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [selectedFmId, setSelectedFmId] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch canonical FM list
-  const { data: fieldManagers = [] } = useQuery({
-    queryKey: ["canonical-field-managers"],
+  // Fetch contractor-scoped FM list
+  const { data: fieldManagers = [], isLoading: fmLoading, error: fmError, refetch: refetchFms } = useQuery({
+    queryKey: ["assignable-field-managers", contractorId || "self"],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_canonical_field_managers");
+      const { data, error } = await supabase.rpc("get_assignable_field_managers", {
+        _for_contractor: contractorId || null,
+      });
       if (error) {
-        console.error("get_canonical_field_managers failed:", error);
-        return [];
+        console.error("get_assignable_field_managers failed:", error);
+        throw error;
       }
-      return (data || []) as Array<{ id: string; full_name: string }>;
+      return (data || []) as Array<{ id: string; full_name: string; contractor_id: string | null }>;
     },
+    enabled: open,
+    staleTime: 60_000,
+    retry: 1,
   });
+
+  // Refetch every time the dialog opens to recover from any earlier cached failure
+  useEffect(() => {
+    if (open) {
+      refetchFms();
+    }
+  }, [open, refetchFms]);
 
   const handleReassign = async () => {
     if (!selectedFmId || !auditId) return;
@@ -129,9 +143,17 @@ export const ReassignFMDialog = ({
 
           <div>
             <p className="text-sm font-medium text-muted-foreground mb-1.5">New Field Manager</p>
-            <Select value={selectedFmId} onValueChange={setSelectedFmId}>
+            <Select value={selectedFmId} onValueChange={setSelectedFmId} disabled={fmLoading}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a field manager" />
+                <SelectValue placeholder={
+                  fmLoading
+                    ? "Loading field managers…"
+                    : fmError
+                      ? "Failed to load — click to retry"
+                      : fieldManagers.filter(fm => fm.id !== currentFmId).length === 0
+                        ? "No other field managers available"
+                        : "Select a field manager"
+                } />
               </SelectTrigger>
               <SelectContent>
                 {fieldManagers
@@ -141,6 +163,15 @@ export const ReassignFMDialog = ({
                   ))}
               </SelectContent>
             </Select>
+            {fmError && (
+              <button
+                type="button"
+                onClick={() => refetchFms()}
+                className="text-xs text-primary mt-1 underline"
+              >
+                Retry loading field managers
+              </button>
+            )}
           </div>
         </div>
 
