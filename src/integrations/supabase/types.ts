@@ -541,6 +541,230 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_conversations: {
+        Row: {
+          audit_id: string | null
+          category: string
+          contractor_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_archived: boolean
+          last_message_at: string | null
+          last_message_preview: string | null
+          title: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          audit_id?: string | null
+          category?: string
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_archived?: boolean
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          title?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          audit_id?: string | null
+          category?: string
+          contractor_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_archived?: boolean
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          title?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      chat_messages: {
+        Row: {
+          attachments: Json | null
+          body: string | null
+          conversation_id: string
+          created_at: string
+          deleted_at: string | null
+          edited_at: string | null
+          id: string
+          message_type: string
+          metadata: Json | null
+          reply_to_message_id: string | null
+          sender_id: string | null
+        }
+        Insert: {
+          attachments?: Json | null
+          body?: string | null
+          conversation_id: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          message_type?: string
+          metadata?: Json | null
+          reply_to_message_id?: string | null
+          sender_id?: string | null
+        }
+        Update: {
+          attachments?: Json | null
+          body?: string | null
+          conversation_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          message_type?: string
+          metadata?: Json | null
+          reply_to_message_id?: string | null
+          sender_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_reply_to_message_id_fkey"
+            columns: ["reply_to_message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_messaging_policies: {
+        Row: {
+          allowed: boolean
+          from_role: Database["public"]["Enums"]["app_role"]
+          id: string
+          to_role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          allowed?: boolean
+          from_role: Database["public"]["Enums"]["app_role"]
+          id?: string
+          to_role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          allowed?: boolean
+          from_role?: Database["public"]["Enums"]["app_role"]
+          id?: string
+          to_role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      chat_participants: {
+        Row: {
+          conversation_id: string
+          id: string
+          is_muted: boolean
+          joined_at: string
+          last_read_at: string | null
+          participant_role: string
+          removed_at: string | null
+          unread_count: number
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          id?: string
+          is_muted?: boolean
+          joined_at?: string
+          last_read_at?: string | null
+          participant_role?: string
+          removed_at?: string | null
+          unread_count?: number
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          id?: string
+          is_muted?: boolean
+          joined_at?: string
+          last_read_at?: string | null
+          participant_role?: string
+          removed_at?: string | null
+          unread_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_participants_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_pending_events: {
+        Row: {
+          created_at: string
+          error: string | null
+          event_type: string
+          id: string
+          payload: Json
+          processed_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          event_type: string
+          id?: string
+          payload: Json
+          processed_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+        }
+        Relationships: []
+      }
+      chat_user_preferences: {
+        Row: {
+          categories_enabled: Json
+          email_digest: boolean
+          push_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          categories_enabled?: Json
+          email_digest?: boolean
+          push_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          categories_enabled?: Json
+          email_digest?: boolean
+          push_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       client_error_logs: {
         Row: {
           browser_info: string | null
@@ -1286,6 +1510,39 @@ export type Database = {
           },
         ]
       }
+      team_assignment_history: {
+        Row: {
+          contractor_id: string
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          effective_to: string | null
+          field_manager_id: string
+          id: string
+          interviewer_code: string
+        }
+        Insert: {
+          contractor_id: string
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          field_manager_id: string
+          id?: string
+          interviewer_code: string
+        }
+        Update: {
+          contractor_id?: string
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          field_manager_id?: string
+          id?: string
+          interviewer_code?: string
+        }
+        Relationships: []
+      }
       team_assignments: {
         Row: {
           approved_at: string | null
@@ -1692,6 +1949,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_message_users: {
+        Args: { _recipient_ids: string[] }
+        Returns: boolean
+      }
+      create_chat_conversation: {
+        Args: {
+          _category?: string
+          _participant_ids: string[]
+          _title?: string
+          _type?: string
+        }
+        Returns: string
+      }
       detect_interview_fraud_flag: {
         Args: { p_audit_id: string }
         Returns: {
@@ -1703,6 +1973,14 @@ export type Database = {
           is_flagged: boolean
         }[]
       }
+      get_assignable_field_managers: {
+        Args: { _for_contractor?: string }
+        Returns: {
+          contractor_id: string
+          full_name: string
+          id: string
+        }[]
+      }
       get_canonical_field_managers: {
         Args: never
         Returns: {
@@ -1710,6 +1988,14 @@ export type Database = {
           id: string
         }[]
       }
+      get_chat_unread_summary: {
+        Args: never
+        Returns: {
+          category: string
+          unread_count: number
+        }[]
+      }
+      get_chat_unread_total: { Args: never; Returns: number }
       get_cleanable_audit_files: {
         Args: { contractor_filter?: string; min_age_days?: number }
         Returns: {
@@ -1893,6 +2179,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_chat_participant: {
+        Args: { _conv: string; _user: string }
+        Returns: boolean
+      }
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
       log_activity: {
         Args: {
@@ -1930,6 +2220,10 @@ export type Database = {
             }
             Returns: undefined
           }
+      mark_conversation_read: {
+        Args: { _conversation_id: string }
+        Returns: undefined
+      }
       user_can_view_audit_for_tracking: {
         Args: { _audit_id: string; _file_name: string; _user_id: string }
         Returns: boolean

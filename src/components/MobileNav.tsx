@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame, Bug } from "lucide-react";
+import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame, Bug, Inbox as InboxIcon, Activity } from "lucide-react";
+import { useChatUnreadTotal } from "@/hooks/useChatUnread";
+import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -15,6 +17,7 @@ const MobileNav = () => {
   const [open, setOpen] = useState(false);
   const { userRole, profile, signOut, refreshProfile } = useAuth();
   const location = useLocation();
+  const { data: chatUnread = 0 } = useChatUnreadTotal();
   const [userContractors, setUserContractors] = useState<{id: string;contractor_id: string;is_primary: boolean;}[]>([]);
   const [switching, setSwitching] = useState(false);
 
@@ -100,6 +103,24 @@ const MobileNav = () => {
           <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
             {/* Home */}
             <NavItem to="/" icon={Home}>Home</NavItem>
+
+            {/* Inbox with unread badge */}
+            <Link
+              to="/inbox"
+              onClick={() => setOpen(false)}
+              className={cn("flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors", isActive("/inbox") ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground")}
+            >
+              <span className="flex items-center gap-3">
+                <InboxIcon className="h-4 w-4" />
+                Inbox
+              </span>
+              {chatUnread > 0 && (
+                <Badge variant="destructive" className="h-5">{chatUnread > 9 ? "9+" : chatUnread}</Badge>
+              )}
+            </Link>
+
+            {/* Activity History */}
+            <NavItem to="/activity" icon={Activity}>Activity History</NavItem>
 
             {/* Interviews (auditor, admin) */}
             {(userRole === 'auditor' || isAdmin) && <NavItem to="/interviews" icon={ClipboardList}>Interviews</NavItem>}

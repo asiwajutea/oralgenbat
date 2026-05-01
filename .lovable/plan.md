@@ -1,139 +1,120 @@
-## Two fixes: Reassign FM (FM role) + Activity History page
+## Overview
+
+Five workstreams: (1) put Activity History in mobile nav, (2) scope "Reassign FM" to FMs in the same contractor, (3) auto-create historical FM overrides when an agent moves teams so old interviews stay with the previous FM, (4) build a full chat/inbox system, (5) wire chat into existing flows (audit fail, tracking comments, push/notice).
 
 ---
 
-### Part 1: Fix "Reassign FM" for Field Managers
+## 1. Activity History in nav (all devices)
 
-**Root cause** (verified against DB):
-The `ReassignFMDialog` populates the "New Field Manager" dropdown by querying `user_roles` (filter `role=field_manager`) and then `profiles` (by those user_ids). RLS on both tables only allows:
-- `user_roles`: own row, or admin/super_admin
-- `profiles`: own row, sub-contractor's assigned FMs, or admin/super_admin
+- Add an "Activity History" entry under a new bottom section in `MobileNav.tsx` (icon: `Activity`, route `/activity`) — currently only present in `UserMenu` dropdown.
+- Add an "Activity History" link in the desktop `Header.tsx` (under Communications dropdown or as standalone item next to "My Reviews").
 
-A Field Manager (`eniseng@gmail.com`) is none of those, so **both queries return empty**, the Select shows no options, and the "Reassign" button stays disabled. That matches the screenshot (empty dropdown, disabled button).
+## 2. FM Reassignment scoped to same contractor
 
-**Fix:** Add a `SECURITY DEFINER` RPC `get_canonical_field_managers()` that returns `{ id, full_name }` for every approved user with the `field_manager` role. Restrict execution to authenticated users (RLS-bypass is intentional and safe — it only exposes FM names, which are already visible across the app via `interview_metadata.field_manager`, team rosters, etc.).
+- Replace `get_canonical_field_managers()` with `get_assignable_field_managers(_for_contractor text DEFAULT NULL)` SECURITY DEFINER RPC that:
+  - For `field_manager` / `contractor` / `sub_contractor`: returns approved FMs whose `profiles.contractor_id` (or `user_contractor_assignments`) matches the caller's active contractor.
+  - For `admin` / `super_admin`: returns all approved FMs (or filtered by `_for_contractor` if provided).
+- Update `ReassignFMDialog.tsx` to call the new RPC and pass the audit's contractor id so the dropdown only lists FMs eligible for that contractor.
 
-Then update `ReassignFMDialog.tsx` to call the RPC instead of the two raw selects. No UI changes needed.
+## 3. Time-sliced FM ownership when an agent is reassigned
 
-Also tighten `interview_fm_overrides` UPDATE policy to add a matching `WITH CHECK` (currently missing) so upserts that hit the conflict path stay allowed for FMs.
+Goal: the new FM only sees interviews uploaded **after** the reassignment date; older interviews stay with the previous FM.
+
+- Add `team_assignment_history` table: `interviewer_code, contractor_id, field_manager_id, effective_from timestamptz, effective_to timestamptz NULL, created_by`.
+- Trigger on `team_assignments`: when an `(interviewer_code, contractor_id)` row's `field_manager_id` changes (or status flips approved → unapproved), close out the prior history row (`effective_to = now()`) and insert a new active row.
+- Backfill one open history row per existing approved `team_assignments` row (`effective_from = approved_at` or `created_at`).
+- New RPC `backfill_fm_overrides_on_reassignment(_interviewer_code, _new_fm_id, _cutoff timestamptz)`: for every audit by that interviewer with `uploaded_at < _cutoff` that does NOT already have a row in `interview_fm_overrides`, insert one pointing to the **previous** FM. Trigger this RPC from the trigger above so the old FM keeps ownership of historical interviews while new uploads naturally route to the new FM via the current `team_assignments` row.
+- Update tracking & FM dashboard FM-resolution logic so per-interview overrides always win (already does), and ensure FM dashboard queries respect overrides for older interviews.
+
+## 4. Chat / Inbox feature
+
+### Data model (new tables, all RLS-protected)
+
+- `chat_conversations`: `id, type ('direct'|'group'|'audit_thread'|'system'), title, category ('general'|'failed_audit'|'tracking_comment'|'announcement'|'push'), contractor_id (nullable), audit_id (nullable, for audit threads), created_by, created_at, last_message_at, is_archived`.
+- `chat_participants`: `conversation_id, user_id, role ('owner'|'member'|'observer'), joined_at, muted, last_read_at, unread_count`.
+- `chat_messages`: `id, conversation_id, sender_id (nullable for system), body text, attachments jsonb, reply_to_message_id, message_type ('text'|'system'|'audit_action'|'attachment'), metadata jsonb, created_at, edited_at, deleted_at`.
+- `chat_message_reads`: `message_id, user_id, read_at`.
+- `chat_messaging_policies`: super-admin-managed matrix of `from_role app_role → to_role app_role → allowed bool`. Default seed: same-contractor any role ↔ any role; `super_admin` can message anyone; cross-contractor blocked except super_admin.
+- `chat_user_preferences`: `user_id, categories_enabled jsonb (per category opt-in), email_digest, push_enabled`.
+
+### RLS / security
+
+- `chat_conversations` SELECT: caller is in `chat_participants` OR is `super_admin`.
+- `chat_messages` SELECT/INSERT: caller is participant; INSERT additionally checks `can_message(sender, conversation)` security-definer function that enforces:
+  - same-contractor rule (caller and all participants share contractor, or caller is super_admin),
+  - `chat_messaging_policies` matrix.
+- `chat_participants` only modifiable by conversation owner, admin, or super_admin.
+- Super-admin manages `chat_messaging_policies` (UI in `/admin/chat-policies`).
+
+### Edge functions
+
+- `chat-send-message`: validates policy, inserts message, fans out push notifications via existing `send-web-push`, updates `last_message_at` and `unread_count` for other participants.
+- `chat-create-audit-thread`: called when an audit is failed; creates `audit_thread` conversation with FM (full context), auditor, contractor, sub-contractor, admin participants; posts a structured system message with the failure comment, action plan, artifact correction list, and inline action buttons (metadata: `{actions: ['view_review','resolve_correction','resubmit_with_correction','resubmit_no_correction']}`).
+- `chat-mirror-event`: called by triggers/webhooks to mirror push notifications, notice-board posts, and tracking-page comments into the relevant conversation.
+
+### Database triggers
+
+- After `audits.status` becomes `Failed Audit` → call `chat-create-audit-thread` (via `pg_net` or by inserting into a `chat_pending_events` outbox).
+- After insert on `artifact_correction_comments` → mirror into the audit's chat conversation.
+- After insert on `announcements` and `push_notifications` → create/append a `category='announcement'|'push'` conversation per recipient.
+
+### Frontend
+
+- New top-level route `/inbox` (`src/pages/Inbox.tsx`) — three-pane modern chat: category sidebar (All, Failed Audits, Tracking, Announcements, Direct, Groups), conversation list with search + unread badges, message thread with infinite scroll, composer with attachments, replies, recipient picker (multi-select supports bulk), audit-action buttons rendered inline.
+- New components under `src/components/chat/`: `ConversationList`, `ConversationItem`, `MessageThread`, `MessageBubble`, `MessageComposer`, `AuditActionMessage` (renders "View Interview", "Mark Resolved", "Resubmit with Correction", "Resubmit without Correction" buttons that reuse existing dialogs/RPCs from tracking/review), `NewChatDialog` (with role-aware recipient picker honouring messaging policies), `ChatCategoryFilter`, `ChatPreferencesDialog`, `BulkRecipientPicker`.
+- Realtime via Supabase Realtime channels on `chat_messages` and `chat_participants` keyed by user id.
+- New hook `useChatUnreadCount` aggregating unread across conversations, optionally per-category.
+- Add `InboxBell` next to `NotificationBell` in `Header.tsx` and as a top item in `MobileNav.tsx` — icon (`MessageSquare`) with red unread count badge, opens `/inbox`.
+
+### Inbox UX details
+
+- Category chips show per-category unread counts.
+- Audit-failure thread shows a sticky header card with: file name, status badge, contractor/agent, link to review page, list of artifact corrections.
+- FM sees full action toolbar; auditor/contractor/sub/admin see condensed read-only summary plus reply box.
+- When FM clicks "Mark Resolved" / "Resubmit", a system message is posted automatically and the auditor receives a push + inbox notification with a "Open Review" deep link.
+- Tracking page comment box gains a "Also start a chat" toggle (default on for failed interviews); existing comment threads on resolved/failed interviews automatically appear as messages in the audit thread.
+- Push notifications and Notice Board posts appear under their categories with a "Open original" link.
+- Composer supports bulk recipient selection (chip list) constrained by policy matrix; cross-contractor adds disabled with tooltip "Only super admin can message across contractors".
+
+### User preferences
+
+- `/profile` adds an "Inbox Preferences" section: per-category toggle (Failed Audits, Announcements, Push, Tracking Comments, Direct), push opt-in, email digest opt-in. Persisted in `chat_user_preferences`.
+
+### Admin controls
+
+- New `/admin/chat-policies` (super_admin only): editable role × role permission matrix backed by `chat_messaging_policies`, plus toggles for "auto-create audit-failure threads", "mirror push", "mirror notices", "mirror tracking comments".
+- `/admin/chat-policies` also exposes a "Conversation moderation" tab to archive or delete misuse cases.
 
 ---
 
-### Part 2: Activity History page (per-user, role-aware filters)
-
-**Goal:** A page where each user can review every meaningful action they performed on the platform, with advanced filters tailored to their role. Admins/super-admins can additionally browse anyone's activity.
-
-**Approach:** Introduce a single append-only `user_activity_log` table and write to it from key code paths (and a few DB triggers for events that already exist as triggers). Build a `/activity` page that lists the current user's activity, plus `/activity/:userId` for admins.
-
-#### New table: `user_activity_log`
-
-| column | type | notes |
-|---|---|---|
-| id | uuid PK | |
-| user_id | uuid | actor (FK profiles.id) |
-| user_role | app_role | snapshot of actor's role at event time |
-| action_type | text | enum-like (see below) |
-| entity_type | text | `audit`, `interview_metadata`, `team_assignment`, `payment`, `burn_queue`, `announcement`, `user`, `auth`, `fm_override`, `re_audit_submission`, `comment`, etc. |
-| entity_id | uuid | nullable |
-| entity_label | text | human label (file_name, folder_name, target user name…) |
-| description | text | short sentence ("Reassigned NG71_711_… to Jane Doe") |
-| metadata | jsonb | structured payload (before/after, ids, override reason…) |
-| ip_address | text | optional, captured client-side header where available |
-| created_at | timestamptz default now() | indexed desc |
-
-Indexes: `(user_id, created_at desc)`, `(action_type)`, `(entity_type, entity_id)`, `(created_at desc)`.
-
-**RLS:**
-- SELECT: own rows, or admin/super_admin.
-- INSERT: any approved user for `user_id = auth.uid()` (client-side logging) + `SECURITY DEFINER` triggers (server-side).
-- No UPDATE/DELETE (append-only). Admin-only purge via separate function if ever needed.
-
-#### Action types (initial set)
-
-Auth: `login`, `logout`, `password_reset`
-Audits: `audit_review_started`, `audit_passed`, `audit_failed`, `audit_pass_with_override`, `audit_sent_to_burn`, `audit_restored_from_burn`, `re_audit_requested`, `re_audit_submitted`, `interview_locked`, `interview_unlocked`
-Uploads: `pdf_uploaded`, `metadata_uploaded`, `zip_uploaded`, `bulk_upload`, `interview_deleted`
-Tracking: `fm_reassigned`, `issue_flagged`, `issue_resolved`, `comment_added`, `artifact_correction_resolved`
-Team / users: `team_request_created`, `team_request_approved`, `team_request_rejected`, `user_approved`, `user_suspended`, `user_role_changed`
-Payments: `payment_created`, `invoice_uploaded`, `budget_target_set`
-Announcements & push: `announcement_created`, `push_sent`
-Settings: `notification_settings_updated`, `ai_settings_updated`
-
-#### Logging helper
-
-`src/lib/activityLog.ts` exporting `logActivity({ action_type, entity_type, entity_id?, entity_label?, description?, metadata? })` — wraps the insert with the current user/role from `AuthContext`. Fire-and-forget, swallow errors so it never breaks user flows.
-
-Wire calls into the highest-value places first (in priority order):
-1. `AuthContext.signOut`, `Auth.tsx` (login)
-2. `ReviewActions.tsx` (pass / fail / override)
-3. `BurnQueue.tsx` (send / restore)
-4. `FailedInterviewModal.tsx` (re-audit request)
-5. `ReassignFMDialog.tsx` (FM reassignment)
-6. `BulkZipUploadDialog`, `BulkPdfUploadDialog`, `BulkMetadataUploadDialog`, `UploadDialog`, `CombinedUploadDialog`
-7. `TeamApprovals.tsx`, `TeamAssignments.tsx`
-8. `PaymentTracking.tsx`, invoice dialogs
-9. `CreateAnnouncementDialog`, push notification creator
-10. Admin actions: approve user, suspend, change role
-
-For server-only events that already have triggers (`notify_*`), add a parallel trigger that inserts an activity row, so SMS-driven status changes and bulk DB updates still appear in the log.
-
-#### UI: `/activity` page
-
-Route accessible to all approved users. Layout:
-
-- **Header**: User selector (only enabled for admin/super_admin — defaults to self for everyone else).
-- **Summary cards**: Total actions, actions today, last login, most-used action.
-- **Advanced filter sidebar (role-aware — only show filters relevant to the viewed user's role):**
+## Technical details
 
 ```text
-Common
-  Date range, Action type (multi), Search description
-Auditor
-  Status outcome (Pass / Fail / Override), Re-audit only
-Field Manager
-  Interviewer code, FM reassignments only, Team request actions
-Sub-Contractor
-  Assigned FM, Team approvals
-Contractor
-  Contractor ID scope, Upload type, Payment actions
-Data-entry / QA
-  Entry status, Flagged/resolved
-Admin / Super-admin
-  Target user, IP, All action types, Bulk actions, User management actions
+audit failed
+   │
+   ▼
+trigger writes outbox row ─► edge fn `chat-create-audit-thread`
+                                    │
+                                    ▼
+                       insert chat_conversations(category='failed_audit', audit_id)
+                                    │
+                                    ├─► add participants per role
+                                    ├─► insert system message with metadata.actions
+                                    └─► send-web-push fan-out
 ```
 
-- **Timeline table**: time, action badge, entity link (clickable: navigates to `/review/:id`, `/tracking?file=…`, etc.), description, metadata expander.
-- **Export**: CSV + PDF for the current filter (admins only get the multi-user export).
-- **Pagination**: server-side, 50/page, uses an RPC `get_user_activity(_user_id, filters…, limit, offset)` that returns rows + total_count to bypass the 1k row cap (per project rule).
-
-Sidebar nav entry "Activity" added in `MobileNav.tsx` and `Header.tsx` (visible to everyone). Admins also get an "All Activity" entry that opens `/activity` with the user-selector unlocked.
-
-#### Out of scope (this round)
-- Backfilling historical activity (log starts from migration date).
-- Tracking pure read events (page views) — only mutations / explicit user actions are logged.
-- Real-time stream / websocket — page polls or refetches on filter change.
+- Use `pg_net.http_post` from triggers to call edge functions asynchronously (already used elsewhere in the project).
+- Realtime: `ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages, chat_participants, chat_conversations;`
+- Unread counts maintained in `chat_participants.unread_count` updated by trigger on `chat_messages` insert; reset to 0 + `last_read_at = now()` when client marks a thread read via RPC `mark_conversation_read(_conversation_id uuid)`.
+- Existing audit-failure code paths (`ReviewActions`, `MarkResolvedDialog`, `ReAuditDialog`) gain calls to a new `postAuditChatSystemMessage()` helper so any state change shows up in the thread.
+- All chat operations log to `user_activity_log` (existing table) so the activity history page already covers chat actions.
 
 ---
 
-### Files to create / change
+## Out of scope / deferrals
 
-**Migrations**
-- Add `get_canonical_field_managers()` RPC + grant.
-- Add `WITH CHECK` to `interview_fm_overrides` UPDATE policy.
-- Create `user_activity_log` table + indexes + RLS.
-- Add `get_user_activity(...)` RPC.
-- Add triggers that mirror existing `notify_*` events into `user_activity_log` (audit pass/fail, re-audit, team request status, user approved/suspended, payment created, announcement created).
+- Voice/video calling.
+- End-to-end encryption.
+- Message reactions/emoji picker (can add in a follow-up).
 
-**New code**
-- `src/lib/activityLog.ts` — client logger.
-- `src/pages/UserActivity.tsx` — page.
-- `src/components/activity/ActivityFilters.tsx` — role-aware filter panel.
-- `src/components/activity/ActivityTimeline.tsx` — list/table.
-- `src/components/activity/ActivityExport.tsx` — CSV/PDF export.
-- Route entry in `src/App.tsx`; nav links in `Header.tsx` / `MobileNav.tsx`.
-
-**Edits**
-- `src/components/tracking/ReassignFMDialog.tsx` — call new RPC; log activity.
-- `src/contexts/AuthContext.tsx` — log login/logout.
-- `src/components/review/ReviewActions.tsx`, `src/pages/BurnQueue.tsx`, `src/components/tracking/FailedInterviewModal.tsx`, upload dialogs, team approvals, payments, announcements — log activity at success points.
-- `src/integrations/supabase/types.ts` — auto-regenerated.
+After approval I'll execute the migrations, edge functions, and UI in one delivery.
