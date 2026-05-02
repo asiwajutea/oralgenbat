@@ -10,6 +10,23 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   AlertTriangle,
   Megaphone,
   Bell,
@@ -24,6 +41,10 @@ import {
   RotateCcw,
   Inbox as InboxIcon,
   Loader2,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  LogOut,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -71,6 +92,10 @@ const Inbox = () => {
   const [composer, setComposer] = useState("");
   const [sending, setSending] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteMsgId, setDeleteMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // Conversation list
@@ -219,6 +244,43 @@ const Inbox = () => {
       .slice(0, 2)
       .toUpperCase();
 
+  const handleRename = async () => {
+    if (!selectedConvId || !renameValue.trim()) return;
+    const { error } = await supabase.rpc("rename_conversation", {
+      _conversation_id: selectedConvId,
+      _new_title: renameValue.trim(),
+    });
+    if (error) { toast.error(error.message); return; }
+    setRenameOpen(false);
+    qc.invalidateQueries({ queryKey: ["chat-conversations", user?.id] });
+    toast.success("Subject updated");
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!selectedConvId) return;
+    const { error } = await supabase.rpc("delete_conversation", { _conversation_id: selectedConvId });
+    if (error) { toast.error(error.message); return; }
+    setDeleteOpen(false);
+    setSelectedConvId(null);
+    qc.invalidateQueries({ queryKey: ["chat-conversations", user?.id] });
+    toast.success("Conversation deleted");
+  };
+
+  const handleLeaveConversation = async () => {
+    if (!selectedConvId) return;
+    const { error } = await supabase.rpc("leave_conversation", { _conversation_id: selectedConvId });
+    if (error) { toast.error(error.message); return; }
+    setSelectedConvId(null);
+    qc.invalidateQueries({ queryKey: ["chat-conversations", user?.id] });
+    toast.success("Left conversation");
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    const { error } = await supabase.from("chat_messages").update({ deleted_at: new Date().toISOString() }).eq("id", messageId);
+    if (error) { toast.error(error.message); return; }
+    qc.invalidateQueries({ queryKey: ["chat-messages", selectedConvId] });
+  };
+
   // Unread totals per category
   const categoryUnread = useMemo(() => {
     const m: Record<string, number> = {};
@@ -354,6 +416,23 @@ const Inbox = () => {
                       <ExternalLink className="h-3 w-3 mr-1" /> Open Review
                     </Button>
                   )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => { setRenameValue(selectedConv.title || ""); setRenameOpen(true); }}>
+                        <Pencil className="h-4 w-4 mr-2" /> Edit subject
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleLeaveConversation}>
+                        <LogOut className="h-4 w-4 mr-2" /> Leave conversation
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteOpen(true)}>
+                        <Trash2 className="h-4 w-4 mr-2" /> Delete conversation
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
@@ -418,15 +497,28 @@ const Inbox = () => {
                               <AvatarFallback className="text-[10px]">{initials(sender?.full_name)}</AvatarFallback>
                             </Avatar>
                           )}
-                          <div className={cn("max-w-[75%]")}>
+                          <div className={cn("max-w-[75%] group")}>
                             {!mine && sender && (
                               <p className="text-[10px] text-muted-foreground mb-0.5">{sender.full_name}</p>
                             )}
-                            <div className={cn(
-                              "rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
-                              mine ? "bg-primary text-primary-foreground" : "bg-muted"
-                            )}>
-                              {m.body}
+                            <div className="flex items-start gap-1">
+                              <div className={cn(
+                                "rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+                                mine ? "bg-primary text-primary-foreground" : "bg-muted"
+                              )}>
+                                {m.body}
+                              </div>
+                              {mine && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                                  onClick={() => handleDeleteMessage(m.id)}
+                                  aria-label="Delete message"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                             <p className="text-[10px] text-muted-foreground mt-0.5">
                               {formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}
@@ -467,6 +559,39 @@ const Inbox = () => {
         onOpenChange={setShowNewChat}
         onCreated={(id) => { setSelectedConvId(id); qc.invalidateQueries({ queryKey: ["chat-conversations", user?.id] }); }}
       />
+
+      {/* Rename dialog */}
+      <AlertDialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Edit subject</AlertDialogTitle>
+            <AlertDialogDescription>Update the conversation title. Visible to all participants.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRename}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete confirm */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes all messages and cannot be undone. Only owners and admins can delete.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConversation} className="bg-destructive text-destructive-foreground">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
