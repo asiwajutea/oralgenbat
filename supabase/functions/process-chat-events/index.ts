@@ -148,6 +148,173 @@ async function findOrCreateAuditThread(db: ReturnType<typeof admin>, payload: an
   });
 }
 
+async function ensureDirectThread(
+  db: ReturnType<typeof admin>,
+  opts: { userId: string; title: string; category: string; contractorId?: string | null; auditId?: string | null }
+) {
+  // Try to reuse the most recent system thread of this category for this user
+  const { data: existing } = await db
+    .from("chat_conversations")
+    .select("id, chat_participants!inner(user_id)")
+    .eq("category", opts.category)
+    .eq("type", "system")
+    .eq("chat_participants.user_id", opts.userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const { data: conv, error: cErr } = await db
+    .from("chat_conversations")
+    .insert({
+      type: "system",
+      category: opts.category,
+      title: opts.title,
+      contractor_id: opts.contractorId ?? null,
+      audit_id: opts.auditId ?? null,
+      created_by: null,
+    })
+    .select("id")
+    .single();
+  if (cErr) throw cErr;
+  await db.from("chat_participants").insert({
+    conversation_id: conv.id,
+    user_id: opts.userId,
+    participant_role: "member",
+  });
+  return conv.id as string;
+}
+
+async function handlePushDelivered(db: ReturnType<typeof admin>, payload: any) {
+  if (!payload?.user_id) return;
+  const convId = await ensureDirectThread(db, {
+    userId: payload.user_id,
+    title: "Notifications",
+    category: "push",
+  });
+  await db.from("chat_messages").insert({
+    conversation_id: convId,
+    sender_id: null,
+    message_type: "system",
+    body: payload.title || "Notification",
+    metadata: {
+      message: payload.message || null,
+      url: payload.url || null,
+      push_notification_id: payload.push_notification_id || null,
+    },
+  });
+}
+
+async function handleAnnouncement(db: ReturnType<typeof admin>, payload: any) {
+  // Resolve target users
+  const userIds = new Set<string>();
+  const targetType: string = payload.target_type || "all";
+  if (targetType === "user" && Array.isArray(payload.target_user_ids)) {
+    payload.target_user_ids.forEach((id: string) => id && userIds.add(id));
+  } else if (targetType === "contractor" && payload.target_contractor_id) {
+    const { data } = await db.from("profiles").select("id").or(`contractor_id.eq.${payload.target_contractor_id},active_contractor_id.eq.${payload.target_contractor_id}`);
+    (data || []).forEach((p) => userIds.add(p.id));
+  } else if (targetType === "role" && payload.target_role) {
+    const { data } = await db.from("user_roles").select("user_id").eq("role", payload.target_role);
+    (data || []).forEach((r) => userIds.add(r.user_id));
+  } else {
+    // all approved users
+    const { data } = await db.from("profiles").select("id").eq("is_approved", true);
+    (data || []).forEach((p) => userIds.add(p.id));
+  }
+
+  for (const uid of userIds) {
+    const convId = await ensureDirectThread(db, {
+      userId: uid,
+      title: "Announcements",
+      category: "announcement",
+    });
+    await db.from("chat_messages").insert({
+      conversation_id: convId,
+      sender_id: payload.created_by || null,
+      message_type: "system",
+      body: payload.title || "New announcement",
+      metadata: {
+        announcement_id: payload.announcement_id,
+        content: payload.content,
+        cta_text: payload.cta_text,
+        cta_url: payload.cta_url,
+        style: payload.style,
+      },
+    });
+  }
+}
+
+async function handleTrackingComment(db: ReturnType<typeof admin>, payload: any) {
+  const auditId = payload.audit_id;
+  if (!auditId) return;
+
+  // Reuse existing tracking thread for this audit (or create one)
+  const { data: existing } = await db
+    .from("chat_conversations")
+    .select("id")
+    .eq("audit_id", auditId)
+    .eq("category", "tracking_comment")
+    .maybeSingle();
+
+  let convId = existing?.id as string | undefined;
+
+  if (!convId) {
+    const { data: conv, error: cErr } = await db
+      .from("chat_conversations")
+      .insert({
+        type: "audit_thread",
+        category: "tracking_comment",
+        title: `Tracking – ${payload.file_name || auditId}`,
+        contractor_id: payload.contractor_id || null,
+        audit_id: auditId,
+        created_by: payload.user_id || null,
+      })
+      .select("id")
+      .single();
+    if (cErr) throw cErr;
+    convId = conv.id;
+
+    // Add the commenter + same-contractor admins/contractors/sub_contractors
+    const participantIds = new Set<string>();
+    if (payload.user_id) participantIds.add(payload.user_id);
+
+    if (payload.contractor_id) {
+      const { data: cps } = await db.from("profiles").select("id").or(`contractor_id.eq.${payload.contractor_id},active_contractor_id.eq.${payload.contractor_id}`);
+      const cpIds = (cps || []).map((p) => p.id);
+      if (cpIds.length) {
+        const { data: rolesRows } = await db.from("user_roles").select("user_id, role").in("user_id", cpIds);
+        (rolesRows || []).forEach((r) => {
+          if (["contractor", "sub_contractor", "field_manager"].includes(r.role)) participantIds.add(r.user_id);
+        });
+      }
+    }
+    const { data: adminRoles } = await db.from("user_roles").select("user_id").eq("role", "admin");
+    (adminRoles || []).forEach((r) => participantIds.add(r.user_id));
+
+    const partRows = Array.from(participantIds).map((uid) => ({
+      conversation_id: convId!,
+      user_id: uid,
+      participant_role: "member",
+    }));
+    if (partRows.length) {
+      await db.from("chat_participants").upsert(partRows, { onConflict: "conversation_id,user_id", ignoreDuplicates: true });
+    }
+  }
+
+  await db.from("chat_messages").insert({
+    conversation_id: convId,
+    sender_id: payload.user_id || null,
+    message_type: "text",
+    body: payload.comment,
+    metadata: {
+      audit_id: auditId,
+      tracking_comment_id: payload.comment_id,
+      file_name: payload.file_name,
+    },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -164,6 +331,12 @@ Deno.serve(async (req) => {
       try {
         if (evt.event_type === "audit_failed") {
           await findOrCreateAuditThread(db, evt.payload);
+        } else if (evt.event_type === "push_delivered") {
+          await handlePushDelivered(db, evt.payload);
+        } else if (evt.event_type === "announcement_published") {
+          await handleAnnouncement(db, evt.payload);
+        } else if (evt.event_type === "tracking_comment_added") {
+          await handleTrackingComment(db, evt.payload);
         }
         await db
           .from("chat_pending_events")
