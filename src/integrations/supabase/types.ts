@@ -1962,6 +1962,10 @@ export type Database = {
         }
         Returns: string
       }
+      delete_conversation: {
+        Args: { _conversation_id: string }
+        Returns: undefined
+      }
       detect_interview_fraud_flag: {
         Args: { p_audit_id: string }
         Returns: {
@@ -2184,6 +2188,10 @@ export type Database = {
         Returns: boolean
       }
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
+      leave_conversation: {
+        Args: { _conversation_id: string }
+        Returns: undefined
+      }
       log_activity: {
         Args: {
           _action_type: string
@@ -2222,6 +2230,10 @@ export type Database = {
           }
       mark_conversation_read: {
         Args: { _conversation_id: string }
+        Returns: undefined
+      }
+      rename_conversation: {
+        Args: { _conversation_id: string; _new_title: string }
         Returns: undefined
       }
       user_can_view_audit_for_tracking: {
