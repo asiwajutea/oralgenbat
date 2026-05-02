@@ -12,9 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { CheckCircle2, XCircle, Calendar, FileText, Edit2, Save, X, Lock, CalendarDays, Bell } from "lucide-react";
+import { CheckCircle2, XCircle, Calendar, FileText, Edit2, Save, X, Lock, CalendarDays, Bell, Inbox as InboxIcon } from "lucide-react";
 import { z } from "zod";
 import NotificationSettings from "@/components/NotificationSettings";
+import ChatPreferences from "@/components/chat/ChatPreferences";
 
 const profileSchema = z.object({
   full_name: z.string().trim().min(2, "Name must be at least 2 characters").max(100, "Name must be less than 100 characters"),
@@ -394,6 +395,19 @@ const UserProfile = () => {
         </CardHeader>
         <CardContent>
           <NotificationSettings />
+        </CardContent>
+      </Card>
+
+      {/* Inbox / Chat Preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <InboxIcon className="h-5 w-5" />
+            Inbox Preferences
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ChatPreferences />
         </CardContent>
       </Card>
 
