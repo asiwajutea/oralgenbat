@@ -202,6 +202,7 @@ const MobileNav = () => {
                 <NavItem to="/admin/sms-logs" icon={MessageSquare}>SMS Logs</NavItem>
                 <NavItem to="/admin/duplicates" icon={Copy}>Duplicate Detection</NavItem>
                 {userRole === 'super_admin' && <NavItem to="/admin/error-console" icon={Bug}>Error Console</NavItem>}
+                {userRole === 'super_admin' && <NavItem to="/admin/chat-policies" icon={Shield}>Chat Policies</NavItem>}
               </>
             )}
           </nav>

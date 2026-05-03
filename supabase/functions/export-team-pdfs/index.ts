@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -118,7 +119,7 @@ serve(async (req) => {
     const auditIds = assignments.map(a => a.audit_id);
     const { data: audits, error: auditError } = await supabase
       .from('audits')
-      .select('id, file_name, file_url, mobile_zip_url, is_re_audit')
+      .select('id, file_name, file_url, mobile_zip_url, is_re_audit, passed_with_failures, pass_override_reason, pass_override_action_plan, reviewed_by, reviewed_at')
       .in('id', auditIds);
 
     if (auditError) {
@@ -194,16 +195,66 @@ serve(async (req) => {
     // Include metadata ZIP only for re-audited interviews with replaced metadata
     const pdfList = audits.map(audit => {
       const includeMetadata = audit.is_re_audit && metadataReplacedSet.has(audit.id) && audit.mobile_zip_url;
+      const isOverride = !!audit.passed_with_failures;
+      const baseName = isOverride ? `${audit.file_name}_attention` : audit.file_name;
       return {
-        fileName: `${audit.file_name}.pdf`,
+        fileName: `${baseName}.pdf`,
         url: audit.file_url,
         auditId: audit.id,
         ...(includeMetadata ? {
           metadataUrl: audit.mobile_zip_url,
-          metadataFileName: `${audit.file_name}_metadata.zip`,
+          metadataFileName: `${baseName}_metadata.zip`,
         } : {}),
       };
     });
+
+    // Build override-notes PDF if any overridden audits in this batch
+    const overridden = (audits || []).filter((a: any) => a.passed_with_failures);
+    if (overridden.length > 0) {
+      try {
+        const pdf = await PDFDocument.create();
+        const font = await pdf.embedFont(StandardFonts.Helvetica);
+        const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+        let page = pdf.addPage([595, 842]);
+        let y = 800;
+        const drawLine = (text: string, opts: { bold?: boolean; size?: number; color?: any } = {}) => {
+          const size = opts.size || 11;
+          const f = opts.bold ? fontBold : font;
+          const wrapped = wrap(text, 90);
+          for (const ln of wrapped) {
+            if (y < 50) { page = pdf.addPage([595, 842]); y = 800; }
+            page.drawText(ln, { x: 40, y, size, font: f, color: opts.color || rgb(0, 0, 0) });
+            y -= size + 4;
+          }
+        };
+        drawLine(`Override / Attention Notes`, { bold: true, size: 16 });
+        drawLine(`Team: ${teamName || teamId}`, { size: 10 });
+        drawLine(`Batch: ${exportBatchId}`, { size: 10 });
+        drawLine(`Generated: ${exportTimestamp.toISOString()}`, { size: 10 });
+        y -= 8;
+        for (const a of overridden) {
+          if (y < 120) { page = pdf.addPage([595, 842]); y = 800; }
+          drawLine(`${a.file_name}_attention`, { bold: true, size: 13 });
+          drawLine(`Reviewed by: ${a.reviewed_by || '—'}  ·  ${a.reviewed_at || '—'}`, { size: 10, color: rgb(0.4, 0.4, 0.4) });
+          if (a.pass_override_reason) { drawLine(`Reason:`, { bold: true }); drawLine(a.pass_override_reason); }
+          if (a.pass_override_action_plan) { drawLine(`Action plan:`, { bold: true }); drawLine(a.pass_override_action_plan); }
+          y -= 6;
+        }
+        const bytes = await pdf.save();
+        const path = `override-notes/${exportBatchId}.pdf`;
+        await supabase.storage.from('team-exports').upload(path, bytes, { contentType: 'application/pdf', upsert: true });
+        const { data: pub } = supabase.storage.from('team-exports').getPublicUrl(path);
+        if (pub?.publicUrl) {
+          pdfList.unshift({
+            fileName: `Override_Notes_${exportBatchId}.pdf`,
+            url: pub.publicUrl,
+            auditId: 'override-notes',
+          } as any);
+        }
+      } catch (e) {
+        console.error('Override notes PDF generation failed', e);
+      }
+    }
 
     // Return the list of PDFs - client will handle the zipping
     // This avoids memory issues on the edge function
@@ -231,3 +282,15 @@ serve(async (req) => {
     );
   }
 });
+
+function wrap(text: string, maxChars: number): string[] {
+  const words = String(text || '').split(/\s+/);
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > maxChars) { if (cur) lines.push(cur); cur = w; }
+    else cur = (cur ? cur + ' ' : '') + w;
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [''];
+}

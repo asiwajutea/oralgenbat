@@ -586,6 +586,45 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_global_policy: {
+        Row: {
+          all_users_mode: string
+          allow_managers_only: boolean
+          allow_same_role: boolean
+          allow_same_team: boolean
+          allowed_user_ids: string[]
+          id: number
+          team_chats_excepted_user_ids: string[]
+          team_chats_mode: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          all_users_mode?: string
+          allow_managers_only?: boolean
+          allow_same_role?: boolean
+          allow_same_team?: boolean
+          allowed_user_ids?: string[]
+          id?: number
+          team_chats_excepted_user_ids?: string[]
+          team_chats_mode?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          all_users_mode?: string
+          allow_managers_only?: boolean
+          allow_same_role?: boolean
+          allow_same_team?: boolean
+          allowed_user_ids?: string[]
+          id?: number
+          team_chats_excepted_user_ids?: string[]
+          team_chats_mode?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           attachments: Json | null
@@ -672,6 +711,7 @@ export type Database = {
       }
       chat_participants: {
         Row: {
+          closed_at: string | null
           conversation_id: string
           id: string
           is_muted: boolean
@@ -683,6 +723,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          closed_at?: string | null
           conversation_id: string
           id?: string
           is_muted?: boolean
@@ -694,6 +735,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          closed_at?: string | null
           conversation_id?: string
           id?: string
           is_muted?: boolean
@@ -738,6 +780,27 @@ export type Database = {
           id?: string
           payload?: Json
           processed_at?: string | null
+        }
+        Relationships: []
+      }
+      chat_user_blocks: {
+        Row: {
+          blocked_user_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+        }
+        Insert: {
+          blocked_user_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+        }
+        Update: {
+          blocked_user_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
         }
         Relationships: []
       }
@@ -2190,7 +2253,7 @@ export type Database = {
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
       leave_conversation: {
         Args: { _conversation_id: string }
-        Returns: undefined
+        Returns: boolean
       }
       log_activity: {
         Args: {

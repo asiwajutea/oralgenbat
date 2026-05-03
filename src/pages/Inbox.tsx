@@ -50,6 +50,11 @@ import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { toast } from "sonner";
+import { useConversationParticipants, describeOthers, formatRole } from "@/hooks/useConversationParticipants";
+import { AttachmentMenu } from "@/components/chat/AttachmentMenu";
+import { useFloatingChat } from "@/components/chat/FloatingChatProvider";
+import { Minimize2, Paperclip, FileText } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
   all: { label: "All", icon: InboxIcon, color: "text-foreground" },
@@ -96,7 +101,12 @@ const Inbox = () => {
   const [renameValue, setRenameValue] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteMsgId, setDeleteMsgId] = useState<string | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
+  const [composerAttachments, setComposerAttachments] = useState<any[]>([]);
+  const [composerInterview, setComposerInterview] = useState<any | null>(null);
+  const [composerLink, setComposerLink] = useState<any | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const { open: openFloating } = useFloatingChat();
 
   // Conversation list
   const { data: conversations = [], isLoading: convLoading } = useQuery({
@@ -104,7 +114,7 @@ const Inbox = () => {
     queryFn: async () => {
       const { data: parts, error: pErr } = await supabase
         .from("chat_participants")
-        .select("conversation_id, unread_count, last_read_at")
+        .select("conversation_id, unread_count, last_read_at, closed_at")
         .eq("user_id", user!.id)
         .is("removed_at", null);
       if (pErr) throw pErr;
@@ -117,8 +127,16 @@ const Inbox = () => {
         .order("last_message_at", { ascending: false, nullsFirst: false });
       if (cErr) throw cErr;
       const unreadById: Record<string, number> = {};
-      (parts || []).forEach((p) => { unreadById[p.conversation_id] = p.unread_count || 0; });
-      return (convs || []).map((c) => ({ ...c, unread_count: unreadById[c.id] || 0 })) as any;
+      const closedById: Record<string, boolean> = {};
+      (parts || []).forEach((p) => {
+        unreadById[p.conversation_id] = p.unread_count || 0;
+        closedById[p.conversation_id] = !!p.closed_at;
+      });
+      return (convs || []).map((c) => ({
+        ...c,
+        unread_count: unreadById[c.id] || 0,
+        closed: closedById[c.id] || false,
+      })) as any;
     },
     enabled: !!user?.id,
     staleTime: 15_000,
@@ -158,10 +176,17 @@ const Inbox = () => {
     return list;
   }, [conversations, activeCategory, search]);
 
+  const openConvs = useMemo(() => filteredConvs.filter((c: any) => !c.closed), [filteredConvs]);
+  const closedConvs = useMemo(() => filteredConvs.filter((c: any) => c.closed), [filteredConvs]);
+
+  // Participants per visible conversation
+  const visibleConvIds = useMemo(() => filteredConvs.map((c) => c.id), [filteredConvs]);
+  const { data: participantsByConv = {} } = useConversationParticipants(visibleConvIds);
+
   // Auto-select first conversation
   useEffect(() => {
-    if (!selectedConvId && filteredConvs.length > 0) setSelectedConvId(filteredConvs[0].id);
-  }, [filteredConvs, selectedConvId]);
+    if (!selectedConvId && openConvs.length > 0) setSelectedConvId(openConvs[0].id);
+  }, [openConvs, selectedConvId]);
 
   const selectedConv = useMemo(
     () => (conversations as any[]).find((c) => c.id === selectedConvId) as (Conversation & { unread_count: number }) | undefined,
@@ -217,17 +242,25 @@ const Inbox = () => {
   }, [messages.length, selectedConvId]);
 
   const handleSend = async () => {
-    if (!composer.trim() || !selectedConvId) return;
+    if ((!composer.trim() && composerAttachments.length === 0 && !composerInterview && !composerLink) || !selectedConvId) return;
     setSending(true);
     try {
+      const meta: any = {};
+      if (composerAttachments.length) meta.attachments = composerAttachments;
+      if (composerInterview) meta.interview_ref = composerInterview;
+      if (composerLink) meta.internal_link = composerLink;
       const { error } = await supabase.from("chat_messages").insert({
         conversation_id: selectedConvId,
         sender_id: user!.id,
-        body: composer.trim(),
+        body: composer.trim() || null,
         message_type: "text",
+        metadata: Object.keys(meta).length ? meta : {},
       });
       if (error) throw error;
       setComposer("");
+      setComposerAttachments([]);
+      setComposerInterview(null);
+      setComposerLink(null);
     } catch (err: any) {
       toast.error(err.message || "Failed to send");
     } finally {
@@ -352,9 +385,11 @@ const Inbox = () => {
                 No conversations yet.
               </div>
             ) : (
-              filteredConvs.map((c) => {
+              <>
+              {openConvs.map((c: any) => {
                 const meta = CATEGORY_META[c.category] || CATEGORY_META.all;
                 const Icon = meta.icon;
+                const subtitle = describeOthers(participantsByConv[c.id], user?.id) || (c.last_message_preview || "—");
                 return (
                   <button
                     key={c.id}
@@ -374,9 +409,12 @@ const Inbox = () => {
                           <Badge variant="destructive" className="h-5">{c.unread_count}</Badge>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {c.last_message_preview || "—"}
-                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
+                      {c.last_message_preview && (
+                        <p className="text-[11px] text-muted-foreground/80 truncate italic">
+                          {c.last_message_preview}
+                        </p>
+                      )}
                       {c.last_message_at && (
                         <p className="text-[10px] text-muted-foreground">
                           {formatDistanceToNow(new Date(c.last_message_at), { addSuffix: true })}
@@ -385,7 +423,38 @@ const Inbox = () => {
                     </div>
                   </button>
                 );
-              })
+              })}
+              {closedConvs.length > 0 && (
+                <div className="mt-3 border-t pt-2">
+                  <button
+                    onClick={() => setShowClosed((v) => !v)}
+                    className="w-full text-left text-xs font-medium text-muted-foreground px-3 py-1 hover:bg-muted rounded"
+                  >
+                    {showClosed ? "▾" : "▸"} Closed ({closedConvs.length})
+                  </button>
+                  {showClosed && closedConvs.map((c: any) => {
+                    const meta = CATEGORY_META[c.category] || CATEGORY_META.all;
+                    const Icon = meta.icon;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setSelectedConvId(c.id)}
+                        className={cn(
+                          "w-full flex items-start gap-2 px-3 py-2 rounded-md text-left text-sm opacity-60 italic",
+                          selectedConvId === c.id ? "bg-accent" : "hover:bg-muted"
+                        )}
+                      >
+                        <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", meta.color)} />
+                        <div className="min-w-0 flex-1">
+                          <span className="truncate">{c.title || "(untitled)"}</span>
+                          <p className="text-[10px]">Closed thread</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              </>
             )}
           </ScrollArea>
         </Card>
@@ -402,11 +471,26 @@ const Inbox = () => {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="font-semibold truncate">{selectedConv.title || "(untitled)"}</h3>
-                    <p className="text-xs text-muted-foreground capitalize">
-                      {selectedConv.category.replace("_", " ")}
+                    <p className="text-xs text-muted-foreground">
+                      <span className="capitalize">{selectedConv.category.replace("_", " ")}</span>
+                      {(() => {
+                        const others = (participantsByConv[selectedConv.id] || []).filter((p) => p.user_id !== user?.id);
+                        if (others.length === 0) return null;
+                        return (
+                          <> · with {others.map((o) => `${o.full_name || "Unknown"}${o.role ? ` (${formatRole(o.role)})` : ""}`).join(", ")}</>
+                        );
+                      })()}
                       {selectedConv.contractor_id ? ` · ${selectedConv.contractor_id}` : ""}
                     </p>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => openFloating(selectedConv.id)}
+                    title="Minimize as floating chat"
+                  >
+                    <Minimize2 className="h-4 w-4" />
+                  </Button>
                   {selectedConv.audit_id && (
                     <Button
                       size="sm"
@@ -507,6 +591,31 @@ const Inbox = () => {
                                 mine ? "bg-primary text-primary-foreground" : "bg-muted"
                               )}>
                                 {m.body}
+                                {m.metadata?.interview_ref && (
+                                  <Link
+                                    to={`/review/${m.metadata.interview_ref.audit_id}`}
+                                    className="mt-1 flex items-center gap-1 text-xs underline decoration-dotted"
+                                  >
+                                    <FileText className="h-3 w-3" /> {m.metadata.interview_ref.file_name}
+                                  </Link>
+                                )}
+                                {m.metadata?.internal_link && (
+                                  <Link
+                                    to={m.metadata.internal_link.path}
+                                    className="mt-1 flex items-center gap-1 text-xs underline decoration-dotted"
+                                  >
+                                    <ExternalLink className="h-3 w-3" /> {m.metadata.internal_link.label}
+                                  </Link>
+                                )}
+                                {Array.isArray(m.metadata?.attachments) && m.metadata.attachments.length > 0 && (
+                                  <div className="mt-1 space-y-1">
+                                    {m.metadata.attachments.map((a: any, i: number) => (
+                                      <a key={i} href={a.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs underline decoration-dotted">
+                                        <Paperclip className="h-3 w-3" /> {a.name}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                               {mine && (
                                 <Button
@@ -532,22 +641,51 @@ const Inbox = () => {
                 )}
               </ScrollArea>
 
-              <div className="border-t p-3 flex gap-2">
-                <Input
-                  value={composer}
-                  onChange={(e) => setComposer(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="Type a message…"
-                  disabled={sending}
-                />
-                <Button onClick={handleSend} disabled={!composer.trim() || sending}>
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
+              <div className="border-t p-3 space-y-2">
+                {(composerAttachments.length > 0 || composerInterview || composerLink) && (
+                  <div className="flex flex-wrap gap-1">
+                    {composerAttachments.map((a, i) => (
+                      <Badge key={i} variant="secondary" className="gap-1">
+                        <Paperclip className="h-3 w-3" /> {a.name}
+                        <button onClick={() => setComposerAttachments((p) => p.filter((_, j) => j !== i))} className="ml-1">×</button>
+                      </Badge>
+                    ))}
+                    {composerInterview && (
+                      <Badge variant="secondary" className="gap-1">
+                        <FileText className="h-3 w-3" /> {composerInterview.file_name}
+                        <button onClick={() => setComposerInterview(null)} className="ml-1">×</button>
+                      </Badge>
+                    )}
+                    {composerLink && (
+                      <Badge variant="secondary" className="gap-1">
+                        <ExternalLink className="h-3 w-3" /> {composerLink.label}
+                        <button onClick={() => setComposerLink(null)} className="ml-1">×</button>
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2 items-center">
+                  <AttachmentMenu
+                    onAttach={(a) => setComposerAttachments((p) => [...p, a])}
+                    onInterview={(r) => setComposerInterview(r)}
+                    onLink={(l) => setComposerLink(l)}
+                  />
+                  <Input
+                    value={composer}
+                    onChange={(e) => setComposer(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="Type a message…"
+                    disabled={sending}
+                  />
+                  <Button onClick={handleSend} disabled={(!composer.trim() && composerAttachments.length === 0 && !composerInterview && !composerLink) || sending}>
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             </>
           )}

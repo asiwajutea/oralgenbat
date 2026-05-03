@@ -80,7 +80,11 @@ export const NewChatDialog = ({ open, onOpenChange, onCreated }: Props) => {
     try {
       const { data, error } = await supabase.rpc("create_chat_conversation", {
         _participant_ids: selectedList.map((p) => p.id),
-        _title: isGroup ? title || `Group with ${selectedList.length} people` : null,
+        _title: title.trim()
+          ? title.trim()
+          : isGroup
+            ? `Group with ${selectedList.length} people`
+            : `Chat with ${selectedList[0].name}`,
         _type: isGroup ? "group" : "direct",
         _category: isGroup ? "group" : "direct",
       });
@@ -128,13 +132,11 @@ export const NewChatDialog = ({ open, onOpenChange, onCreated }: Props) => {
           </div>
         )}
 
-        {isGroup && (
-          <Input
-            placeholder="Group title (optional)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        )}
+        <Input
+          placeholder={isGroup ? "Group subject (optional)" : "Conversation subject (optional)"}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
 
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
