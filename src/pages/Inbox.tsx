@@ -50,6 +50,11 @@ import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { NewChatDialog } from "@/components/chat/NewChatDialog";
 import { toast } from "sonner";
+import { useConversationParticipants, describeOthers, formatRole } from "@/hooks/useConversationParticipants";
+import { AttachmentMenu } from "@/components/chat/AttachmentMenu";
+import { useFloatingChat } from "@/components/chat/FloatingChatProvider";
+import { Minimize2, Paperclip, FileText } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
   all: { label: "All", icon: InboxIcon, color: "text-foreground" },
@@ -96,7 +101,12 @@ const Inbox = () => {
   const [renameValue, setRenameValue] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteMsgId, setDeleteMsgId] = useState<string | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
+  const [composerAttachments, setComposerAttachments] = useState<any[]>([]);
+  const [composerInterview, setComposerInterview] = useState<any | null>(null);
+  const [composerLink, setComposerLink] = useState<any | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const { open: openFloating } = useFloatingChat();
 
   // Conversation list
   const { data: conversations = [], isLoading: convLoading } = useQuery({
@@ -104,7 +114,7 @@ const Inbox = () => {
     queryFn: async () => {
       const { data: parts, error: pErr } = await supabase
         .from("chat_participants")
-        .select("conversation_id, unread_count, last_read_at")
+        .select("conversation_id, unread_count, last_read_at, closed_at")
         .eq("user_id", user!.id)
         .is("removed_at", null);
       if (pErr) throw pErr;
@@ -117,8 +127,16 @@ const Inbox = () => {
         .order("last_message_at", { ascending: false, nullsFirst: false });
       if (cErr) throw cErr;
       const unreadById: Record<string, number> = {};
-      (parts || []).forEach((p) => { unreadById[p.conversation_id] = p.unread_count || 0; });
-      return (convs || []).map((c) => ({ ...c, unread_count: unreadById[c.id] || 0 })) as any;
+      const closedById: Record<string, boolean> = {};
+      (parts || []).forEach((p) => {
+        unreadById[p.conversation_id] = p.unread_count || 0;
+        closedById[p.conversation_id] = !!p.closed_at;
+      });
+      return (convs || []).map((c) => ({
+        ...c,
+        unread_count: unreadById[c.id] || 0,
+        closed: closedById[c.id] || false,
+      })) as any;
     },
     enabled: !!user?.id,
     staleTime: 15_000,
@@ -158,10 +176,17 @@ const Inbox = () => {
     return list;
   }, [conversations, activeCategory, search]);
 
+  const openConvs = useMemo(() => filteredConvs.filter((c: any) => !c.closed), [filteredConvs]);
+  const closedConvs = useMemo(() => filteredConvs.filter((c: any) => c.closed), [filteredConvs]);
+
+  // Participants per visible conversation
+  const visibleConvIds = useMemo(() => filteredConvs.map((c) => c.id), [filteredConvs]);
+  const { data: participantsByConv = {} } = useConversationParticipants(visibleConvIds);
+
   // Auto-select first conversation
   useEffect(() => {
-    if (!selectedConvId && filteredConvs.length > 0) setSelectedConvId(filteredConvs[0].id);
-  }, [filteredConvs, selectedConvId]);
+    if (!selectedConvId && openConvs.length > 0) setSelectedConvId(openConvs[0].id);
+  }, [openConvs, selectedConvId]);
 
   const selectedConv = useMemo(
     () => (conversations as any[]).find((c) => c.id === selectedConvId) as (Conversation & { unread_count: number }) | undefined,
@@ -217,17 +242,25 @@ const Inbox = () => {
   }, [messages.length, selectedConvId]);
 
   const handleSend = async () => {
-    if (!composer.trim() || !selectedConvId) return;
+    if ((!composer.trim() && composerAttachments.length === 0 && !composerInterview && !composerLink) || !selectedConvId) return;
     setSending(true);
     try {
+      const meta: any = {};
+      if (composerAttachments.length) meta.attachments = composerAttachments;
+      if (composerInterview) meta.interview_ref = composerInterview;
+      if (composerLink) meta.internal_link = composerLink;
       const { error } = await supabase.from("chat_messages").insert({
         conversation_id: selectedConvId,
         sender_id: user!.id,
-        body: composer.trim(),
+        body: composer.trim() || null,
         message_type: "text",
+        metadata: Object.keys(meta).length ? meta : {},
       });
       if (error) throw error;
       setComposer("");
+      setComposerAttachments([]);
+      setComposerInterview(null);
+      setComposerLink(null);
     } catch (err: any) {
       toast.error(err.message || "Failed to send");
     } finally {
