@@ -591,6 +591,31 @@ const Inbox = () => {
                                 mine ? "bg-primary text-primary-foreground" : "bg-muted"
                               )}>
                                 {m.body}
+                                {m.metadata?.interview_ref && (
+                                  <Link
+                                    to={`/review/${m.metadata.interview_ref.audit_id}`}
+                                    className="mt-1 flex items-center gap-1 text-xs underline decoration-dotted"
+                                  >
+                                    <FileText className="h-3 w-3" /> {m.metadata.interview_ref.file_name}
+                                  </Link>
+                                )}
+                                {m.metadata?.internal_link && (
+                                  <Link
+                                    to={m.metadata.internal_link.path}
+                                    className="mt-1 flex items-center gap-1 text-xs underline decoration-dotted"
+                                  >
+                                    <ExternalLink className="h-3 w-3" /> {m.metadata.internal_link.label}
+                                  </Link>
+                                )}
+                                {Array.isArray(m.metadata?.attachments) && m.metadata.attachments.length > 0 && (
+                                  <div className="mt-1 space-y-1">
+                                    {m.metadata.attachments.map((a: any, i: number) => (
+                                      <a key={i} href={a.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs underline decoration-dotted">
+                                        <Paperclip className="h-3 w-3" /> {a.name}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                               {mine && (
                                 <Button
