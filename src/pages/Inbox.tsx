@@ -471,11 +471,26 @@ const Inbox = () => {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="font-semibold truncate">{selectedConv.title || "(untitled)"}</h3>
-                    <p className="text-xs text-muted-foreground capitalize">
-                      {selectedConv.category.replace("_", " ")}
+                    <p className="text-xs text-muted-foreground">
+                      <span className="capitalize">{selectedConv.category.replace("_", " ")}</span>
+                      {(() => {
+                        const others = (participantsByConv[selectedConv.id] || []).filter((p) => p.user_id !== user?.id);
+                        if (others.length === 0) return null;
+                        return (
+                          <> · with {others.map((o) => `${o.full_name || "Unknown"}${o.role ? ` (${formatRole(o.role)})` : ""}`).join(", ")}</>
+                        );
+                      })()}
                       {selectedConv.contractor_id ? ` · ${selectedConv.contractor_id}` : ""}
                     </p>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => openFloating(selectedConv.id)}
+                    title="Minimize as floating chat"
+                  >
+                    <Minimize2 className="h-4 w-4" />
+                  </Button>
                   {selectedConv.audit_id && (
                     <Button
                       size="sm"
