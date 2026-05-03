@@ -641,22 +641,51 @@ const Inbox = () => {
                 )}
               </ScrollArea>
 
-              <div className="border-t p-3 flex gap-2">
-                <Input
-                  value={composer}
-                  onChange={(e) => setComposer(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder="Type a message…"
-                  disabled={sending}
-                />
-                <Button onClick={handleSend} disabled={!composer.trim() || sending}>
-                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
+              <div className="border-t p-3 space-y-2">
+                {(composerAttachments.length > 0 || composerInterview || composerLink) && (
+                  <div className="flex flex-wrap gap-1">
+                    {composerAttachments.map((a, i) => (
+                      <Badge key={i} variant="secondary" className="gap-1">
+                        <Paperclip className="h-3 w-3" /> {a.name}
+                        <button onClick={() => setComposerAttachments((p) => p.filter((_, j) => j !== i))} className="ml-1">×</button>
+                      </Badge>
+                    ))}
+                    {composerInterview && (
+                      <Badge variant="secondary" className="gap-1">
+                        <FileText className="h-3 w-3" /> {composerInterview.file_name}
+                        <button onClick={() => setComposerInterview(null)} className="ml-1">×</button>
+                      </Badge>
+                    )}
+                    {composerLink && (
+                      <Badge variant="secondary" className="gap-1">
+                        <ExternalLink className="h-3 w-3" /> {composerLink.label}
+                        <button onClick={() => setComposerLink(null)} className="ml-1">×</button>
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2 items-center">
+                  <AttachmentMenu
+                    onAttach={(a) => setComposerAttachments((p) => [...p, a])}
+                    onInterview={(r) => setComposerInterview(r)}
+                    onLink={(l) => setComposerLink(l)}
+                  />
+                  <Input
+                    value={composer}
+                    onChange={(e) => setComposer(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="Type a message…"
+                    disabled={sending}
+                  />
+                  <Button onClick={handleSend} disabled={(!composer.trim() && composerAttachments.length === 0 && !composerInterview && !composerLink) || sending}>
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             </>
           )}
