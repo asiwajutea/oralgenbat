@@ -459,6 +459,8 @@ const App = () => (
             />
             <Route path="*" element={<NotFound />} />
           </Routes>
+            <FloatingChats />
+            </FloatingChatProvider>
             </PresenceProvider>
             <PWAInstallPrompt />
           </AuthProvider>
