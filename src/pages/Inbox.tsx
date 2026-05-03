@@ -385,9 +385,11 @@ const Inbox = () => {
                 No conversations yet.
               </div>
             ) : (
-              filteredConvs.map((c) => {
+              <>
+              {openConvs.map((c: any) => {
                 const meta = CATEGORY_META[c.category] || CATEGORY_META.all;
                 const Icon = meta.icon;
+                const subtitle = describeOthers(participantsByConv[c.id], user?.id) || (c.last_message_preview || "—");
                 return (
                   <button
                     key={c.id}
@@ -407,9 +409,12 @@ const Inbox = () => {
                           <Badge variant="destructive" className="h-5">{c.unread_count}</Badge>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {c.last_message_preview || "—"}
-                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
+                      {c.last_message_preview && (
+                        <p className="text-[11px] text-muted-foreground/80 truncate italic">
+                          {c.last_message_preview}
+                        </p>
+                      )}
                       {c.last_message_at && (
                         <p className="text-[10px] text-muted-foreground">
                           {formatDistanceToNow(new Date(c.last_message_at), { addSuffix: true })}
@@ -418,7 +423,38 @@ const Inbox = () => {
                     </div>
                   </button>
                 );
-              })
+              })}
+              {closedConvs.length > 0 && (
+                <div className="mt-3 border-t pt-2">
+                  <button
+                    onClick={() => setShowClosed((v) => !v)}
+                    className="w-full text-left text-xs font-medium text-muted-foreground px-3 py-1 hover:bg-muted rounded"
+                  >
+                    {showClosed ? "▾" : "▸"} Closed ({closedConvs.length})
+                  </button>
+                  {showClosed && closedConvs.map((c: any) => {
+                    const meta = CATEGORY_META[c.category] || CATEGORY_META.all;
+                    const Icon = meta.icon;
+                    return (
+                      <button
+                        key={c.id}
+                        onClick={() => setSelectedConvId(c.id)}
+                        className={cn(
+                          "w-full flex items-start gap-2 px-3 py-2 rounded-md text-left text-sm opacity-60 italic",
+                          selectedConvId === c.id ? "bg-accent" : "hover:bg-muted"
+                        )}
+                      >
+                        <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", meta.color)} />
+                        <div className="min-w-0 flex-1">
+                          <span className="truncate">{c.title || "(untitled)"}</span>
+                          <p className="text-[10px]">Closed thread</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              </>
             )}
           </ScrollArea>
         </Card>
