@@ -8,6 +8,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { PresenceProvider } from "@/components/PresenceProvider";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
+import { FloatingChatProvider } from "@/components/chat/FloatingChatProvider";
+import { FloatingChats } from "@/components/chat/MiniChatWindow";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import FullAdminRoute from "@/components/FullAdminRoute";
@@ -86,6 +88,7 @@ const App = () => (
         <BrowserRouter>
           <AuthProvider>
             <PresenceProvider>
+            <FloatingChatProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />
             <Route path="/pending-approval" element={<PendingApproval />} />
