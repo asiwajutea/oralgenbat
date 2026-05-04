@@ -209,7 +209,9 @@ serve(async (req) => {
     });
 
     // Build override-notes PDF if any overridden audits in this batch
-    const overridden = (audits || []).filter((a: any) => a.passed_with_failures);
+    const overridden = (audits || [])
+      .filter((a: any) => a.passed_with_failures)
+      .sort((a: any, b: any) => String(a.file_name).localeCompare(String(b.file_name)));
     if (overridden.length > 0) {
       try {
         const pdf = await PDFDocument.create();
