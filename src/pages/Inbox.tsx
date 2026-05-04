@@ -59,7 +59,7 @@ import { Link } from "react-router-dom";
 const CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
   all: { label: "All", icon: InboxIcon, color: "text-foreground" },
   failed_audit: { label: "Failed Audits", icon: AlertTriangle, color: "text-red-500" },
-  tracking_comment: { label: "Tracking", icon: MessageSquare, color: "text-blue-500" },
+  tracking_comment: { label: "Tracking Comments", icon: MessageSquare, color: "text-blue-500" },
   announcement: { label: "Announcements", icon: Megaphone, color: "text-purple-500" },
   push: { label: "Notifications", icon: Bell, color: "text-orange-500" },
   direct: { label: "Direct", icon: UserIcon, color: "text-green-500" },
