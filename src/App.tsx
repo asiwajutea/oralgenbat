@@ -61,6 +61,7 @@ import AISettings from "./pages/AISettings";
 import UserActivity from "./pages/UserActivity";
 import Inbox from "./pages/Inbox";
 import ChatPolicies from "./pages/ChatPolicies";
+import UploadControls from "./pages/UploadControls";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 
@@ -457,6 +458,16 @@ const App = () => (
                     <ChatPolicies />
                   </Layout>
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/upload-controls"
+              element={
+                <FullAdminRoute>
+                  <Layout>
+                    <UploadControls />
+                  </Layout>
+                </FullAdminRoute>
               }
             />
             <Route path="*" element={<NotFound />} />
