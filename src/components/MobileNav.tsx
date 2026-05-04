@@ -201,6 +201,7 @@ const MobileNav = () => {
                 <NavItem to="/admin/locked-interviews" icon={Lock}>Locks</NavItem>
                 <NavItem to="/admin/sms-logs" icon={MessageSquare}>SMS Logs</NavItem>
                 <NavItem to="/admin/duplicates" icon={Copy}>Duplicate Detection</NavItem>
+                <NavItem to="/admin/upload-controls" icon={Lock}>Upload Controls</NavItem>
                 {userRole === 'super_admin' && <NavItem to="/admin/error-console" icon={Bug}>Error Console</NavItem>}
                 {userRole === 'super_admin' && <NavItem to="/admin/chat-policies" icon={Shield}>Chat Policies</NavItem>}
               </>

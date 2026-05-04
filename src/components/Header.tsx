@@ -249,6 +249,11 @@ const Header = () => {
                           Duplicate Detection
                         </Link>
                       </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin/upload-controls" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/upload-controls' && "bg-accent text-accent-foreground")}>
+                          Upload Controls
+                        </Link>
+                      </NavigationMenuLink>
                       {isSuperAdmin && (
                         <NavigationMenuLink asChild>
                           <Link to="/admin/error-console" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/error-console' && "bg-accent text-accent-foreground")}>

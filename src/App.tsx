@@ -10,6 +10,7 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import { FloatingChatProvider } from "@/components/chat/FloatingChatProvider";
 import { FloatingChats } from "@/components/chat/MiniChatWindow";
+import { ChatToastListener } from "@/components/chat/ChatToastListener";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import FullAdminRoute from "@/components/FullAdminRoute";
@@ -60,6 +61,7 @@ import AISettings from "./pages/AISettings";
 import UserActivity from "./pages/UserActivity";
 import Inbox from "./pages/Inbox";
 import ChatPolicies from "./pages/ChatPolicies";
+import UploadControls from "./pages/UploadControls";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 
@@ -89,6 +91,7 @@ const App = () => (
           <AuthProvider>
             <PresenceProvider>
             <FloatingChatProvider>
+            <ChatToastListener />
             <Routes>
               <Route path="/auth" element={<Auth />} />
             <Route path="/pending-approval" element={<PendingApproval />} />
@@ -455,6 +458,16 @@ const App = () => (
                     <ChatPolicies />
                   </Layout>
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/upload-controls"
+              element={
+                <FullAdminRoute>
+                  <Layout>
+                    <UploadControls />
+                  </Layout>
+                </FullAdminRoute>
               }
             />
             <Route path="*" element={<NotFound />} />

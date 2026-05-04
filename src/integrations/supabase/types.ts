@@ -788,18 +788,21 @@ export type Database = {
           blocked_user_id: string
           created_at: string
           created_by: string | null
+          except_user_ids: string[]
           id: string
         }
         Insert: {
           blocked_user_id: string
           created_at?: string
           created_by?: string | null
+          except_user_ids?: string[]
           id?: string
         }
         Update: {
           blocked_user_id?: string
           created_at?: string
           created_by?: string | null
+          except_user_ids?: string[]
           id?: string
         }
         Relationships: []
@@ -1686,6 +1689,66 @@ export type Database = {
           },
         ]
       }
+      upload_lock_settings: {
+        Row: {
+          locked: boolean
+          reason: string | null
+          scope_id: string
+          scope_type: string
+          set_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          locked?: boolean
+          reason?: string | null
+          scope_id?: string
+          scope_type: string
+          set_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          locked?: boolean
+          reason?: string | null
+          scope_id?: string
+          scope_type?: string
+          set_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      upload_quota_settings: {
+        Row: {
+          limit_value: number
+          metric: string
+          reset_at: string | null
+          reset_period: string
+          scope_id: string
+          scope_type: string
+          set_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          limit_value: number
+          metric: string
+          reset_at?: string | null
+          reset_period?: string
+          scope_id: string
+          scope_type: string
+          set_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          limit_value?: number
+          metric?: string
+          reset_at?: string | null
+          reset_period?: string
+          scope_id?: string
+          scope_type?: string
+          set_by?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_achievement_progress: {
         Row: {
           achievement_id: string
@@ -2012,8 +2075,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assert_upload_allowed: {
+        Args: { _file_name: string; _new_names?: number }
+        Returns: Json
+      }
       can_message_users: {
         Args: { _recipient_ids: string[] }
+        Returns: boolean
+      }
+      contractor_scope_covers: {
+        Args: { _scope_id: string; _scope_type: string }
         Returns: boolean
       }
       create_chat_conversation: {
@@ -2152,6 +2223,10 @@ export type Database = {
           file_count: number
           total_size_bytes: number
         }[]
+      }
+      get_upload_quota_usage: {
+        Args: { _metric: string; _scope_id: string; _scope_type: string }
+        Returns: Json
       }
       get_upload_tracking_error_stats: {
         Args: { p_end_date: string; p_start_date: string }
@@ -2295,9 +2370,17 @@ export type Database = {
         Args: { _conversation_id: string }
         Returns: undefined
       }
+      process_chat_event_inline: {
+        Args: { _event_id: string }
+        Returns: undefined
+      }
       rename_conversation: {
         Args: { _conversation_id: string; _new_title: string }
         Returns: undefined
+      }
+      upload_quota_window_start: {
+        Args: { _reset_at: string; _reset_period: string }
+        Returns: string
       }
       user_can_view_audit_for_tracking: {
         Args: { _audit_id: string; _file_name: string; _user_id: string }

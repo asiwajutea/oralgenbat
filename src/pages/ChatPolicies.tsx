@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, ShieldCheck, MinusCircle, X } from "lucide-react";
+import { Loader2, ShieldCheck, MinusCircle, X, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 type Policy = {
   id?: number;
@@ -25,6 +26,30 @@ type Policy = {
 };
 
 type UserOpt = { id: string; full_name: string; email: string };
+type BlockRow = { blocked_user_id: string; except_user_ids: string[] };
+type MatrixRow = { from_role: string; to_role: string; allowed: boolean };
+
+const ROLES = [
+  "super_admin",
+  "admin",
+  "field_manager",
+  "contractor",
+  "sub_contractor",
+  "auditor",
+  "data_entry_clerk",
+  "quality_assurance_manager",
+] as const;
+
+const ROLE_LABEL: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  field_manager: "Field Mgr",
+  contractor: "Contractor",
+  sub_contractor: "Sub-Contractor",
+  auditor: "Auditor",
+  data_entry_clerk: "Data Entry",
+  quality_assurance_manager: "QA Mgr",
+};
 
 const ChatPolicies = () => {
   const { userRole } = useAuth();
@@ -38,20 +63,26 @@ const ChatPolicies = () => {
     team_chats_mode: "anyone",
     team_chats_excepted_user_ids: [],
   });
-  const [blockedIds, setBlockedIds] = useState<string[]>([]);
+  const [blocks, setBlocks] = useState<BlockRow[]>([]);
+  const [matrix, setMatrix] = useState<MatrixRow[]>([]);
   const [users, setUsers] = useState<UserOpt[]>([]);
-  const [pickerOpen, setPickerOpen] = useState<null | "blocked" | "team_excepted">(null);
+  const [pickerOpen, setPickerOpen] = useState<null | "blocked" | "team_excepted" | { kind: "except"; blockedId: string }>(null);
   const [pickerSearch, setPickerSearch] = useState("");
 
   const load = async () => {
     setLoading(true);
-    const [{ data: pol }, { data: blocks }, { data: us }] = await Promise.all([
+    const [{ data: pol }, { data: blockRows }, { data: us }, { data: matrixRows }] = await Promise.all([
       supabase.from("chat_global_policy").select("*").eq("id", 1).maybeSingle(),
-      supabase.from("chat_user_blocks").select("blocked_user_id"),
+      supabase.from("chat_user_blocks").select("blocked_user_id, except_user_ids"),
       supabase.from("profiles").select("id, full_name, email").eq("is_approved", true).order("full_name").limit(500),
+      supabase.from("chat_messaging_policies").select("from_role, to_role, allowed"),
     ]);
     if (pol) setPolicy(pol as any);
-    setBlockedIds((blocks || []).map((b: any) => b.blocked_user_id));
+    setBlocks((blockRows || []).map((b: any) => ({
+      blocked_user_id: b.blocked_user_id,
+      except_user_ids: b.except_user_ids || [],
+    })));
+    setMatrix((matrixRows || []) as MatrixRow[]);
     setUsers((us || []) as any);
     setLoading(false);
   };
@@ -69,12 +100,58 @@ const ChatPolicies = () => {
     if (error) toast.error(error.message);
   };
 
-  const setBlocked = async (ids: string[]) => {
-    const toAdd = ids.filter((i) => !blockedIds.includes(i));
-    const toRemove = blockedIds.filter((i) => !ids.includes(i));
-    if (toAdd.length) await supabase.from("chat_user_blocks").insert(toAdd.map((i) => ({ blocked_user_id: i })));
-    if (toRemove.length) await supabase.from("chat_user_blocks").delete().in("blocked_user_id", toRemove);
-    setBlockedIds(ids);
+  const blockedIds = useMemo(() => blocks.map((b) => b.blocked_user_id), [blocks]);
+
+  const toggleBlocked = async (id: string) => {
+    setSaving(true);
+    if (blockedIds.includes(id)) {
+      // optimistic
+      setBlocks((prev) => prev.filter((b) => b.blocked_user_id !== id));
+      const { error } = await supabase.from("chat_user_blocks").delete().eq("blocked_user_id", id);
+      if (error) { toast.error(error.message); load(); }
+    } else {
+      setBlocks((prev) => [...prev, { blocked_user_id: id, except_user_ids: [] }]);
+      const { error } = await supabase.from("chat_user_blocks").insert({ blocked_user_id: id, except_user_ids: [] });
+      if (error) { toast.error(error.message); load(); }
+    }
+    setSaving(false);
+  };
+
+  const toggleExcept = async (blockedId: string, exceptId: string) => {
+    const row = blocks.find((b) => b.blocked_user_id === blockedId);
+    if (!row) return;
+    const next = row.except_user_ids.includes(exceptId)
+      ? row.except_user_ids.filter((x) => x !== exceptId)
+      : [...row.except_user_ids, exceptId];
+    setSaving(true);
+    setBlocks((prev) => prev.map((b) => b.blocked_user_id === blockedId ? { ...b, except_user_ids: next } : b));
+    const { error } = await supabase.from("chat_user_blocks")
+      .update({ except_user_ids: next })
+      .eq("blocked_user_id", blockedId);
+    setSaving(false);
+    if (error) { toast.error(error.message); load(); }
+  };
+
+  const toggleTeamExcept = async (id: string) => {
+    const next = policy.team_chats_excepted_user_ids.includes(id)
+      ? policy.team_chats_excepted_user_ids.filter((x) => x !== id)
+      : [...policy.team_chats_excepted_user_ids, id];
+    await savePolicy({ team_chats_excepted_user_ids: next });
+  };
+
+  const toggleMatrix = async (from_role: string, to_role: string) => {
+    const cur = matrix.find((m) => m.from_role === from_role && m.to_role === to_role);
+    const next = !(cur?.allowed ?? true);
+    setSaving(true);
+    setMatrix((prev) => {
+      const others = prev.filter((m) => !(m.from_role === from_role && m.to_role === to_role));
+      return [...others, { from_role, to_role, allowed: next }];
+    });
+    const { error } = await supabase.from("chat_messaging_policies")
+      .upsert({ from_role: from_role as any, to_role: to_role as any, allowed: next },
+              { onConflict: "from_role,to_role" });
+    setSaving(false);
+    if (error) { toast.error(error.message); load(); }
   };
 
   const userName = (id: string) => users.find((u) => u.id === id)?.full_name || id.slice(0, 8);
@@ -84,18 +161,30 @@ const ChatPolicies = () => {
     return u.full_name?.toLowerCase().includes(s) || u.email?.toLowerCase().includes(s);
   });
 
-  const currentSelection = pickerOpen === "blocked" ? blockedIds : policy.team_chats_excepted_user_ids;
-  const togglePick = (id: string) => {
-    const cur = currentSelection;
-    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-    if (pickerOpen === "blocked") setBlockedIds(next);
-    else setPolicy({ ...policy, team_chats_excepted_user_ids: next });
+  const currentSelection: string[] =
+    pickerOpen === "blocked"
+      ? blockedIds
+      : pickerOpen === "team_excepted"
+        ? policy.team_chats_excepted_user_ids
+        : (typeof pickerOpen === "object" && pickerOpen?.kind === "except"
+            ? (blocks.find((b) => b.blocked_user_id === pickerOpen.blockedId)?.except_user_ids || [])
+            : []);
+
+  const togglePick = async (id: string) => {
+    if (pickerOpen === "blocked") {
+      await toggleBlocked(id);
+    } else if (pickerOpen === "team_excepted") {
+      await toggleTeamExcept(id);
+    } else if (typeof pickerOpen === "object" && pickerOpen?.kind === "except") {
+      await toggleExcept(pickerOpen.blockedId, id);
+    }
   };
-  const commitPicker = async () => {
-    if (pickerOpen === "blocked") await setBlocked(blockedIds);
-    else await savePolicy({ team_chats_excepted_user_ids: policy.team_chats_excepted_user_ids });
-    setPickerOpen(null);
-  };
+
+  const pickerTitle =
+    pickerOpen === "blocked" ? "Select blocked users"
+    : pickerOpen === "team_excepted" ? "Select excepted users"
+    : typeof pickerOpen === "object" ? `Allow these users to message ${userName(pickerOpen.blockedId)}`
+    : "";
 
   if (loading) {
     return <div className="container mx-auto p-6 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
@@ -170,10 +259,22 @@ const ChatPolicies = () => {
                 <p className="font-medium">Users <strong>can never</strong> start a chat conversation with</p>
                 <div className="flex flex-wrap gap-1 mt-2">
                   {blockedIds.length === 0 && <span className="text-xs text-muted-foreground">No users selected</span>}
-                  {blockedIds.map((id) => (
-                    <Badge key={id} variant="secondary" className="gap-1">
-                      {userName(id)}
-                      <button onClick={() => setBlocked(blockedIds.filter((x) => x !== id))}><X className="h-3 w-3" /></button>
+                  {blocks.map((b) => (
+                    <Badge key={b.blocked_user_id} variant="secondary" className="gap-1 pr-1">
+                      {userName(b.blocked_user_id)}
+                      {b.except_user_ids.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground">· except {b.except_user_ids.length}</span>
+                      )}
+                      <button
+                        title="Manage exceptions"
+                        className="ml-1 p-0.5 hover:bg-background rounded"
+                        onClick={() => { setPickerOpen({ kind: "except", blockedId: b.blocked_user_id }); setPickerSearch(""); }}
+                      >
+                        <Settings2 className="h-3 w-3" />
+                      </button>
+                      <button title="Remove" onClick={() => toggleBlocked(b.blocked_user_id)}>
+                        <X className="h-3 w-3" />
+                      </button>
                     </Badge>
                   ))}
                 </div>
@@ -182,6 +283,58 @@ const ChatPolicies = () => {
             <Button variant="link" onClick={() => { setPickerOpen("blocked"); setPickerSearch(""); }}>
               {blockedIds.length > 0 ? `${blockedIds.length} selected` : "Select users"}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Role permissions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground mb-3">
+            Toggle which roles (rows) can start a chat with which roles (columns). Super Admin and Admin always pass through, regardless of the matrix.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="text-xs border-separate border-spacing-1">
+              <thead>
+                <tr>
+                  <th className="p-1 text-left">From \\ To</th>
+                  {ROLES.map((r) => (
+                    <th key={r} className="p-1 text-center font-medium">{ROLE_LABEL[r]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ROLES.map((from) => (
+                  <tr key={from}>
+                    <td className="p-1 font-medium">{ROLE_LABEL[from]}</td>
+                    {ROLES.map((to) => {
+                      const cur = matrix.find((m) => m.from_role === from && m.to_role === to);
+                      const allowed = cur?.allowed ?? true;
+                      const isPinned = from === "super_admin" || from === "admin";
+                      return (
+                        <td key={to} className="p-1 text-center">
+                          <button
+                            disabled={isPinned}
+                            onClick={() => toggleMatrix(from, to)}
+                            className={cn(
+                              "h-7 w-12 rounded-md text-[10px] font-medium border transition",
+                              allowed
+                                ? "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20"
+                                : "bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20",
+                              isPinned && "opacity-60 cursor-not-allowed"
+                            )}
+                          >
+                            {allowed ? "✓" : "✕"}
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </CardContent>
       </Card>
@@ -229,7 +382,7 @@ const ChatPolicies = () => {
       <Dialog open={!!pickerOpen} onOpenChange={(o) => !o && setPickerOpen(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{pickerOpen === "blocked" ? "Select blocked users" : "Select excepted users"}</DialogTitle>
+            <DialogTitle>{pickerTitle}</DialogTitle>
           </DialogHeader>
           <Input placeholder="Search…" value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} />
           <ScrollArea className="h-72 border rounded-md">
@@ -247,8 +400,7 @@ const ChatPolicies = () => {
             })}
           </ScrollArea>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPickerOpen(null)}>Cancel</Button>
-            <Button onClick={commitPicker}>Save</Button>
+            <Button onClick={() => setPickerOpen(null)}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
