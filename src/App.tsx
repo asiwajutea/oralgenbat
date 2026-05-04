@@ -10,6 +10,7 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import { FloatingChatProvider } from "@/components/chat/FloatingChatProvider";
 import { FloatingChats } from "@/components/chat/MiniChatWindow";
+import { ChatToastListener } from "@/components/chat/ChatToastListener";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import FullAdminRoute from "@/components/FullAdminRoute";
@@ -89,6 +90,7 @@ const App = () => (
           <AuthProvider>
             <PresenceProvider>
             <FloatingChatProvider>
+            <ChatToastListener />
             <Routes>
               <Route path="/auth" element={<Auth />} />
             <Route path="/pending-approval" element={<PendingApproval />} />
