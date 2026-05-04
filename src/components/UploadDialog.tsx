@@ -171,6 +171,16 @@ export const UploadDialog = ({
         const timestamp = Date.now();
         const storagePath = `${fileName}_${timestamp}.pdf`;
 
+        // Pre-upload guard: locks + quotas
+        const { error: gateErr } = await supabase.rpc("assert_upload_allowed", {
+          _file_name: fileName,
+          _new_names: 0,
+        });
+        if (gateErr) {
+          toast.error(`${fileName}: ${gateErr.message}`);
+          continue;
+        }
+
         // Update floating progress
         onUploadProgress?.({
           fileName: `${i + 1}/${validFiles.length} files`,
