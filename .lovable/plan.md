@@ -1,108 +1,199 @@
-## Inbox, Chat Policies, Upload Locks & Override Notes
+# Upload Center, Lock-Aware Buttons & Penalty Charges
 
-### 1. Inbox — Failed Audits, Tracking, and live toasts
+Three connected workstreams. Existing upload dialogs stay in place; new surfaces are additive.
 
-**Problem 1 — Failed Audits / Tracking columns are empty.** The `process-chat-events` edge function only runs when invoked. Triggers enqueue rows into `chat_pending_events`, but nothing drains the queue, so no `failed_audit` or `tracking_comment` conversations are ever created.
+---
 
-**Fix:**
-- Drain the queue automatically using a Postgres trigger on `chat_pending_events` that calls a new internal RPC `process_chat_event_inline(_event_id uuid)` written in PL/pgSQL. The RPC mirrors the edge-function logic for `audit_failed`, `tracking_comment_added`, `announcement_published`, and `push_delivered`, then sets `processed_at`. This keeps the system self-healing even if the edge function is never invoked.
-- Backfill: one-shot SQL run inside the same migration that loops over current unprocessed events.
-- Keep the existing edge function as a fallback (admin-triggered).
-- Rename the "Tracking" inbox label/tooltip to "Tracking Comments" and add a one-line subtitle: "Comments left on the Interview Tracking page".
+## 1. Upload Center — `/upload-center`
 
-**Problem 2 — No toast for new messages outside Inbox.**
-- Add `ChatToastListener` mounted in `App.tsx` (inside `AuthProvider`).
-- It subscribes to `chat_messages` INSERT for conversations where the user is a participant, ignores its own messages, ignores when `location.pathname.startsWith('/inbox')`, fetches sender name + conversation title, and calls `toast(...)` with an action button "Open" → `navigate('/inbox?conv=' + id)`.
-- Respect `chat_user_preferences.push_enabled` (reuse it as the in-app notify flag too).
+A single, friendly page that walks managers through both **New Interview** and **Re-audit** uploads, plus an **Upload History** tab so they can confirm what actually went through (even silent failures).
 
-### 2. Chat Policies redesign
+### Layout
 
-**a. Persistence bug — "Users can never start a chat conversation with" resets.**
-Root cause: blocked users are only saved when the user clicks "Save" in the picker. Closing the policies page or navigating away discards uncommitted state. Also the picker writes to local state but only commits on `commitPicker`.
-- Make every checkbox toggle in the picker write through immediately (debounced 300 ms) using `setBlocked()`.
-- Reload state after each write so badges reflect persisted DB rows.
-
-**b. Role-based matrix.** Add a new "Role permissions" card (Connecteam-style) to `/admin/chat-policies` letting super_admin define which roles can chat which roles. Backed by the existing `chat_messaging_policies` table (`from_role`, `to_role`, `allowed`).
-- UI: 7×7 grid (auditor, field_manager, contractor, sub_contractor, data_entry_clerk, quality_assurance_manager, super_admin/admin row pinned as "always allowed"). Cells are toggle chips with optimistic save.
-- `can_message_users` already consults this matrix; no RPC change needed.
-
-**c. Per-user exceptions for "Users can never start a chat conversation with".**
-- Migration: extend `chat_user_blocks` with `except_user_ids uuid[] NOT NULL DEFAULT '{}'` representing users who are still allowed to message the blocked user.
-- Update `can_message_users` to: when caller is in `except_user_ids` for a recipient, allow; otherwise enforce the block.
-- UI: each blocked-user chip becomes expandable. Clicking it opens an "Except…" picker (same dialog, smaller) so the admin can pick exempt senders. The chip then shows `Temidayo Akintuyi · except 3`.
-
-### 3. New Interview Upload Lock & Quotas
-
-New tables and RPC, plus client-side enforcement in all upload dialogs.
-
-**Schema (migration):**
 ```text
-upload_lock_settings
-  scope_type text   -- 'global' | 'contractor' | 'field_manager' | 'interviewer'
-  scope_id   text   -- contractor_id, field_manager_id (uuid as text), or interviewer_code
-  locked     boolean
-  reason     text
-  set_by     uuid
-  updated_at timestamptz
-  PRIMARY KEY (scope_type, scope_id)
-
-upload_quota_settings
-  scope_type     text       -- 'field_manager' | 'interviewer'
-  scope_id       text
-  metric         text       -- 'interviews' | 'names'
-  limit_value    integer
-  reset_at       timestamptz -- exact instant the quota resets (next reset point)
-  reset_period   text        -- 'one_off' | 'monthly' | 'weekly' (informational)
-  set_by         uuid
-  updated_at     timestamptz
-  PRIMARY KEY (scope_type, scope_id, metric)
+┌──────────────────────────────────────────────────────┐
+│  Upload Center                                       │
+│  [ Upload ]  [ History ]                             │
+├──────────────────────────────────────────────────────┤
+│  What are you uploading?                             │
+│   ( ) New interview                                  │
+│   ( ) Re-audit (replace failed files)                │
+│                                                      │
+│  What files do you have? (multi-select)              │
+│   [x] PDF      [x] Metadata ZIP                      │
+│                                                      │
+│  ── Lock banner (if locked for this scope) ──        │
+│   "Uploads are locked: <reason>"   [ buttons disabled ] │
+│                                                      │
+│  Drop zone (PDF, ZIP, or both)                       │
+│  Per-file rows: name • detected type • status pill   │
+│  [ Start upload ]                                    │
+└──────────────────────────────────────────────────────┘
 ```
-RLS: super_admin/admin manage all rows. Contractor/sub_contractor manage rows whose `scope_id` resolves to their contractor (`field_manager_id` joined via `team_assignments.contractor_id`, `interviewer_code` directly). FM and below: read-only for rows that match themselves.
 
-**Counting logic (RPC `get_upload_quota_usage(_scope_type, _scope_id, _metric)`):**
-- `interviews` count: rows in `audits` where the audit has a matching row in `interview_metadata` AND `mobile_zip_url IS NOT NULL` AND `file_url IS NOT NULL` (i.e. PDF + metadata both present), filtered by interviewer_code (or all interviewers belonging to the FM via `team_assignments`), AND `uploaded_at >= last_reset_at`.
-- `names` count: SUM(`interview_metadata.total_names`) filtered the same way.
-- `last_reset_at = reset_at - interval` derived per `reset_period`; if `reset_period = 'one_off'`, `last_reset_at = '-infinity'`.
+- **Mode toggle** — "New interview" vs "Re-audit" decides whether the file goes through the standard insert path or the existing re-audit replacement path (same RPCs already used by `BulkPdfUploadDialog` / `BulkZipUploadDialog`).
+- **Smart routing** — file extension + mode decides target storage bucket and write path. No new edge functions; we reuse the same client logic the existing dialogs use, extracted into a small `uploadInterviewFile()` helper.
+- **Filename validation** — same `isValidInterviewName` check.
+- **Pre-flight** — calls `assert_upload_allowed` per file. Failures show inline next to the file row instead of a toast that scrolls away.
 
-**Server-side enforcement:** new RPC `assert_upload_allowed(_file_name)` called by every upload dialog before insert into `audits`. It:
-1. Parses `interviewer_code` and `contractor_id` from filename.
-2. Checks `upload_lock_settings` for `global`, `contractor=<id>`, the FM resolved from `team_assignments`, and `interviewer=<code>`. Any locked → `RAISE EXCEPTION 'Uploads are locked: <reason>'`.
-3. Resolves quota for FM and interviewer; if usage + 1 (interviews) or usage + new total_names (names) would exceed limit → raise.
-4. Returns `OK` with current usage so the dialog can display "X / Y used".
+### Upload History tab
 
-Client wiring:
-- `UploadDialog`, `CombinedUploadDialog`, `BulkPdfUploadDialog`, `BulkMetadataUploadDialog`, `BulkZipUploadDialog`: call `assert_upload_allowed` per file; if it throws, mark file `error` with the message and continue with the rest.
-- New page `/admin/upload-controls` (linked under Admin nav) with two tabs:
-  - **Locks**: toggle global lock; per-contractor list (admins/super_admin); per-FM and per-interviewer search-and-toggle (contractors/sub-contractors only see their scope).
-  - **Quotas**: per-FM and per-interviewer; choose metric (interviews/names), limit, reset date/time, reset_period. Shows current usage bar.
+Backed by a new `upload_attempts` table that we write to from the upload helper (success **and** failure). Columns shown:
 
-**FM dashboard surface:** add a `UploadQuotaCard` on `FieldManagerDashboard` showing "X / Y new interviews used (resets <relative time>)" or names variant. Read-only RPC `get_my_upload_quota()` returns active quota + usage.
-
-### 4. Override Notes PDF — sort by folder name ascending
-
-In `supabase/functions/export-team-pdfs/index.ts`, sort `overridden` by `file_name` ascending before iterating:
 ```text
-overridden.sort((a, b) => a.file_name.localeCompare(b.file_name))
+When • File • Type (PDF/ZIP) • Mode (New/Re-audit) • Status (Success/Failed/Skipped duplicate) • Reason
 ```
+
+Filters: mode, status, date range. Per-row "Retry" for failed entries (re-opens the dialog with the same file pre-selected).
+
+### Schema
+
+```text
+upload_attempts
+  id uuid pk
+  user_id uuid
+  file_name text
+  detected_kind text       -- 'pdf' | 'metadata_zip'
+  mode text                -- 'new' | 're_audit'
+  status text              -- 'success' | 'failed' | 'duplicate' | 'locked' | 'quota_blocked'
+  message text             -- error or info
+  audit_id uuid null
+  created_at timestamptz
+```
+RLS: users see own rows; admin/super_admin see all.
 
 ### Files
 
-**New**
-- `supabase/migrations/<ts>_chat_event_processor_and_upload_controls.sql` — `process_chat_event_inline` + drain trigger; `chat_user_blocks.except_user_ids`; updated `can_message_users`; `upload_lock_settings`, `upload_quota_settings`, `get_upload_quota_usage`, `assert_upload_allowed`, `get_my_upload_quota`.
-- `src/components/chat/ChatToastListener.tsx`
-- `src/pages/UploadControls.tsx`
-- `src/components/dashboard/UploadQuotaCard.tsx`
-- `src/components/chat/policies/RoleMatrixCard.tsx`
-- `src/components/chat/policies/BlockedUserChip.tsx`
+- New: `src/pages/UploadCenter.tsx`, `src/components/upload-center/UploadCenterDropzone.tsx`, `src/components/upload-center/UploadHistoryTable.tsx`, `src/lib/uploadInterviewFile.ts` (shared helper, also imported by existing dialogs so history captures them too).
+- Edited: `src/App.tsx` (route), `src/components/Header.tsx` + `src/components/MobileNav.tsx` (nav entry "Upload Center").
+- Migration: create `upload_attempts` + RLS.
 
-**Edited**
-- `src/App.tsx` — mount `ChatToastListener`; route `/admin/upload-controls`.
-- `src/components/Header.tsx`, `src/components/MobileNav.tsx` — Admin nav entry "Upload Controls".
-- `src/pages/ChatPolicies.tsx` — autosave on toggle, role matrix card, per-user except picker.
-- `src/pages/Inbox.tsx` — Tracking label tweak + subtitle.
-- `src/pages/FieldManagerDashboard.tsx` — render `UploadQuotaCard`.
-- `src/components/UploadDialog.tsx`, `CombinedUploadDialog.tsx`, `BulkPdfUploadDialog.tsx`, `BulkMetadataUploadDialog.tsx`, `BulkZipUploadDialog.tsx` — call `assert_upload_allowed` before insert/upload.
-- `supabase/functions/export-team-pdfs/index.ts` — sort `overridden`.
+---
 
-### Out of scope
-- GitHub sync issue (per earlier note).
+## 2. Lock-aware upload buttons everywhere
+
+Today the lock is enforced server-side via `assert_upload_allowed`, but UI buttons stay enabled and only fail at submit time. Fix:
+
+- New hook `useUploadLockStatus({ contractorId?, fieldManagerId?, interviewerCode? })` that:
+  1. Reads `upload_lock_settings` for `global` + the resolved scopes.
+  2. Returns `{ locked: boolean, reason: string | null, scope: 'global' | 'contractor' | ... }`.
+  3. Subscribes to realtime changes on `upload_lock_settings` so unlocking re-enables buttons immediately.
+- Wrap each existing upload trigger in `<UploadLockGuard>`:
+  - If locked: render the button as `disabled`, with a tooltip showing the lock reason, and an inline amber chip "Uploads locked: <reason>".
+  - If unlocked: render children normally.
+- Apply to: home dashboards (Admin, Contractor, SubContractor, FieldManager), `InterviewTracking` page, `Index` page, the new Upload Center, and all four bulk dialogs' trigger buttons.
+
+For users without a single resolvable scope (admins viewing the global page), only `global` lock disables the button; per-scope locks instead show a banner inside the dialog after the user picks a file.
+
+### Files
+
+- New: `src/hooks/useUploadLockStatus.ts`, `src/components/upload/UploadLockGuard.tsx`.
+- Edited: every page that renders an "Upload" CTA (Header, Index, InterviewTracking, all four home dashboards, UploadCenter).
+
+---
+
+## 3. Penalty charges for failed first audits
+
+A self-contained module. Settings are scoped: an admin/super_admin sets policy for everyone; a contractor for their sub-contractors and FMs; a sub-contractor for their FMs. Exemptions are explicit per-user.
+
+### Schema
+
+```text
+penalty_settings                         -- one active row per (set_by_role, scope_id, target_role)
+  id uuid
+  set_by uuid                            -- who configured
+  set_by_role app_role                   -- admin / contractor / sub_contractor
+  scope_type text                        -- 'global' | 'contractor' | 'sub_contractor'
+  scope_id text null                     -- contractor_id or sub_contractor user_id
+  target_role app_role                   -- 'sub_contractor' | 'field_manager'
+  charge_mode text                       -- 'per_name' | 'per_interview'
+  amount numeric                         -- N20 or N500
+  currency text                          -- 'NGN','USD',...
+  effective_from date                    -- editable, defaults 2026-04-21
+  is_active boolean
+  updated_at, updated_by
+
+penalty_exemptions
+  id uuid
+  setting_id uuid -> penalty_settings
+  exempt_user_id uuid                    -- user excluded
+  cascade_to_subordinates boolean        -- e.g. exempt a sub-contractor AND all their FMs
+  created_at, created_by
+
+penalty_charges                          -- one row per chargeable failed first-audit
+  id uuid
+  audit_id uuid
+  charged_user_id uuid                   -- the FM or sub-contractor being charged
+  charged_user_role app_role
+  setting_id uuid                        -- which policy created it
+  amount numeric
+  currency text
+  status text                            -- 'open' | 'paid' | 'partial' | 'waived' | 'removed' | 'appealed'
+  removed_by uuid null, removed_reason text null
+  appeal_reason text null, appeal_status text null  -- 'pending'|'accepted'|'rejected'
+  appeal_decided_by uuid null
+  created_at
+
+penalty_payments
+  id uuid
+  charge_id uuid -> penalty_charges      -- nullable (general payment) or specific
+  charged_user_id uuid
+  amount numeric
+  declared_by uuid                       -- self-declared payment
+  declared_at timestamptz
+  confirmed_by uuid null                 -- superior who confirmed
+  confirmed_at timestamptz null
+  status text                            -- 'pending_confirmation' | 'confirmed' | 'rejected'
+  note text
+```
+
+### Trigger logic (Postgres)
+
+When `audits.status` transitions to `Failed` AND `re_audit_count = 0` AND `uploaded_at >= effective_from of an applicable policy`:
+
+1. Resolve the chargeable user(s) from `interview_metadata` + `team_assignments`:
+   - FM via `team_assignments.field_manager_id`
+   - Sub-contractor via the FM's parent (`field_manager_subcontractor_assignments`)
+2. For each `(target_role, charged_user)` look up the strongest applicable `penalty_settings` and check exemptions (including cascade).
+3. Insert one `penalty_charges` row per (audit, charged_user) — use a unique partial index `(audit_id, charged_user_id) WHERE status <> 'removed'` so the same audit cannot be charged twice. Re-audits never re-trigger.
+4. Amount = `per_interview` or `per_name * interview_metadata.total_names`.
+
+### RPCs
+
+- `set_penalty_setting(...)` — upsert, validates the caller is allowed to configure that target_role under that scope.
+- `add_penalty_exemption(setting_id, user_id, cascade)` / `remove_penalty_exemption(...)`.
+- `update_effective_from(setting_id, new_date)` — only the role tier that owns the setting can edit; date defaults to **2026-04-21**.
+- `remove_penalty_charge(charge_id, reason)` — superior only.
+- `appeal_penalty_charge(charge_id, reason)` — charged user only.
+- `decide_appeal(charge_id, accept boolean, note)` — superior; if accepted, charge becomes `waived` and is excluded from balance.
+- `declare_penalty_payment(charge_id|null, amount, note)` — charged user; creates `pending_confirmation` payment and notifies superior.
+- `confirm_penalty_payment(payment_id, accept boolean, note)` — superior; on accept, deduct from balance, mark charges paid in FIFO order, mark partial when needed.
+- `get_penalty_summary(_user_id uuid)` — returns `{ total_charged, total_paid, balance, currency, breakdown[] }` for the homepage card.
+
+### UI
+
+- New page `/admin/penalties` (visible to admin / super_admin / contractor / sub_contractor):
+  - **Settings tab** — table of policies the user can manage; create/edit dialog with charge mode, amount, currency, effective_from picker.
+  - **Exemptions tab** — per-policy list with add-by-search and a "cascade to subordinates" toggle.
+  - **Charges tab** — every charge in scope, filterable by user/status; row actions: Remove (superior), Confirm payment (superior).
+  - **Payments tab** — declared payments awaiting confirmation, plus full lifetime history.
+- New page `/my-penalties` (FM / sub-contractor):
+  - Summary cards (Total charged, Total paid, Balance).
+  - Charges table with **Appeal** and **Declare payment** actions.
+  - Payment history.
+- Homepage card `PenaltyBalanceCard` rendered on `FieldManagerDashboard` and `SubContractorDashboard` — pulls `get_penalty_summary(auth.uid())` and shows balance with a deep link to `/my-penalties`.
+- Notifications via existing `chat_pending_events` / inbox: `penalty_charged`, `penalty_payment_declared`, `penalty_payment_confirmed`, `appeal_decided`.
+
+### Files
+
+- Migration: tables, indexes, trigger, RPCs, RLS.
+- New pages: `src/pages/PenaltyAdmin.tsx`, `src/pages/MyPenalties.tsx`.
+- New components: `src/components/penalty/PenaltySettingsTable.tsx`, `PenaltyChargesTable.tsx`, `PenaltyPaymentsTable.tsx`, `PenaltyBalanceCard.tsx`, `DeclarePaymentDialog.tsx`, `AppealChargeDialog.tsx`, `EditPenaltySettingDialog.tsx`.
+- Edited: `App.tsx` (routes), `Header.tsx`/`MobileNav.tsx` (nav), `FieldManagerDashboard.tsx` and `SubContractorDashboard.tsx` (mount card), `Inbox.tsx` (handle new event types in the same drain trigger).
+
+---
+
+## Out of scope
+- Removing existing upload buttons (you asked to keep them).
+- Currency conversion — each policy stores its own currency string and is displayed as-is.
+- Automatic deduction from invoices — payments are tracked separately and only marked when superior confirms.
