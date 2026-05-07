@@ -254,6 +254,16 @@ const Header = () => {
                           Upload Controls
                         </Link>
                       </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/admin/penalties" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/penalties' && "bg-accent text-accent-foreground")}>
+                          Penalty Charges
+                        </Link>
+                      </NavigationMenuLink>
+                      <NavigationMenuLink asChild>
+                        <Link to="/upload-center" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/upload-center' && "bg-accent text-accent-foreground")}>
+                          Upload Center
+                        </Link>
+                      </NavigationMenuLink>
                       {isSuperAdmin && (
                         <NavigationMenuLink asChild>
                           <Link to="/admin/error-console" className={cn("block select-none rounded-md p-3 text-sm leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground", location.pathname === '/admin/error-console' && "bg-accent text-accent-foreground")}>
