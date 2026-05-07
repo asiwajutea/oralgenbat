@@ -24,6 +24,7 @@ import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 import PaymentStatsCards from "@/components/home/PaymentStatsCards";
+import { PenaltyBalanceCard } from "@/components/penalty/PenaltyBalanceCard";
 import { useChecklistSummary, useChecklistScope, type ChecklistPeriod } from "@/hooks/useChecklistAnalytics";
 
 const SubContractorDashboard = () => {
@@ -239,6 +240,7 @@ const SubContractorDashboard = () => {
 
       {/* Payment Stats */}
       <PaymentStatsCards />
+      <PenaltyBalanceCard />
 
       {/* Checklist Performance */}
       <Card>

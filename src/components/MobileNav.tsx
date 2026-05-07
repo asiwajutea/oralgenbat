@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame, Bug, Inbox as InboxIcon, Activity } from "lucide-react";
+import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame, Bug, Inbox as InboxIcon, Activity, Upload } from "lucide-react";
 import { useChatUnreadTotal } from "@/hooks/useChatUnread";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "react-router-dom";
@@ -202,9 +202,18 @@ const MobileNav = () => {
                 <NavItem to="/admin/sms-logs" icon={MessageSquare}>SMS Logs</NavItem>
                 <NavItem to="/admin/duplicates" icon={Copy}>Duplicate Detection</NavItem>
                 <NavItem to="/admin/upload-controls" icon={Lock}>Upload Controls</NavItem>
+                <NavItem to="/admin/penalties" icon={DollarSign}>Penalty Charges</NavItem>
                 {userRole === 'super_admin' && <NavItem to="/admin/error-console" icon={Bug}>Error Console</NavItem>}
                 {userRole === 'super_admin' && <NavItem to="/admin/chat-policies" icon={Shield}>Chat Policies</NavItem>}
               </>
+            )}
+            <SectionHeader>Uploads</SectionHeader>
+            <NavItem to="/upload-center" icon={Upload}>Upload Center</NavItem>
+            {(userRole === 'field_manager' || userRole === 'sub_contractor' || userRole === 'contractor') && (
+              <NavItem to="/admin/penalties" icon={DollarSign}>Penalty Charges</NavItem>
+            )}
+            {(userRole === 'field_manager' || userRole === 'sub_contractor') && (
+              <NavItem to="/my-penalties" icon={DollarSign}>My Penalties</NavItem>
             )}
           </nav>
 

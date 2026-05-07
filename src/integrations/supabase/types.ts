@@ -1360,6 +1360,210 @@ export type Database = {
           },
         ]
       }
+      penalty_charges: {
+        Row: {
+          amount: number
+          appeal_decided_at: string | null
+          appeal_decided_by: string | null
+          appeal_reason: string | null
+          appeal_status: string | null
+          audit_id: string
+          charged_user_id: string
+          charged_user_role: Database["public"]["Enums"]["app_role"]
+          created_at: string
+          currency: string
+          id: string
+          paid_amount: number
+          removed_at: string | null
+          removed_by: string | null
+          removed_reason: string | null
+          setting_id: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          appeal_decided_at?: string | null
+          appeal_decided_by?: string | null
+          appeal_reason?: string | null
+          appeal_status?: string | null
+          audit_id: string
+          charged_user_id: string
+          charged_user_role: Database["public"]["Enums"]["app_role"]
+          created_at?: string
+          currency?: string
+          id?: string
+          paid_amount?: number
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_reason?: string | null
+          setting_id?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          appeal_decided_at?: string | null
+          appeal_decided_by?: string | null
+          appeal_reason?: string | null
+          appeal_status?: string | null
+          audit_id?: string
+          charged_user_id?: string
+          charged_user_role?: Database["public"]["Enums"]["app_role"]
+          created_at?: string
+          currency?: string
+          id?: string
+          paid_amount?: number
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_reason?: string | null
+          setting_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "penalty_charges_setting_id_fkey"
+            columns: ["setting_id"]
+            isOneToOne: false
+            referencedRelation: "penalty_settings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      penalty_exemptions: {
+        Row: {
+          cascade_to_subordinates: boolean
+          created_at: string
+          created_by: string | null
+          exempt_user_id: string
+          id: string
+          setting_id: string
+        }
+        Insert: {
+          cascade_to_subordinates?: boolean
+          created_at?: string
+          created_by?: string | null
+          exempt_user_id: string
+          id?: string
+          setting_id: string
+        }
+        Update: {
+          cascade_to_subordinates?: boolean
+          created_at?: string
+          created_by?: string | null
+          exempt_user_id?: string
+          id?: string
+          setting_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "penalty_exemptions_setting_id_fkey"
+            columns: ["setting_id"]
+            isOneToOne: false
+            referencedRelation: "penalty_settings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      penalty_payments: {
+        Row: {
+          amount: number
+          charge_id: string | null
+          charged_user_id: string
+          confirmed_at: string | null
+          confirmed_by: string | null
+          currency: string
+          declared_at: string
+          declared_by: string
+          id: string
+          note: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          charge_id?: string | null
+          charged_user_id: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          currency?: string
+          declared_at?: string
+          declared_by: string
+          id?: string
+          note?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          charge_id?: string | null
+          charged_user_id?: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          currency?: string
+          declared_at?: string
+          declared_by?: string
+          id?: string
+          note?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "penalty_payments_charge_id_fkey"
+            columns: ["charge_id"]
+            isOneToOne: false
+            referencedRelation: "penalty_charges"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      penalty_settings: {
+        Row: {
+          amount: number
+          charge_mode: string
+          created_at: string
+          currency: string
+          effective_from: string
+          id: string
+          is_active: boolean
+          scope_id: string | null
+          scope_type: string
+          set_by: string
+          set_by_role: Database["public"]["Enums"]["app_role"]
+          target_role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          amount: number
+          charge_mode: string
+          created_at?: string
+          currency?: string
+          effective_from?: string
+          id?: string
+          is_active?: boolean
+          scope_id?: string | null
+          scope_type: string
+          set_by: string
+          set_by_role: Database["public"]["Enums"]["app_role"]
+          target_role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          amount?: number
+          charge_mode?: string
+          created_at?: string
+          currency?: string
+          effective_from?: string
+          id?: string
+          is_active?: boolean
+          scope_id?: string | null
+          scope_type?: string
+          set_by?: string
+          set_by_role?: Database["public"]["Enums"]["app_role"]
+          target_role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           account_status: string
@@ -1688,6 +1892,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      upload_attempts: {
+        Row: {
+          audit_id: string | null
+          created_at: string
+          detected_kind: string
+          file_name: string
+          id: string
+          message: string | null
+          mode: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          audit_id?: string | null
+          created_at?: string
+          detected_kind: string
+          file_name: string
+          id?: string
+          message?: string | null
+          mode: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          audit_id?: string | null
+          created_at?: string
+          detected_kind?: string
+          file_name?: string
+          id?: string
+          message?: string | null
+          mode?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       upload_lock_settings: {
         Row: {
@@ -2075,6 +2315,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      appeal_penalty_charge: {
+        Args: { _charge_id: string; _reason: string }
+        Returns: undefined
+      }
       assert_upload_allowed: {
         Args: { _file_name: string; _new_names?: number }
         Returns: Json
@@ -2082,6 +2326,10 @@ export type Database = {
       can_message_users: {
         Args: { _recipient_ids: string[] }
         Returns: boolean
+      }
+      confirm_penalty_payment: {
+        Args: { _accept: boolean; _note?: string; _payment_id: string }
+        Returns: undefined
       }
       contractor_scope_covers: {
         Args: { _scope_id: string; _scope_type: string }
@@ -2094,6 +2342,14 @@ export type Database = {
           _title?: string
           _type?: string
         }
+        Returns: string
+      }
+      decide_penalty_appeal: {
+        Args: { _accept: boolean; _charge_id: string; _note?: string }
+        Returns: undefined
+      }
+      declare_penalty_payment: {
+        Args: { _amount: number; _charge_id: string; _note?: string }
         Returns: string
       }
       delete_conversation: {
@@ -2188,6 +2444,16 @@ export type Database = {
           total_count: number
           uploaded_at: string
           uploaded_by_name: string
+        }[]
+      }
+      get_penalty_summary: {
+        Args: { _user_id: string }
+        Returns: {
+          balance: number
+          currency: string
+          open_count: number
+          total_charged: number
+          total_paid: number
         }[]
       }
       get_review_stats: {
@@ -2325,6 +2591,10 @@ export type Database = {
         Args: { _conv: string; _user: string }
         Returns: boolean
       }
+      is_penalty_superior: {
+        Args: { _actor: string; _charged: string }
+        Returns: boolean
+      }
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
       leave_conversation: {
         Args: { _conversation_id: string }
@@ -2372,6 +2642,10 @@ export type Database = {
       }
       process_chat_event_inline: {
         Args: { _event_id: string }
+        Returns: undefined
+      }
+      remove_penalty_charge: {
+        Args: { _charge_id: string; _reason: string }
         Returns: undefined
       }
       rename_conversation: {
