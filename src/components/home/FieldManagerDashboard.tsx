@@ -23,6 +23,7 @@ import { useState } from "react";
 import RecentAchievementBadge from "@/components/RecentAchievementBadge";
 import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
 import PaymentStatsCards from "@/components/home/PaymentStatsCards";
+import { PenaltyBalanceCard } from "@/components/penalty/PenaltyBalanceCard";
 import { useChecklistSummary, type ChecklistPeriod } from "@/hooks/useChecklistAnalytics";
 
 const FieldManagerDashboard = () => {
@@ -197,6 +198,7 @@ const FieldManagerDashboard = () => {
 
       {/* Payment Stats */}
       <PaymentStatsCards />
+      <PenaltyBalanceCard />
 
       {/* Checklist Performance */}
       <Card>
