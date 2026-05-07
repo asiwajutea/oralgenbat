@@ -62,6 +62,9 @@ import UserActivity from "./pages/UserActivity";
 import Inbox from "./pages/Inbox";
 import ChatPolicies from "./pages/ChatPolicies";
 import UploadControls from "./pages/UploadControls";
+import UploadCenter from "./pages/UploadCenter";
+import PenaltyAdmin from "./pages/PenaltyAdmin";
+import MyPenalties from "./pages/MyPenalties";
 import ErrorBoundary from "./components/ErrorBoundary";
 import NotFound from "./pages/NotFound";
 
@@ -468,6 +471,36 @@ const App = () => (
                     <UploadControls />
                   </Layout>
                 </FullAdminRoute>
+              }
+            />
+            <Route
+              path="/upload-center"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <UploadCenter />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/penalties"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <PenaltyAdmin />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-penalties"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <MyPenalties />
+                  </Layout>
+                </ProtectedRoute>
               }
             />
             <Route path="*" element={<NotFound />} />
