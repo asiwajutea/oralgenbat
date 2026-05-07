@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame, Bug, Inbox as InboxIcon, Activity } from "lucide-react";
+import { Menu, FileText, Home, ClipboardList, Users, BarChart3, History, Lock, FolderOpen, Database, Search, Shield, LogOut, Building2, Check, DollarSign, Megaphone, Bell, MessageSquare, Copy, Flame, Bug, Inbox as InboxIcon, Activity, Upload } from "lucide-react";
 import { useChatUnreadTotal } from "@/hooks/useChatUnread";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "react-router-dom";
