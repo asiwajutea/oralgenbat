@@ -118,7 +118,7 @@ export async function uploadInterviewFile(opts: {
         return out;
       } else {
         if (!existing) {
-          const out: UploadOutcome = { status: "failed", message: "No existing interview to re-audit." };
+          const out: UploadOutcome = { status: "failed", message: "No matching interview found for this file name." };
           await logAttempt({ user_id: userId, file_name: file.name, detected_kind: kind, mode, outcome: out });
           return out;
         }
