@@ -1,4 +1,4 @@
-import { ReactNode, cloneElement, isValidElement } from "react";
+import { ReactNode } from "react";
 import { Lock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUploadLockStatus, LockScope } from "@/hooks/useUploadLockStatus";
@@ -6,29 +6,38 @@ import { useUploadLockStatus, LockScope } from "@/hooks/useUploadLockStatus";
 interface Props extends LockScope {
   children: ReactNode;
   showBanner?: boolean;
+  className?: string;
 }
 
 /**
- * Wraps an upload trigger. If uploads are locked for the resolved scope,
- * the child becomes disabled and a tooltip shows the lock reason.
+ * Wraps any upload trigger (button, dropdown trigger, etc.). When locked,
+ * the wrapped subtree is visually dimmed and click events are intercepted.
+ * A tooltip shows the lock reason; pass `showBanner` to also render an
+ * inline amber banner.
  */
-export const UploadLockGuard = ({ children, showBanner, ...scope }: Props) => {
+export const UploadLockGuard = ({ children, showBanner, className, ...scope }: Props) => {
   const { locked, reason } = useUploadLockStatus(scope);
 
-  const child = isValidElement(children)
-    ? cloneElement(children as any, locked ? {
-        disabled: true,
-        onClick: (e: React.MouseEvent) => e.preventDefault(),
-      } : {})
-    : children;
+  if (!locked) return <>{children}</>;
 
-  if (!locked) return <>{child}</>;
+  const blockClick = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   return (
-    <div className="space-y-2 inline-block">
+    <div className={`inline-flex flex-col gap-2 ${className || ""}`}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-block">{child}</span>
+          <span
+            className="inline-block opacity-60 cursor-not-allowed"
+            onClickCapture={blockClick}
+            onKeyDownCapture={blockClick}
+            aria-disabled
+            tabIndex={-1}
+          >
+            <span className="pointer-events-none inline-block">{children}</span>
+          </span>
         </TooltipTrigger>
         <TooltipContent>
           <div className="flex items-start gap-2 max-w-xs">

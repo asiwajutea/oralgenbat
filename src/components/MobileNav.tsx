@@ -134,6 +134,9 @@ const MobileNav = () => {
               <>
                 <SectionHeader>Operations</SectionHeader>
                 {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
+                  <NavItem to="/upload-center" icon={Upload}>Upload Center</NavItem>
+                )}
+                {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
                   <NavItem to="/interview-tracking" icon={Search}>Tracking</NavItem>
                 )}
                 {(userRole === 'field_manager' || userRole === 'contractor' || isAdmin || isSubContractor) && (
@@ -207,10 +210,11 @@ const MobileNav = () => {
                 {userRole === 'super_admin' && <NavItem to="/admin/chat-policies" icon={Shield}>Chat Policies</NavItem>}
               </>
             )}
-            <SectionHeader>Uploads</SectionHeader>
-            <NavItem to="/upload-center" icon={Upload}>Upload Center</NavItem>
             {(userRole === 'field_manager' || userRole === 'sub_contractor' || userRole === 'contractor') && (
+              <>
+              <SectionHeader>Penalties</SectionHeader>
               <NavItem to="/admin/penalties" icon={DollarSign}>Penalty Charges</NavItem>
+              </>
             )}
             {(userRole === 'field_manager' || userRole === 'sub_contractor') && (
               <NavItem to="/my-penalties" icon={DollarSign}>My Penalties</NavItem>

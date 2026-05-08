@@ -1,199 +1,83 @@
-# Upload Center, Lock-Aware Buttons & Penalty Charges
+## 1. Lock-aware upload buttons everywhere
 
-Three connected workstreams. Existing upload dialogs stay in place; new surfaces are additive.
+Wrap every existing "Upload" trigger in `<UploadLockGuard>`:
+- `Header.tsx` (top-bar upload button)
+- `Index.tsx` (Upload CTA)
+- Home dashboards: `AdminDashboard`, `ContractorDashboard`, `SubContractorDashboard`, `FieldManagerDashboard`, `QAManagerDashboard`, `AuditorDashboard`
+- `InterviewTracking.tsx` (single + bulk upload buttons)
+- Bulk dialogs' open buttons: `BulkPdfUploadDialog`, `BulkZipUploadDialog`, `BulkMetadataUploadDialog`, `CombinedUploadDialog`, `UploadDialog`
 
----
+For each trigger, pass the resolved scope (contractorId / fieldManagerId / interviewerCode if known; otherwise rely on `global` lock only). Show the inline amber banner via `showBanner` on the bigger CTAs (dashboards, Upload Center) and tooltip-only on icon buttons (header).
 
-## 1. Upload Center — `/upload-center`
+## 2. Upload Center polish
 
-A single, friendly page that walks managers through both **New Interview** and **Re-audit** uploads, plus an **Upload History** tab so they can confirm what actually went through (even silent failures).
+### Mobile responsiveness
+- Convert mode toggle and "what files" group into a stacked column on `< sm` with full-width radios and 44px touch targets.
+- Drop zone: switch to a vertical card list of files on mobile; horizontal table on `md+`. Status pill, kind chip, and per-row remove `X` stay visible.
+- "History" tab table → reuses our standard mobile-accordion pattern (existing helper) so each row collapses on phones.
+- Sticky bottom action bar on mobile with "Start upload" button.
 
-### Layout
+### Duplicate detection (PDF and Metadata)
+In `uploadInterviewFile.ts`:
+- New mode flow already checks `audits` for an existing row by `file_name`. Extend it to also block when a metadata ZIP is being uploaded for an audit that already has `mobile_zip_url IS NOT NULL` → return `duplicate` with message "Metadata already uploaded for this interview. Use Re-audit to replace."
+- Re-audit mode bypasses the duplicate guard (it is the replace path).
 
-```text
-┌──────────────────────────────────────────────────────┐
-│  Upload Center                                       │
-│  [ Upload ]  [ History ]                             │
-├──────────────────────────────────────────────────────┤
-│  What are you uploading?                             │
-│   ( ) New interview                                  │
-│   ( ) Re-audit (replace failed files)                │
-│                                                      │
-│  What files do you have? (multi-select)              │
-│   [x] PDF      [x] Metadata ZIP                      │
-│                                                      │
-│  ── Lock banner (if locked for this scope) ──        │
-│   "Uploads are locked: <reason>"   [ buttons disabled ] │
-│                                                      │
-│  Drop zone (PDF, ZIP, or both)                       │
-│  Per-file rows: name • detected type • status pill   │
-│  [ Start upload ]                                    │
-└──────────────────────────────────────────────────────┘
+### Re-audit relabeling and broader replace support
+- Allow re-audit replacement regardless of current status (today the helper already does — keep it). Update copy:
+  - Mode labels: "New interview" / "Replace files (re-audit)".
+  - Helper text under "Replace files": "Use this to upload a corrected PDF or metadata for an existing interview, whether or not it failed."
+- Remove the "No existing interview to re-audit" wording → "No matching interview found for this file name."
+
+### Navigation
+- Move the "Upload Center" entry under the **Operations** group in `Header.tsx` and `MobileNav.tsx` (currently sits at the top level). Keep the same route `/upload-center` and icon.
+
+## 3. Penalty Charges UX
+
+### Scope ID picker
+In `EditPenaltySettingDialog` (inside `PenaltyAdmin.tsx`), replace the free-text `scope_id` input with a Combobox/search:
+- When `scope_type = 'contractor'` → search contractors from `contractors` table (label = name, value = contractor_id).
+- When `scope_type = 'sub_contractor'` → search profiles where role = 'sub_contractor' (label = full_name + email, value = user_id).
+- When `scope_type = 'global'` → hide the field.
+Mirrors the existing exemption user-search component for visual consistency.
+
+### Explain "cascade to subordinates"
+- Add an inline help icon + tooltip next to the cascade toggle: "Also exempt every Field Manager under this Sub-Contractor. Example: a Sub-Contractor is on agreed leave; toggling cascade ON means every FM under them is also skipped from this penalty for as long as the exemption is active."
+- Add the same wording to the dialog's description block so the user sees it without hovering.
+
+## 4. Review page — pass/fail failure (and console capture)
+
+### Root cause
+The new penalty trigger function compares against the wrong enum literal:
+
+```sql
+IF NEW.status <> 'Failed' THEN RETURN NEW; END IF;
+IF OLD.status = 'Failed' THEN RETURN NEW; END IF;
 ```
 
-- **Mode toggle** — "New interview" vs "Re-audit" decides whether the file goes through the standard insert path or the existing re-audit replacement path (same RPCs already used by `BulkPdfUploadDialog` / `BulkZipUploadDialog`).
-- **Smart routing** — file extension + mode decides target storage bucket and write path. No new edge functions; we reuse the same client logic the existing dialogs use, extracted into a small `uploadInterviewFile()` helper.
-- **Filename validation** — same `isValidInterviewName` check.
-- **Pre-flight** — calls `assert_upload_allowed` per file. Failures show inline next to the file row instead of a toast that scrolls away.
+`audits.status` is the enum `audit_status` whose values are `Pending`, `Audit Passed`, `Audit Failed`. Postgres tries to coerce `'Failed'` into the enum and raises `invalid input value for enum audit_status: "Failed"`, which aborts every UPDATE on `audits`. That's why both Pass and Fail throw "Failed to update interview status," and any other page that updates `audits.status` (re-audit submissions, Mark Resolved, Send to Burn restore, override workflow, bulk re-uploads) is also blocked.
 
-### Upload History tab
-
-Backed by a new `upload_attempts` table that we write to from the upload helper (success **and** failure). Columns shown:
-
-```text
-When • File • Type (PDF/ZIP) • Mode (New/Re-audit) • Status (Success/Failed/Skipped duplicate) • Reason
+### Fix
+New migration that replaces `raise_penalty_charges_on_failure` with the correct comparisons:
+```sql
+IF NEW.status <> 'Audit Failed'::audit_status THEN RETURN NEW; END IF;
+IF OLD.status = 'Audit Failed'::audit_status THEN RETURN NEW; END IF;
 ```
+No app code changes needed — the trigger is server-side. After deploy, Pass and Fail work again everywhere.
 
-Filters: mode, status, date range. Per-row "Retry" for failed entries (re-opens the dialog with the same file pre-selected).
+### Audit of other affected pages (no code changes needed once trigger is fixed, but verified)
+- `ReviewActions.tsx` — Pass / Fail / Override
+- `ReAuditDialog.tsx` — re-audit submission resets status to Pending
+- `MarkResolvedDialog.tsx` — sets Audit Passed
+- `SendToBurnDialog.tsx` — status changes
+- Bulk PDF/ZIP re-audit flows in `uploadInterviewFile.ts`
+All call `audits.update({ status })` and were silently failing for the same reason.
 
-### Schema
+### Why the Error Console missed it
+`useGlobalErrorCapture` only listens for `window.onerror` and `unhandledrejection`. The Supabase update result is awaited inside a `try/catch` that swallows the error after showing a toast — the promise never rejects to the global handler, so nothing reaches the console pipeline.
 
-```text
-upload_attempts
-  id uuid pk
-  user_id uuid
-  file_name text
-  detected_kind text       -- 'pdf' | 'metadata_zip'
-  mode text                -- 'new' | 're_audit'
-  status text              -- 'success' | 'failed' | 'duplicate' | 'locked' | 'quota_blocked'
-  message text             -- error or info
-  audit_id uuid null
-  created_at timestamptz
-```
-RLS: users see own rows; admin/super_admin see all.
-
-### Files
-
-- New: `src/pages/UploadCenter.tsx`, `src/components/upload-center/UploadCenterDropzone.tsx`, `src/components/upload-center/UploadHistoryTable.tsx`, `src/lib/uploadInterviewFile.ts` (shared helper, also imported by existing dialogs so history captures them too).
-- Edited: `src/App.tsx` (route), `src/components/Header.tsx` + `src/components/MobileNav.tsx` (nav entry "Upload Center").
-- Migration: create `upload_attempts` + RLS.
-
----
-
-## 2. Lock-aware upload buttons everywhere
-
-Today the lock is enforced server-side via `assert_upload_allowed`, but UI buttons stay enabled and only fail at submit time. Fix:
-
-- New hook `useUploadLockStatus({ contractorId?, fieldManagerId?, interviewerCode? })` that:
-  1. Reads `upload_lock_settings` for `global` + the resolved scopes.
-  2. Returns `{ locked: boolean, reason: string | null, scope: 'global' | 'contractor' | ... }`.
-  3. Subscribes to realtime changes on `upload_lock_settings` so unlocking re-enables buttons immediately.
-- Wrap each existing upload trigger in `<UploadLockGuard>`:
-  - If locked: render the button as `disabled`, with a tooltip showing the lock reason, and an inline amber chip "Uploads locked: <reason>".
-  - If unlocked: render children normally.
-- Apply to: home dashboards (Admin, Contractor, SubContractor, FieldManager), `InterviewTracking` page, `Index` page, the new Upload Center, and all four bulk dialogs' trigger buttons.
-
-For users without a single resolvable scope (admins viewing the global page), only `global` lock disables the button; per-scope locks instead show a banner inside the dialog after the user picks a file.
-
-### Files
-
-- New: `src/hooks/useUploadLockStatus.ts`, `src/components/upload/UploadLockGuard.tsx`.
-- Edited: every page that renders an "Upload" CTA (Header, Index, InterviewTracking, all four home dashboards, UploadCenter).
-
----
-
-## 3. Penalty charges for failed first audits
-
-A self-contained module. Settings are scoped: an admin/super_admin sets policy for everyone; a contractor for their sub-contractors and FMs; a sub-contractor for their FMs. Exemptions are explicit per-user.
-
-### Schema
-
-```text
-penalty_settings                         -- one active row per (set_by_role, scope_id, target_role)
-  id uuid
-  set_by uuid                            -- who configured
-  set_by_role app_role                   -- admin / contractor / sub_contractor
-  scope_type text                        -- 'global' | 'contractor' | 'sub_contractor'
-  scope_id text null                     -- contractor_id or sub_contractor user_id
-  target_role app_role                   -- 'sub_contractor' | 'field_manager'
-  charge_mode text                       -- 'per_name' | 'per_interview'
-  amount numeric                         -- N20 or N500
-  currency text                          -- 'NGN','USD',...
-  effective_from date                    -- editable, defaults 2026-04-21
-  is_active boolean
-  updated_at, updated_by
-
-penalty_exemptions
-  id uuid
-  setting_id uuid -> penalty_settings
-  exempt_user_id uuid                    -- user excluded
-  cascade_to_subordinates boolean        -- e.g. exempt a sub-contractor AND all their FMs
-  created_at, created_by
-
-penalty_charges                          -- one row per chargeable failed first-audit
-  id uuid
-  audit_id uuid
-  charged_user_id uuid                   -- the FM or sub-contractor being charged
-  charged_user_role app_role
-  setting_id uuid                        -- which policy created it
-  amount numeric
-  currency text
-  status text                            -- 'open' | 'paid' | 'partial' | 'waived' | 'removed' | 'appealed'
-  removed_by uuid null, removed_reason text null
-  appeal_reason text null, appeal_status text null  -- 'pending'|'accepted'|'rejected'
-  appeal_decided_by uuid null
-  created_at
-
-penalty_payments
-  id uuid
-  charge_id uuid -> penalty_charges      -- nullable (general payment) or specific
-  charged_user_id uuid
-  amount numeric
-  declared_by uuid                       -- self-declared payment
-  declared_at timestamptz
-  confirmed_by uuid null                 -- superior who confirmed
-  confirmed_at timestamptz null
-  status text                            -- 'pending_confirmation' | 'confirmed' | 'rejected'
-  note text
-```
-
-### Trigger logic (Postgres)
-
-When `audits.status` transitions to `Failed` AND `re_audit_count = 0` AND `uploaded_at >= effective_from of an applicable policy`:
-
-1. Resolve the chargeable user(s) from `interview_metadata` + `team_assignments`:
-   - FM via `team_assignments.field_manager_id`
-   - Sub-contractor via the FM's parent (`field_manager_subcontractor_assignments`)
-2. For each `(target_role, charged_user)` look up the strongest applicable `penalty_settings` and check exemptions (including cascade).
-3. Insert one `penalty_charges` row per (audit, charged_user) — use a unique partial index `(audit_id, charged_user_id) WHERE status <> 'removed'` so the same audit cannot be charged twice. Re-audits never re-trigger.
-4. Amount = `per_interview` or `per_name * interview_metadata.total_names`.
-
-### RPCs
-
-- `set_penalty_setting(...)` — upsert, validates the caller is allowed to configure that target_role under that scope.
-- `add_penalty_exemption(setting_id, user_id, cascade)` / `remove_penalty_exemption(...)`.
-- `update_effective_from(setting_id, new_date)` — only the role tier that owns the setting can edit; date defaults to **2026-04-21**.
-- `remove_penalty_charge(charge_id, reason)` — superior only.
-- `appeal_penalty_charge(charge_id, reason)` — charged user only.
-- `decide_appeal(charge_id, accept boolean, note)` — superior; if accepted, charge becomes `waived` and is excluded from balance.
-- `declare_penalty_payment(charge_id|null, amount, note)` — charged user; creates `pending_confirmation` payment and notifies superior.
-- `confirm_penalty_payment(payment_id, accept boolean, note)` — superior; on accept, deduct from balance, mark charges paid in FIFO order, mark partial when needed.
-- `get_penalty_summary(_user_id uuid)` — returns `{ total_charged, total_paid, balance, currency, breakdown[] }` for the homepage card.
-
-### UI
-
-- New page `/admin/penalties` (visible to admin / super_admin / contractor / sub_contractor):
-  - **Settings tab** — table of policies the user can manage; create/edit dialog with charge mode, amount, currency, effective_from picker.
-  - **Exemptions tab** — per-policy list with add-by-search and a "cascade to subordinates" toggle.
-  - **Charges tab** — every charge in scope, filterable by user/status; row actions: Remove (superior), Confirm payment (superior).
-  - **Payments tab** — declared payments awaiting confirmation, plus full lifetime history.
-- New page `/my-penalties` (FM / sub-contractor):
-  - Summary cards (Total charged, Total paid, Balance).
-  - Charges table with **Appeal** and **Declare payment** actions.
-  - Payment history.
-- Homepage card `PenaltyBalanceCard` rendered on `FieldManagerDashboard` and `SubContractorDashboard` — pulls `get_penalty_summary(auth.uid())` and shows balance with a deep link to `/my-penalties`.
-- Notifications via existing `chat_pending_events` / inbox: `penalty_charged`, `penalty_payment_declared`, `penalty_payment_confirmed`, `appeal_decided`.
-
-### Files
-
-- Migration: tables, indexes, trigger, RPCs, RLS.
-- New pages: `src/pages/PenaltyAdmin.tsx`, `src/pages/MyPenalties.tsx`.
-- New components: `src/components/penalty/PenaltySettingsTable.tsx`, `PenaltyChargesTable.tsx`, `PenaltyPaymentsTable.tsx`, `PenaltyBalanceCard.tsx`, `DeclarePaymentDialog.tsx`, `AppealChargeDialog.tsx`, `EditPenaltySettingDialog.tsx`.
-- Edited: `App.tsx` (routes), `Header.tsx`/`MobileNav.tsx` (nav), `FieldManagerDashboard.tsx` and `SubContractorDashboard.tsx` (mount card), `Inbox.tsx` (handle new event types in the same drain trigger).
-
----
+Fix: in `useGlobalErrorCapture.ts`, add a thin Supabase response interceptor that logs any `{ error }` returned from `from('...').update/insert/delete/upsert/rpc` calls into the same error pipeline (same shape: message, stack from `new Error().stack`, route, user). Concretely we'll wrap the shared client in a small `logSupabaseError(error, context)` helper and call it from a project-wide `withSupabaseLogging` utility used by `ReviewActions`, `ReAuditDialog`, `MarkResolvedDialog`, `SendToBurnDialog`, and `uploadInterviewFile`. New, swallowed DB errors will now appear in `/admin/error-console`.
 
 ## Out of scope
-- Removing existing upload buttons (you asked to keep them).
-- Currency conversion — each policy stores its own currency string and is displayed as-is.
-- Automatic deduction from invoices — payments are tracked separately and only marked when superior confirms.
+- Any change to the existing penalty business rules (charge mode, effective date, payment flow).
+- Re-architecting upload flows — only labels, duplicate guards, and lock-aware wrappers change.
+- Backfilling penalty charges for failures that were blocked while the trigger was broken (we can do this in a follow-up if you want).

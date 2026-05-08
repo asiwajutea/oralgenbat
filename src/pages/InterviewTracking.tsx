@@ -76,6 +76,7 @@ import { FailedInterviewModal } from "@/components/tracking/FailedInterviewModal
 import { ViewIssueDialog } from "@/components/tracking/ViewIssueDialog";
 import { BulkMetadataUploadDialog } from "@/components/tracking/BulkMetadataUploadDialog";
 import { BulkPdfUploadDialog } from "@/components/tracking/BulkPdfUploadDialog";
+import { UploadLockGuard } from "@/components/upload/UploadLockGuard";
 import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
@@ -1198,6 +1199,7 @@ const InterviewTracking = () => {
             </p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <UploadLockGuard>
             <BulkMetadataUploadDialog
               onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
               trigger={
@@ -1208,6 +1210,8 @@ const InterviewTracking = () => {
                 </Button>
               }
             />
+            </UploadLockGuard>
+            <UploadLockGuard>
             <BulkPdfUploadDialog
               onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
               onUploadProgress={(p) => {
@@ -1223,6 +1227,7 @@ const InterviewTracking = () => {
                 </Button>
               }
             />
+            </UploadLockGuard>
             <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2 text-xs sm:text-sm">
               <Filter className="h-4 w-4" />
               <span className="hidden sm:inline">Filters</span>
