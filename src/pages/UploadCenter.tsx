@@ -129,8 +129,8 @@ const UploadCenter = () => {
                 <Label className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer ${mode === "re_audit" ? "border-primary bg-primary/5" : ""}`}>
                   <RadioGroupItem value="re_audit" />
                   <div>
-                    <div className="font-medium flex items-center gap-2">Re-audit <Repeat className="h-3.5 w-3.5" /></div>
-                    <div className="text-xs text-muted-foreground">Replace files for an interview that already failed.</div>
+                    <div className="font-medium flex items-center gap-2">Replace files (re-audit) <Repeat className="h-3.5 w-3.5" /></div>
+                    <div className="text-xs text-muted-foreground">Upload a corrected PDF or metadata for an existing interview, whether or not it failed.</div>
                   </div>
                 </Label>
               </RadioGroup>
