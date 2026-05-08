@@ -88,6 +88,12 @@ export async function uploadInterviewFile(opts: {
 
   // find existing audit
   const { data: existing } = await supabase.from("audits").select("id, file_name, status").eq("file_name", baseName).maybeSingle();
+  // for ZIPs we also need to know whether metadata is already uploaded
+  let existingHasMetadata = false;
+  if (existing && kind === "metadata_zip") {
+    const { data: a2 } = await supabase.from("audits").select("mobile_zip_url").eq("id", existing.id).maybeSingle();
+    existingHasMetadata = !!a2?.mobile_zip_url;
+  }
 
   try {
     if (kind === "pdf") {
@@ -132,7 +138,16 @@ export async function uploadInterviewFile(opts: {
 
     // ZIP / metadata
     if (!existing) {
-      const out: UploadOutcome = { status: "failed", message: "Upload the PDF first, then the metadata ZIP." };
+      const out: UploadOutcome = { status: "failed", message: "No matching interview found for this file name. Upload the PDF first." };
+      await logAttempt({ user_id: userId, file_name: file.name, detected_kind: kind, mode, outcome: out });
+      return out;
+    }
+    if (mode === "new" && existingHasMetadata) {
+      const out: UploadOutcome = {
+        status: "duplicate",
+        message: "Metadata already uploaded for this interview. Use Replace files to overwrite.",
+        audit_id: existing.id,
+      };
       await logAttempt({ user_id: userId, file_name: file.name, detected_kind: kind, mode, outcome: out });
       return out;
     }
