@@ -303,17 +303,19 @@ const FieldManagerDashboard = () => {
             <CardTitle className="text-lg">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button 
-              variant="outline" 
-              className="w-full justify-between"
-              onClick={() => navigate("/interviews")}
-            >
-              <span className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Upload New Interview
-              </span>
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            <UploadLockGuard className="w-full" showBanner>
+              <Button
+                variant="outline"
+                className="w-full justify-between"
+                onClick={() => navigate("/upload-center")}
+              >
+                <span className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Upload New Interview
+                </span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </UploadLockGuard>
             <Button 
               variant="outline" 
               className="w-full justify-between"
