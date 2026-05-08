@@ -6,6 +6,7 @@ import { AuditTable } from "@/components/AuditTable";
 import { UploadDialog } from "@/components/UploadDialog";
 import { BulkZipUploadDialog } from "@/components/BulkZipUploadDialog";
 import { CombinedUploadDialog } from "@/components/CombinedUploadDialog";
+import { UploadLockGuard } from "@/components/upload/UploadLockGuard";
 import { AuditPagination } from "@/components/AuditPagination";
 import { AuditorStatsCard } from "@/components/AuditorStatsCard";
 import { AdminStatsCard } from "@/components/AdminStatsCard";
@@ -274,6 +275,7 @@ const Index = () => {
               </div>
             </div>
             {canUpload && (
+              <UploadLockGuard>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
@@ -297,6 +299,7 @@ const Index = () => {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </UploadLockGuard>
             )}
 
             {/* Upload Dialogs - only render if canUpload */}
