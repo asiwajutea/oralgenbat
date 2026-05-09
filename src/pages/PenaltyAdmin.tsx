@@ -285,7 +285,18 @@ const ExemptionPanel = ({ settingId }: { settingId: string }) => {
       <div className="flex gap-2 items-center">
         <Input placeholder="Search user…" value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()} />
         <Button variant="outline" size="icon" onClick={doSearch}><Search className="h-4 w-4" /></Button>
-        <div className="flex items-center gap-1 text-xs"><Switch checked={cascade} onCheckedChange={setCascade} /> cascade</div>
+        <div className="flex items-center gap-1 text-xs">
+          <Switch checked={cascade} onCheckedChange={setCascade} /> cascade
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="text-muted-foreground hover:text-foreground"><HelpCircle className="h-3.5 w-3.5" /></button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">
+              When ON, every Field Manager under this Sub-Contractor is also exempted.
+              Example: a Sub-Contractor is on agreed leave — toggle cascade ON so every FM under them is also skipped from this penalty while the exemption is active.
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       {results.length > 0 && (
         <ul className="border rounded-md text-xs">
