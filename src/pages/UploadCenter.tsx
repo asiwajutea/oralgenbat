@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUploadLockStatus } from "@/hooks/useUploadLockStatus";
 import { uploadInterviewFile, detectKind, UploadMode, UploadOutcome } from "@/lib/uploadInterviewFile";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Row {
   id: string;
@@ -181,7 +182,7 @@ const UploadCenter = () => {
                 </div>
               )}
 
-              <Button onClick={start} disabled={running || rows.length === 0 || (mode === "new" && lock.locked)} className="w-full">
+              <Button onClick={start} disabled={running || rows.length === 0 || (mode === "new" && lock.locked)} className="w-full sm:w-auto sm:min-w-[160px] h-11">
                 {running ? "Uploading…" : "Start upload"}
               </Button>
             </CardContent>
