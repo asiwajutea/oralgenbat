@@ -198,6 +198,7 @@ const UploadCenter = () => {
 };
 
 const UploadHistoryTable = () => {
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState<AttemptRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -218,14 +219,14 @@ const UploadHistoryTable = () => {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <CardTitle className="text-base">Your upload history</CardTitle>
           <CardDescription>Every PDF and ZIP you uploaded — succeeded, failed, or skipped.</CardDescription>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={modeFilter} onValueChange={setModeFilter}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All modes</SelectItem>
               <SelectItem value="new">New</SelectItem>
@@ -233,7 +234,7 @@ const UploadHistoryTable = () => {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="success">Success</SelectItem>
@@ -247,6 +248,25 @@ const UploadHistoryTable = () => {
         </div>
       </CardHeader>
       <CardContent>
+        {isMobile ? (
+          <ul className="space-y-2">
+            {rows.length === 0 ? (
+              <li className="text-center text-sm text-muted-foreground py-6 border rounded-md">No uploads yet.</li>
+            ) : rows.map(r => (
+              <li key={r.id} className="border rounded-md p-3 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-mono text-xs truncate flex-1">{r.file_name}</div>
+                  <Badge variant="secondary" className={statusBadge(r.status)}>{r.status}</Badge>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>{r.detected_kind === "pdf" ? "PDF" : r.detected_kind === "metadata_zip" ? "ZIP" : "?"} · {r.mode === "new" ? "New" : "Re-audit"}</span>
+                  <span>{format(new Date(r.created_at), "MMM d, HH:mm")}</span>
+                </div>
+                {r.message && <div className="text-xs text-muted-foreground break-words">{r.message}</div>}
+              </li>
+            ))}
+          </ul>
+        ) : (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -275,6 +295,7 @@ const UploadHistoryTable = () => {
             </TableBody>
           </Table>
         </div>
+        )}
       </CardContent>
     </Card>
   );
