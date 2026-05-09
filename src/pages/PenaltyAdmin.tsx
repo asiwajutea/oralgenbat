@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldOff, CheckCircle2, XCircle, Search } from "lucide-react";
+import { Plus, Trash2, ShieldOff, CheckCircle2, XCircle, Search, HelpCircle } from "lucide-react";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ScopePicker } from "@/components/penalty/ScopePicker";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -175,8 +177,16 @@ const SettingsTab = () => {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Scope ID</Label>
-                  <Input value={form.scope_id} disabled={form.scope_type === "global"} placeholder={form.scope_type === "contractor" ? "contractor_id" : "sub_contractor user id"} onChange={e => setForm({ ...form, scope_id: e.target.value })} />
+                  <Label>Scope target</Label>
+                  {form.scope_type === "global" ? (
+                    <Input disabled value="All users" />
+                  ) : (
+                    <ScopePicker
+                      scopeType={form.scope_type as "contractor" | "sub_contractor"}
+                      value={form.scope_id}
+                      onChange={(id) => setForm({ ...form, scope_id: id })}
+                    />
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -275,7 +285,18 @@ const ExemptionPanel = ({ settingId }: { settingId: string }) => {
       <div className="flex gap-2 items-center">
         <Input placeholder="Search user…" value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && doSearch()} />
         <Button variant="outline" size="icon" onClick={doSearch}><Search className="h-4 w-4" /></Button>
-        <div className="flex items-center gap-1 text-xs"><Switch checked={cascade} onCheckedChange={setCascade} /> cascade</div>
+        <div className="flex items-center gap-1 text-xs">
+          <Switch checked={cascade} onCheckedChange={setCascade} /> cascade
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button type="button" className="text-muted-foreground hover:text-foreground"><HelpCircle className="h-3.5 w-3.5" /></button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs text-xs">
+              When ON, every Field Manager under this Sub-Contractor is also exempted.
+              Example: a Sub-Contractor is on agreed leave — toggle cascade ON so every FM under them is also skipped from this penalty while the exemption is active.
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       {results.length > 0 && (
         <ul className="border rounded-md text-xs">
