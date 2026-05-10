@@ -155,9 +155,10 @@ const Index = () => {
           query = query
             .in("status", ["Pending", "Awaiting Review"])
             .not("file_url", "is", null)
-            .not("mobile_zip_url", "is", null);
+            .not("mobile_zip_url", "is", null)
+            .or("is_re_audit.is.null,is_re_audit.eq.false");
         } else if (hasReAudit && !hasInProgress && !hasReadyForReview && otherStatuses.length === 0) {
-          query = query.eq("is_re_audit", true).eq("status", "Awaiting Review");
+          query = query.eq("is_re_audit", true).in("status", ["Pending", "Awaiting Review"]);
         } else if (hasInProgress && !hasReAudit && !hasReadyForReview && otherStatuses.length === 0) {
           query = query
             .not("locked_by", "is", null)
@@ -168,10 +169,10 @@ const Index = () => {
             conditions.push(`and(locked_by.not.is.null,locked_at.gte.${oneHourAgo})`);
           }
           if (hasReAudit) {
-            conditions.push(`and(is_re_audit.eq.true,status.eq."Awaiting Review")`);
+            conditions.push(`and(is_re_audit.eq.true,or(status.eq.Pending,status.eq."Awaiting Review"))`);
           }
           if (hasReadyForReview) {
-            conditions.push(`and(or(status.eq.Pending,status.eq."Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null)`);
+            conditions.push(`and(or(status.eq.Pending,status.eq."Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null,or(is_re_audit.is.null,is_re_audit.eq.false))`);
           }
           if (otherStatuses.length > 0) {
             conditions.push(`status.in.(${otherStatuses.map(s => `"${s}"`).join(",")})`);
