@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -53,6 +54,12 @@ const UploadCenter = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [running, setRunning] = useState(false);
   const [completed, setCompleted] = useState(0);
+
+  // If "new" uploads are locked, default the mode to re-audit
+  useEffect(() => {
+    if (lock.locked && mode === "new") setMode("re_audit");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lock.locked]);
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -120,11 +127,25 @@ const UploadCenter = () => {
             </CardHeader>
             <CardContent>
               <RadioGroup value={mode} onValueChange={v => setMode(v as UploadMode)} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Label className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer ${mode === "new" ? "border-primary bg-primary/5" : ""}`}>
-                  <RadioGroupItem value="new" />
+                <Label
+                  className={`flex items-start gap-3 rounded-md border p-3 ${
+                    lock.locked
+                      ? "opacity-50 cursor-not-allowed bg-muted/40"
+                      : "cursor-pointer"
+                  } ${mode === "new" ? "border-primary bg-primary/5" : ""}`}
+                  aria-disabled={lock.locked}
+                >
+                  <RadioGroupItem value="new" disabled={lock.locked} />
                   <div>
-                    <div className="font-medium">New interview</div>
-                    <div className="text-xs text-muted-foreground">First time uploading this PDF or metadata.</div>
+                    <div className="font-medium flex items-center gap-2">
+                      New interview
+                      {lock.locked && <Lock className="h-3.5 w-3.5 text-amber-600" />}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {lock.locked
+                        ? "New uploads are currently locked by an administrator."
+                        : "First time uploading this PDF or metadata."}
+                    </div>
                   </div>
                 </Label>
                 <Label className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer ${mode === "re_audit" ? "border-primary bg-primary/5" : ""}`}>
