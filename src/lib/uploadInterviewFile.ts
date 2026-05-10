@@ -87,7 +87,7 @@ export async function uploadInterviewFile(opts: {
   }
 
   // find existing audit
-  const { data: existing } = await supabase.from("audits").select("id, file_name, status").eq("file_name", baseName).maybeSingle();
+  const { data: existing } = await supabase.from("audits").select("id, file_name, status, re_audit_count").eq("file_name", baseName).maybeSingle();
   // for ZIPs we also need to know whether metadata is already uploaded
   let existingHasMetadata = false;
   if (existing && kind === "metadata_zip") {
@@ -127,6 +127,8 @@ export async function uploadInterviewFile(opts: {
         const { error: updErr } = await supabase.from("audits").update({
           file_url: publicUrl,
           status: "Pending",
+          is_re_audit: true,
+          re_audit_count: ((existing as any).re_audit_count || 0) + 1,
           last_modified: new Date().toISOString(),
         }).eq("id", existing.id);
         if (updErr) throw updErr;
@@ -153,11 +155,17 @@ export async function uploadInterviewFile(opts: {
     }
     const zipPath = `${baseName}_${Date.now()}.zip`;
     const publicUrl = await uploadToBucket("mobile-zips", zipPath, file);
-    const { error: updErr } = await supabase.from("audits").update({
+    const updatePayload: any = {
       mobile_zip_url: publicUrl,
       mobile_zip_uploaded_at: new Date().toISOString(),
-      status: mode === "re_audit" ? "Pending" : undefined,
-    }).eq("id", existing.id);
+    };
+    if (mode === "re_audit") {
+      updatePayload.status = "Pending";
+      updatePayload.is_re_audit = true;
+      updatePayload.re_audit_count = ((existing as any).re_audit_count || 0) + 1;
+      updatePayload.last_modified = new Date().toISOString();
+    }
+    const { error: updErr } = await supabase.from("audits").update(updatePayload).eq("id", existing.id);
     if (updErr) throw updErr;
     // best-effort parse
     supabase.functions.invoke("process-mobile-zip", { body: { auditId: existing.id } }).catch(() => {});
