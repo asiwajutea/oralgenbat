@@ -220,32 +220,83 @@ const UploadCenter = () => {
 
 const UploadHistoryTable = () => {
   const isMobile = useIsMobile();
+  const { user, userRole } = useAuth();
+  const isAdmin = userRole === "admin" || userRole === "super_admin";
   const [rows, setRows] = useState<AttemptRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [modeFilter, setModeFilter] = useState<string>("all");
+  const [userFilter, setUserFilter] = useState<string>("self");
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 25;
+
+  // Load distinct uploaders for admin filter
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .order("full_name", { ascending: true })
+        .limit(500);
+      setUsers((data || []).map((p: any) => ({ id: p.id, name: p.full_name || p.email || p.id.slice(0, 8) })));
+    })();
+  }, [isAdmin]);
 
   const load = async () => {
     setLoading(true);
-    let q = supabase.from("upload_attempts").select("*").order("created_at", { ascending: false }).limit(500);
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    let q = supabase
+      .from("upload_attempts")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    // Scope: non-admins always see only their own; admins can pick.
+    if (!isAdmin) {
+      if (user?.id) q = q.eq("user_id", user.id);
+    } else if (userFilter !== "all") {
+      const target = userFilter === "self" ? user?.id : userFilter;
+      if (target) q = q.eq("user_id", target);
+    }
     if (statusFilter !== "all") q = q.eq("status", statusFilter);
     if (modeFilter !== "all") q = q.eq("mode", modeFilter);
-    const { data, error } = await q;
+    const { data, error, count } = await q;
     if (error) toast.error(error.message);
     setRows((data as AttemptRow[]) || []);
+    setTotal(count || 0);
     setLoading(false);
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [statusFilter, modeFilter]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [statusFilter, modeFilter, userFilter, page]);
+  useEffect(() => { setPage(0); }, [statusFilter, modeFilter, userFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <Card>
       <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <CardTitle className="text-base">Your upload history</CardTitle>
-          <CardDescription>Every PDF and ZIP you uploaded — succeeded, failed, or skipped.</CardDescription>
+          <CardDescription>
+            {isAdmin ? "Upload attempts across all users." : "Every PDF and ZIP you uploaded — succeeded, failed, or skipped."}
+          </CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <Select value={userFilter} onValueChange={setUserFilter}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="User" /></SelectTrigger>
+              <SelectContent className="max-h-[300px]">
+                <SelectItem value="self">Just me</SelectItem>
+                <SelectItem value="all">All users</SelectItem>
+                {users.map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={modeFilter} onValueChange={setModeFilter}>
             <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -317,6 +368,16 @@ const UploadHistoryTable = () => {
           </Table>
         </div>
         )}
+        <div className="flex items-center justify-between gap-2 pt-3 text-xs text-muted-foreground">
+          <div>
+            {total === 0 ? "0 results" : `Showing ${page * PAGE_SIZE + 1}-${Math.min((page + 1) * PAGE_SIZE, total)} of ${total}`}
+          </div>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage(p => Math.max(0, p - 1))}>Prev</Button>
+            <span className="px-2">Page {page + 1} / {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page + 1 >= totalPages || loading} onClick={() => setPage(p => p + 1)}>Next</Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
