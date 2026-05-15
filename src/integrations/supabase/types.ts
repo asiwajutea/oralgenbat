@@ -915,6 +915,99 @@ export type Database = {
         }
         Relationships: []
       }
+      email_notification_logs: {
+        Row: {
+          audit_id: string | null
+          body_preview: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          metadata: Json | null
+          provider_response: Json | null
+          recipients: string[]
+          status: string
+          subject: string | null
+          template_key: string | null
+          triggered_by_event: string | null
+        }
+        Insert: {
+          audit_id?: string | null
+          body_preview?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          provider_response?: Json | null
+          recipients?: string[]
+          status?: string
+          subject?: string | null
+          template_key?: string | null
+          triggered_by_event?: string | null
+        }
+        Update: {
+          audit_id?: string | null
+          body_preview?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          provider_response?: Json | null
+          recipients?: string[]
+          status?: string
+          subject?: string | null
+          template_key?: string | null
+          triggered_by_event?: string | null
+        }
+        Relationships: []
+      }
+      email_templates: {
+        Row: {
+          available_vars: Json
+          body_html: string
+          body_text: string | null
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: string
+          key: string
+          name: string
+          notification_type: string | null
+          subject: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          available_vars?: Json
+          body_html: string
+          body_text?: string | null
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          key: string
+          name: string
+          notification_type?: string | null
+          subject: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          available_vars?: Json
+          body_html?: string
+          body_text?: string | null
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          key?: string
+          name?: string
+          notification_type?: string | null
+          subject?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       field_manager_admin_assignments: {
         Row: {
           admin_id: string
@@ -2118,6 +2211,72 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_primary?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_email_preferences: {
+        Row: {
+          created_at: string
+          emails_enabled: boolean
+          notify_account_status: boolean
+          notify_agent_reassigned: boolean
+          notify_audit_passed: boolean
+          notify_comments: boolean
+          notify_data_entry_complete: boolean
+          notify_failed_audit: boolean
+          notify_inactivity: boolean
+          notify_interview_assigned: boolean
+          notify_issues: boolean
+          notify_milestones: boolean
+          notify_new_interviews: boolean
+          notify_new_registration: boolean
+          notify_payment: boolean
+          notify_re_audit: boolean
+          notify_team_requests: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emails_enabled?: boolean
+          notify_account_status?: boolean
+          notify_agent_reassigned?: boolean
+          notify_audit_passed?: boolean
+          notify_comments?: boolean
+          notify_data_entry_complete?: boolean
+          notify_failed_audit?: boolean
+          notify_inactivity?: boolean
+          notify_interview_assigned?: boolean
+          notify_issues?: boolean
+          notify_milestones?: boolean
+          notify_new_interviews?: boolean
+          notify_new_registration?: boolean
+          notify_payment?: boolean
+          notify_re_audit?: boolean
+          notify_team_requests?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emails_enabled?: boolean
+          notify_account_status?: boolean
+          notify_agent_reassigned?: boolean
+          notify_audit_passed?: boolean
+          notify_comments?: boolean
+          notify_data_entry_complete?: boolean
+          notify_failed_audit?: boolean
+          notify_inactivity?: boolean
+          notify_interview_assigned?: boolean
+          notify_issues?: boolean
+          notify_milestones?: boolean
+          notify_new_interviews?: boolean
+          notify_new_registration?: boolean
+          notify_payment?: boolean
+          notify_re_audit?: boolean
+          notify_team_requests?: boolean
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
