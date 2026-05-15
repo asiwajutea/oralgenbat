@@ -1,83 +1,119 @@
-## 1. Lock-aware upload buttons everywhere
+# Email Notifications System
 
-Wrap every existing "Upload" trigger in `<UploadLockGuard>`:
-- `Header.tsx` (top-bar upload button)
-- `Index.tsx` (Upload CTA)
-- Home dashboards: `AdminDashboard`, `ContractorDashboard`, `SubContractorDashboard`, `FieldManagerDashboard`, `QAManagerDashboard`, `AuditorDashboard`
-- `InterviewTracking.tsx` (single + bulk upload buttons)
-- Bulk dialogs' open buttons: `BulkPdfUploadDialog`, `BulkZipUploadDialog`, `BulkMetadataUploadDialog`, `CombinedUploadDialog`, `UploadDialog`
+Add Gmail-powered email notifications for platform events, manageable from the existing SMS Logs page (renamed to **Notification Center**). Restricted to `admin` / `super_admin` (already enforced via `FullAdminRoute`).
 
-For each trigger, pass the resolved scope (contractorId / fieldManagerId / interviewerCode if known; otherwise rely on `global` lock only). Show the inline amber banner via `showBanner` on the bigger CTAs (dashboards, Upload Center) and tooltip-only on icon buttons (header).
+Sender (already deployed in `send-gmail` function):
+- From: `"BAT Audit" <Zamoph.audit@gmail.com>`
+- Reply-To: `Zamoph.audit@gmail.com`
 
-## 2. Upload Center polish
+---
 
-### Mobile responsiveness
-- Convert mode toggle and "what files" group into a stacked column on `< sm` with full-width radios and 44px touch targets.
-- Drop zone: switch to a vertical card list of files on mobile; horizontal table on `md+`. Status pill, kind chip, and per-row remove `X` stay visible.
-- "History" tab table → reuses our standard mobile-accordion pattern (existing helper) so each row collapses on phones.
-- Sticky bottom action bar on mobile with "Start upload" button.
+## 1. Database (one migration)
 
-### Duplicate detection (PDF and Metadata)
-In `uploadInterviewFile.ts`:
-- New mode flow already checks `audits` for an existing row by `file_name`. Extend it to also block when a metadata ZIP is being uploaded for an audit that already has `mobile_zip_url IS NOT NULL` → return `duplicate` with message "Metadata already uploaded for this interview. Use Re-audit to replace."
-- Re-audit mode bypasses the duplicate guard (it is the replace path).
+**`email_templates`** — editable templates, seeded with defaults
+- `key` (text, unique) — e.g. `audit_passed`, `audit_failed`, `re_audit_requested`
+- `name`, `description`
+- `subject` (text, supports `{{var}}` placeholders)
+- `body_html` (text), `body_text` (text)
+- `enabled` (bool, default true)
+- `available_vars` (jsonb) — list of supported `{{var}}` names for the editor UI
+- `updated_by`, timestamps
+- RLS: select/update only `admin`/`super_admin` via `has_role`
 
-### Re-audit relabeling and broader replace support
-- Allow re-audit replacement regardless of current status (today the helper already does — keep it). Update copy:
-  - Mode labels: "New interview" / "Replace files (re-audit)".
-  - Helper text under "Replace files": "Use this to upload a corrected PDF or metadata for an existing interview, whether or not it failed."
-- Remove the "No existing interview to re-audit" wording → "No matching interview found for this file name."
+**`email_logs`** — mirror of `sms_logs`
+- `template_key`, `recipients` (text[]), `subject`, `body_preview`, `status` (`sent`/`failed`/`skipped`), `error_message`, `provider_response` (jsonb), `audit_id`, `triggered_by_event`, `created_at`
+- RLS: select for `admin`/`super_admin`; insert via service role from edge functions
 
-### Navigation
-- Move the "Upload Center" entry under the **Operations** group in `Header.tsx` and `MobileNav.tsx` (currently sits at the top level). Keep the same route `/upload-center` and icon.
+**`user_email_preferences`** — per-user opt-out, parallel to push toggles
+- `user_id` (PK), boolean columns matching the existing `notify_*` keys (`notify_audit_passed`, `notify_failed_audit`, `notify_re_audit`, `notify_team_requests`, `notify_account_status`, `notify_new_registration`, `notify_payment`, `notify_issues`, `notify_comments`, `notify_milestones`, `notify_data_entry_complete`, `notify_interview_assigned`, `notify_agent_reassigned`, `notify_new_interviews`, `notify_inactivity`) — all default `true`
+- RLS: each user manages their own row
 
-## 3. Penalty Charges UX
+Default template seeds (10–12 templates covering the existing notification surface):
+1. `audit_passed`
+2. `audit_failed`
+3. `re_audit_requested`
+4. `new_interview_uploaded`
+5. `team_request` (assignment / approval / rejection)
+6. `agent_reassigned`
+7. `interview_assigned_to_data_entry`
+8. `account_approved` / `account_suspended` (one template, status var)
+9. `new_registration_pending`
+10. `payment_recorded`
+11. `issue_flagged` / `issue_resolved`
+12. `achievement_earned`
+13. `inactivity_reminder`
 
-### Scope ID picker
-In `EditPenaltySettingDialog` (inside `PenaltyAdmin.tsx`), replace the free-text `scope_id` input with a Combobox/search:
-- When `scope_type = 'contractor'` → search contractors from `contractors` table (label = name, value = contractor_id).
-- When `scope_type = 'sub_contractor'` → search profiles where role = 'sub_contractor' (label = full_name + email, value = user_id).
-- When `scope_type = 'global'` → hide the field.
-Mirrors the existing exemption user-search component for visual consistency.
+---
 
-### Explain "cascade to subordinates"
-- Add an inline help icon + tooltip next to the cascade toggle: "Also exempt every Field Manager under this Sub-Contractor. Example: a Sub-Contractor is on agreed leave; toggling cascade ON means every FM under them is also skipped from this penalty for as long as the exemption is active."
-- Add the same wording to the dialog's description block so the user sees it without hovering.
+## 2. Edge functions
 
-## 4. Review page — pass/fail failure (and console capture)
+**`send-email-notification`** (new, generic dispatcher)
+- Input: `{ template_key, recipients[], variables{}, audit_id?, event? }`
+- Loads template from DB, checks `enabled`
+- For each recipient: looks up `user_email_preferences` to honor opt-out, looks up profile email
+- Renders subject/body with `{{var}}` substitution (HTML-escaped)
+- Calls existing `send-gmail` function (one call per recipient, or one with To list — per recipient so opt-out is respected)
+- Inserts row into `email_logs` per recipient with status
 
-### Root cause
-The new penalty trigger function compares against the wrong enum literal:
+**`send-test-email`** (new, very small)
+- Input: `{ to, template_key? }`
+- Renders preview values for the chosen template (or a generic test template) and sends via `send-gmail`
+- Returns success/error
+- Restricted: validates caller JWT and `has_role(user, 'admin'|'super_admin')`
 
-```sql
-IF NEW.status <> 'Failed' THEN RETURN NEW; END IF;
-IF OLD.status = 'Failed' THEN RETURN NEW; END IF;
-```
+**Hook into existing notification points** (where `notifications` rows are inserted today — found via `useNotifications` toggle keys). For each event, after the in-app notification is created, also invoke `send-email-notification` with the corresponding `template_key`. Triggering can be done from:
+- Existing client-side insert points (e.g. `TeamAssignments`, `NoticeBoard`, `process-chat-events`)
+- A single Postgres trigger on `notifications` table that calls the dispatcher via `pg_net` — preferred so we don't have to touch every call site.
 
-`audits.status` is the enum `audit_status` whose values are `Pending`, `Audit Passed`, `Audit Failed`. Postgres tries to coerce `'Failed'` into the enum and raises `invalid input value for enum audit_status: "Failed"`, which aborts every UPDATE on `audits`. That's why both Pass and Fail throw "Failed to update interview status," and any other page that updates `audits.status` (re-audit submissions, Mark Resolved, Send to Burn restore, override workflow, bulk re-uploads) is also blocked.
+Use the trigger approach: `AFTER INSERT ON notifications` → maps `type` → `template_key`, calls `send-email-notification` with `recipient_id = notifications.user_id`.
 
-### Fix
-New migration that replaces `raise_penalty_charges_on_failure` with the correct comparisons:
-```sql
-IF NEW.status <> 'Audit Failed'::audit_status THEN RETURN NEW; END IF;
-IF OLD.status = 'Audit Failed'::audit_status THEN RETURN NEW; END IF;
-```
-No app code changes needed — the trigger is server-side. After deploy, Pass and Fail work again everywhere.
+---
 
-### Audit of other affected pages (no code changes needed once trigger is fixed, but verified)
-- `ReviewActions.tsx` — Pass / Fail / Override
-- `ReAuditDialog.tsx` — re-audit submission resets status to Pending
-- `MarkResolvedDialog.tsx` — sets Audit Passed
-- `SendToBurnDialog.tsx` — status changes
-- Bulk PDF/ZIP re-audit flows in `uploadInterviewFile.ts`
-All call `audits.update({ status })` and were silently failing for the same reason.
+## 3. Frontend changes
 
-### Why the Error Console missed it
-`useGlobalErrorCapture` only listens for `window.onerror` and `unhandledrejection`. The Supabase update result is awaited inside a `try/catch` that swallows the error after showing a toast — the promise never rejects to the global handler, so nothing reaches the console pipeline.
+**Rename route** `/admin/sms-logs` → `/admin/notification-center` (keep old path as redirect). Update `Header.tsx` and `MobileNav.tsx` link label to "Notification Center".
 
-Fix: in `useGlobalErrorCapture.ts`, add a thin Supabase response interceptor that logs any `{ error }` returned from `from('...').update/insert/delete/upsert/rpc` calls into the same error pipeline (same shape: message, stack from `new Error().stack`, route, user). Concretely we'll wrap the shared client in a small `logSupabaseError(error, context)` helper and call it from a project-wide `withSupabaseLogging` utility used by `ReviewActions`, `ReAuditDialog`, `MarkResolvedDialog`, `SendToBurnDialog`, and `uploadInterviewFile`. New, swallowed DB errors will now appear in `/admin/error-console`.
+**`SmsLogs.tsx` → `NotificationCenter.tsx`** with three tabs:
+1. **SMS Logs** — current SMS logs UI, unchanged
+2. **Email Logs** — same table layout but reads from `email_logs`, with filters (template, status, date, recipient) and PDF export parity
+3. **Email Templates** — list of templates with edit dialog
+   - Edit: subject + WYSIWYG/textarea for HTML body + plain-text fallback
+   - Sidebar shows `available_vars` chips (click to insert `{{var}}` at cursor)
+   - Live preview pane rendering with sample data
+   - Toggle `enabled`
+   - Save persists to `email_templates`
+4. **Test Send** — small panel (top of Email Logs tab or its own tab):
+   - Template dropdown + recipient email input + "Send Test" button
+   - Shows result toast and adds row to email logs
 
-## Out of scope
-- Any change to the existing penalty business rules (charge mode, effective date, payment flow).
-- Re-architecting upload flows — only labels, duplicate guards, and lock-aware wrappers change.
-- Backfilling penalty charges for failures that were blocked while the trigger was broken (we can do this in a follow-up if you want).
+**`NotificationSettings.tsx`** — add a parallel "Email Notifications" section with the same toggle list, bound to `user_email_preferences`.
+
+---
+
+## Technical details
+
+- Template rendering: simple `{{var}}` regex replace; HTML-escape values; allow `{{var | raw}}` for trusted ones (links). No template injection from user input.
+- `send-gmail` already exists and works — dispatcher just calls `supabase.functions.invoke('send-gmail', { body: { to, subject, html, text } })`.
+- PG trigger uses `pg_net.http_post` to the dispatcher with the service role key stored in `vault`.
+- All emails honor `user_email_preferences` → if disabled, log row is `status = 'skipped'` (so admin still sees the attempt).
+- Test send bypasses preferences (clearly labeled).
+- Sender mismatch note: deployed `send-gmail` uses `Zamoph.audit@gmail.com`. User wrote `zamoph.audit@gmail.com` in this message — same address (case-insensitive). Will keep as-is.
+
+---
+
+## Files
+
+New:
+- `supabase/migrations/<ts>_email_notifications.sql`
+- `supabase/functions/send-email-notification/index.ts`
+- `supabase/functions/send-test-email/index.ts`
+- `src/pages/NotificationCenter.tsx` (replaces `SmsLogs.tsx`)
+- `src/components/notifications/EmailLogsTab.tsx`
+- `src/components/notifications/EmailTemplatesTab.tsx`
+- `src/components/notifications/EditTemplateDialog.tsx`
+- `src/components/notifications/TestEmailPanel.tsx`
+
+Edited:
+- `src/App.tsx` (route rename + redirect)
+- `src/components/Header.tsx`, `src/components/MobileNav.tsx` (label/path)
+- `src/components/NotificationSettings.tsx` (email toggles)
