@@ -1,119 +1,60 @@
-# Email Notifications System
-
-Add Gmail-powered email notifications for platform events, manageable from the existing SMS Logs page (renamed to **Notification Center**). Restricted to `admin` / `super_admin` (already enforced via `FullAdminRoute`).
-
-Sender (already deployed in `send-gmail` function):
-- From: `"BAT Audit" <Zamoph.audit@gmail.com>`
-- Reply-To: `Zamoph.audit@gmail.com`
+## Goal
+Completely remove every trace of the previous Gmail integration (code, edge functions, DB tables, triggers, route changes) so nothing references the deleted `Zamoph.audit@gmail.com` connection. Then rebuild it cleanly once you reconnect Gmail.
 
 ---
 
-## 1. Database (one migration)
+## Phase 1 — Full teardown
 
-**`email_templates`** — editable templates, seeded with defaults
-- `key` (text, unique) — e.g. `audit_passed`, `audit_failed`, `re_audit_requested`
-- `name`, `description`
-- `subject` (text, supports `{{var}}` placeholders)
-- `body_html` (text), `body_text` (text)
-- `enabled` (bool, default true)
-- `available_vars` (jsonb) — list of supported `{{var}}` names for the editor UI
-- `updated_by`, timestamps
-- RLS: select/update only `admin`/`super_admin` via `has_role`
+### Edge functions to delete (code + deployed copies)
+- `supabase/functions/send-gmail/`
+- `supabase/functions/send-email-notification/`
+- `supabase/functions/send-test-email/`
 
-**`email_logs`** — mirror of `sms_logs`
-- `template_key`, `recipients` (text[]), `subject`, `body_preview`, `status` (`sent`/`failed`/`skipped`), `error_message`, `provider_response` (jsonb), `audit_id`, `triggered_by_event`, `created_at`
-- RLS: select for `admin`/`super_admin`; insert via service role from edge functions
+Also call `delete_edge_functions` for each so the old deployed versions stop running (the DB trigger still calls `send-email-notification` until that function is gone and the trigger is dropped — order matters, see Phase 1 step order below).
 
-**`user_email_preferences`** — per-user opt-out, parallel to push toggles
-- `user_id` (PK), boolean columns matching the existing `notify_*` keys (`notify_audit_passed`, `notify_failed_audit`, `notify_re_audit`, `notify_team_requests`, `notify_account_status`, `notify_new_registration`, `notify_payment`, `notify_issues`, `notify_comments`, `notify_milestones`, `notify_data_entry_complete`, `notify_interview_assigned`, `notify_agent_reassigned`, `notify_new_interviews`, `notify_inactivity`) — all default `true`
-- RLS: each user manages their own row
+### Database objects to drop (one migration)
+- Trigger `trg_dispatch_email_on_notification` on `user_notifications`
+- Function `public.dispatch_email_on_notification()`
+- Function `public.email_set_updated_at()`
+- Triggers `trg_email_templates_updated_at`, `trg_user_email_prefs_updated_at`
+- Tables: `public.email_notification_logs`, `public.email_templates`, `public.user_email_preferences`
+- Any vault secret rows the old migration inserted for the dispatcher (service-role key reference)
 
-Default template seeds (10–12 templates covering the existing notification surface):
-1. `audit_passed`
-2. `audit_failed`
-3. `re_audit_requested`
-4. `new_interview_uploaded`
-5. `team_request` (assignment / approval / rejection)
-6. `agent_reassigned`
-7. `interview_assigned_to_data_entry`
-8. `account_approved` / `account_suspended` (one template, status var)
-9. `new_registration_pending`
-10. `payment_recorded`
-11. `issue_flagged` / `issue_resolved`
-12. `achievement_earned`
-13. `inactivity_reminder`
+### Frontend code to revert / remove
+- `src/pages/NotificationCenter.tsx` → delete
+- `src/App.tsx` → restore `/admin/sms-logs` route to point back at the original `SmsLogs` page (`src/pages/SmsLogs.tsx` still exists and is untouched)
+- Remove the `NotificationCenter` import in `src/App.tsx`
+- `src/integrations/supabase/types.ts` is auto-generated — it will regenerate after the migration drops the tables; do not hand-edit
+
+### Order of operations (critical to avoid breakage)
+1. Drop the `trg_dispatch_email_on_notification` trigger first (otherwise every `user_notifications` insert keeps trying to `pg_net` the dead edge function and will surface noisy errors)
+2. Drop functions and tables in the same migration
+3. Delete edge function code files and call `delete_edge_functions`
+4. Revert the App route and delete `NotificationCenter.tsx`
 
 ---
 
-## 2. Edge functions
+## Phase 2 — What to avoid so nothing else breaks
 
-**`send-email-notification`** (new, generic dispatcher)
-- Input: `{ template_key, recipients[], variables{}, audit_id?, event? }`
-- Loads template from DB, checks `enabled`
-- For each recipient: looks up `user_email_preferences` to honor opt-out, looks up profile email
-- Renders subject/body with `{{var}}` substitution (HTML-escaped)
-- Calls existing `send-gmail` function (one call per recipient, or one with To list — per recipient so opt-out is respected)
-- Inserts row into `email_logs` per recipient with status
-
-**`send-test-email`** (new, very small)
-- Input: `{ to, template_key? }`
-- Renders preview values for the chosen template (or a generic test template) and sends via `send-gmail`
-- Returns success/error
-- Restricted: validates caller JWT and `has_role(user, 'admin'|'super_admin')`
-
-**Hook into existing notification points** (where `notifications` rows are inserted today — found via `useNotifications` toggle keys). For each event, after the in-app notification is created, also invoke `send-email-notification` with the corresponding `template_key`. Triggering can be done from:
-- Existing client-side insert points (e.g. `TeamAssignments`, `NoticeBoard`, `process-chat-events`)
-- A single Postgres trigger on `notifications` table that calls the dispatcher via `pg_net` — preferred so we don't have to touch every call site.
-
-Use the trigger approach: `AFTER INSERT ON notifications` → maps `type` → `template_key`, calls `send-email-notification` with `recipient_id = notifications.user_id`.
+- **Do not touch `user_notifications`**, `notifications`, `sms_logs`, `SmsLogs.tsx`, push notifications, or the existing `useNotifications` hook. The old work only added on top — the in-app notification system keeps working untouched.
+- **Do not edit `src/integrations/supabase/client.ts` or `types.ts`** — types regenerate automatically.
+- **Do not remove the `pg_net` extension** — other features may rely on it.
+- **Do not delete the connector itself from Connectors UI a second time** — you already removed it. We just need a clean reconnect after teardown.
+- **Header / MobileNav** were never changed in the final version (the route alias was kept), so no nav cleanup is needed. I will double-check during build.
+- **Vault / secrets**: do not delete `LOVABLE_API_KEY`. The only cleanup is any `gmail_dispatcher_*` secret rows the old migration inserted (if any). Will check and only drop email-specific entries.
 
 ---
 
-## 3. Frontend changes
+## Phase 3 — Rebuild (after you reconnect Gmail as `Zamoph.audit@gmail.com`)
 
-**Rename route** `/admin/sms-logs` → `/admin/notification-center` (keep old path as redirect). Update `Header.tsx` and `MobileNav.tsx` link label to "Notification Center".
+Once you confirm the new Gmail connection is linked:
 
-**`SmsLogs.tsx` → `NotificationCenter.tsx`** with three tabs:
-1. **SMS Logs** — current SMS logs UI, unchanged
-2. **Email Logs** — same table layout but reads from `email_logs`, with filters (template, status, date, recipient) and PDF export parity
-3. **Email Templates** — list of templates with edit dialog
-   - Edit: subject + WYSIWYG/textarea for HTML body + plain-text fallback
-   - Sidebar shows `available_vars` chips (click to insert `{{var}}` at cursor)
-   - Live preview pane rendering with sample data
-   - Toggle `enabled`
-   - Save persists to `email_templates`
-4. **Test Send** — small panel (top of Email Logs tab or its own tab):
-   - Template dropdown + recipient email input + "Send Test" button
-   - Shows result toast and adds row to email logs
+1. **`send-gmail` edge function** — minimal, single-purpose: accepts `{to, subject, html, text, cc?, bcc?}`, builds RFC 2822 MIME, base64url-encodes, POSTs to `connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send` with `LOVABLE_API_KEY` + `GOOGLE_MAIL_API_KEY`. Sender: `"BAT Audit" <Zamoph.audit@gmail.com>`, Reply-To same.
+2. **Verify credentials first** via the gateway `verify_credentials` endpoint before wiring anything else — surface a clear error if it fails so we don't repeat the previous "Credential not found" loop.
+3. **Migration** — recreate `email_templates`, `email_notification_logs`, `user_email_preferences` (+ RLS for admin/super_admin), seed default templates.
+4. **`send-email-notification`** dispatcher — same contract as before (template render + log).
+5. **`send-test-email`** — admin-only test endpoint.
+6. **DB trigger** on `user_notifications` to dispatch emails — added LAST, only after all 3 functions are deployed and the test send succeeds.
+7. **`NotificationCenter` page** with SMS Logs + Email Logs + Templates + Test Send tabs, mounted at `/admin/sms-logs`.
 
-**`NotificationSettings.tsx`** — add a parallel "Email Notifications" section with the same toggle list, bound to `user_email_preferences`.
-
----
-
-## Technical details
-
-- Template rendering: simple `{{var}}` regex replace; HTML-escape values; allow `{{var | raw}}` for trusted ones (links). No template injection from user input.
-- `send-gmail` already exists and works — dispatcher just calls `supabase.functions.invoke('send-gmail', { body: { to, subject, html, text } })`.
-- PG trigger uses `pg_net.http_post` to the dispatcher with the service role key stored in `vault`.
-- All emails honor `user_email_preferences` → if disabled, log row is `status = 'skipped'` (so admin still sees the attempt).
-- Test send bypasses preferences (clearly labeled).
-- Sender mismatch note: deployed `send-gmail` uses `Zamoph.audit@gmail.com`. User wrote `zamoph.audit@gmail.com` in this message — same address (case-insensitive). Will keep as-is.
-
----
-
-## Files
-
-New:
-- `supabase/migrations/<ts>_email_notifications.sql`
-- `supabase/functions/send-email-notification/index.ts`
-- `supabase/functions/send-test-email/index.ts`
-- `src/pages/NotificationCenter.tsx` (replaces `SmsLogs.tsx`)
-- `src/components/notifications/EmailLogsTab.tsx`
-- `src/components/notifications/EmailTemplatesTab.tsx`
-- `src/components/notifications/EditTemplateDialog.tsx`
-- `src/components/notifications/TestEmailPanel.tsx`
-
-Edited:
-- `src/App.tsx` (route rename + redirect)
-- `src/components/Header.tsx`, `src/components/MobileNav.tsx` (label/path)
-- `src/components/NotificationSettings.tsx` (email toggles)
+I'll wait for your go-ahead, then execute Phase 1 immediately. Reconnect Gmail when Phase 1 is done, and I'll proceed with Phase 3.
