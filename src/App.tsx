@@ -47,7 +47,6 @@ import ZipDiagnostics from "./pages/ZipDiagnostics";
 import Achievements from "./pages/Achievements";
 import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
 import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
-import SmsLogs from "./pages/SmsLogs";
 import NotificationCenter from "./pages/NotificationCenter";
 import PaymentTracking from "./pages/PaymentTracking";
 import FraudAnalyticsDashboard from "./pages/FraudAnalyticsDashboard";
