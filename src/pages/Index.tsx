@@ -46,7 +46,7 @@ const Index = () => {
   const isOnline = useOnlineStatus();
   const [searchParams] = useSearchParams();
   const searchFromUrl = searchParams.get("search") || "";
-  
+
   const [audits, setAudits] = useState<Audit[]>([]);
   const [filters, setFilters] = useState<FilterState>({
     statuses: [],
@@ -65,29 +65,29 @@ const Index = () => {
   const [bulkZipOpen, setBulkZipOpen] = useState(false);
   const [combinedUploadOpen, setCombinedUploadOpen] = useState(false);
   const [activeUpload, setActiveUpload] = useState<UploadProgressData | null>(null);
-  const hideReviewButton = userRole === 'field_manager' || userRole === 'contractor';
-  const canUpload = userRole !== 'auditor'; // Auditors cannot upload files
-  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-  const isSuperAdmin = userRole === 'super_admin';
-  
+  const hideReviewButton = userRole === "field_manager" || userRole === "contractor";
+  const canUpload = userRole !== "auditor"; // Auditors cannot upload files
+  const isAdmin = userRole === "admin" || userRole === "super_admin";
+  const isSuperAdmin = userRole === "super_admin";
+
   // Contractor/Auditor filtering
   // For auditors: use active_contractor_id if set, otherwise fall back to contractor_id (NG71, etc.)
   // For contractors: use their contractor_id
-  const isContractor = userRole === 'contractor';
-  const isAuditor = userRole === 'auditor';
-  
+  const isContractor = userRole === "contractor";
+  const isAuditor = userRole === "auditor";
+
   // Auditors use active_contractor_id if set, otherwise their own contractor_id
   // This ensures auditors with contractor_id "NG71" see NG71 interviews even without active_contractor_id
-  const effectiveContractorId = isAuditor 
-    ? (profile?.active_contractor_id || profile?.contractor_id)  // Auditors: prefer active, fall back to own
-    : profile?.contractor_id;                                     // Contractors: use their own contractor_id
-  
+  const effectiveContractorId = isAuditor
+    ? profile?.active_contractor_id || profile?.contractor_id // Auditors: prefer active, fall back to own
+    : profile?.contractor_id; // Contractors: use their own contractor_id
+
   // Filter by contractor for contractors always, and for auditors with a valid contractor ID
   const shouldFilterByContractor = (isContractor || (isAuditor && effectiveContractorId)) && !isSuperAdmin;
   // Update filters when URL search param changes
   useEffect(() => {
     if (searchFromUrl) {
-      setFilters(prev => ({ ...prev, interviewId: searchFromUrl }));
+      setFilters((prev) => ({ ...prev, interviewId: searchFromUrl }));
     }
   }, [searchFromUrl]);
 
@@ -96,25 +96,23 @@ const Index = () => {
       setIsLoading(true);
 
       // Fetch burned audit IDs first
-      const { data: burnedData } = await supabase
-        .from("burn_queue")
-        .select("audit_id")
-        .is("restored_at", null);
+      const { data: burnedData } = await supabase.from("burn_queue").select("audit_id").is("restored_at", null);
       const burnedIds = new Set((burnedData || []).map((b) => b.audit_id));
-      
+
       const from = (currentPage - 1) * itemsPerPage;
-      
-      const shouldSortByArtifacts = filters.statuses.includes("Awaiting Review") 
-        || filters.statuses.includes("Ready for Review")
-        || filters.statuses.includes("Pending")
-        || (filters.statuses.length === 0);
+
+      const shouldSortByArtifacts =
+        filters.statuses.includes("Awaiting Review") ||
+        filters.statuses.includes("Ready for Review") ||
+        filters.statuses.includes("Pending") ||
+        filters.statuses.length === 0;
 
       // For contractors/auditors, use the RPC function to avoid URL length limits
       if (shouldFilterByContractor && effectiveContractorId) {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('get_contractor_audits', {
+        const { data: rpcData, error: rpcError } = await supabase.rpc("get_contractor_audits", {
           p_contractor_id: effectiveContractorId,
           p_is_auditor: isAuditor,
-          p_auditor_name: (!isAdmin && isAuditor && profile?.full_name) ? profile.full_name : null,
+          p_auditor_name: !isAdmin && isAuditor && profile?.full_name ? profile.full_name : null,
           p_statuses: filters.statuses.length > 0 ? filters.statuses : null,
           p_search: filters.interviewId || null,
           p_reviewer: filters.reviewer || null,
@@ -130,17 +128,15 @@ const Index = () => {
 
         const results = (rpcData || []).filter((a: any) => !burnedIds.has(a.id));
         const total = results.length > 0 ? Math.max(0, Number(results[0]?.total_count || 0) - burnedIds.size) : 0;
-        
+
         setAudits(results.slice(0, itemsPerPage) as unknown as Audit[]);
         setTotalCount(total);
         setIsLoading(false);
         return;
       }
-      
+
       // For admins and other roles, use the existing direct query approach
-      let query = supabase
-        .from("audits")
-        .select("*", { count: "exact" });
+      let query = supabase.from("audits").select("*", { count: "exact" });
 
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
@@ -149,7 +145,9 @@ const Index = () => {
         const hasReAudit = filters.statuses.includes("Re-Audit");
         const hasInProgress = filters.statuses.includes("In Progress");
         const hasReadyForReview = filters.statuses.includes("Ready for Review");
-        const otherStatuses = filters.statuses.filter(s => s !== "In Progress" && s !== "Re-Audit" && s !== "Ready for Review");
+        const otherStatuses = filters.statuses.filter(
+          (s) => s !== "In Progress" && s !== "Re-Audit" && s !== "Ready for Review",
+        );
 
         if (hasReadyForReview && !hasReAudit && !hasInProgress && otherStatuses.length === 0) {
           query = query
@@ -160,9 +158,7 @@ const Index = () => {
         } else if (hasReAudit && !hasInProgress && !hasReadyForReview && otherStatuses.length === 0) {
           query = query.eq("is_re_audit", true).in("status", ["Pending", "Awaiting Review"]);
         } else if (hasInProgress && !hasReAudit && !hasReadyForReview && otherStatuses.length === 0) {
-          query = query
-            .not("locked_by", "is", null)
-            .gte("locked_at", oneHourAgo);
+          query = query.not("locked_by", "is", null).gte("locked_at", oneHourAgo);
         } else if (hasInProgress || hasReAudit || hasReadyForReview) {
           const conditions = [];
           if (hasInProgress) {
@@ -172,10 +168,12 @@ const Index = () => {
             conditions.push(`and(is_re_audit.eq.true,or(status.eq.Pending,status.eq."Awaiting Review"))`);
           }
           if (hasReadyForReview) {
-            conditions.push(`and(or(status.eq.Pending,status.eq."Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null,or(is_re_audit.is.null,is_re_audit.eq.false))`);
+            conditions.push(
+              `and(or(status.eq.Pending,status.eq."Awaiting Review"),file_url.not.is.null,mobile_zip_url.not.is.null,or(is_re_audit.is.null,is_re_audit.eq.false))`,
+            );
           }
           if (otherStatuses.length > 0) {
-            conditions.push(`status.in.(${otherStatuses.map(s => `"${s}"`).join(",")})`);
+            conditions.push(`status.in.(${otherStatuses.map((s) => `"${s}"`).join(",")})`);
           }
           query = query.or(conditions.join(","));
         } else {
@@ -205,7 +203,7 @@ const Index = () => {
       }
 
       const to = from + itemsPerPage - 1;
-      
+
       if (shouldSortByArtifacts) {
         query = query
           .order("mobile_zip_url", { ascending: false, nullsFirst: false })
@@ -213,11 +211,11 @@ const Index = () => {
       } else {
         query = query.order("uploaded_at", { ascending: false });
       }
-      
+
       const { data, error, count } = await query.range(from, to);
 
       if (error) throw error;
-      
+
       setAudits(data || []);
       setTotalCount(count || 0);
     } catch (error) {
@@ -260,12 +258,7 @@ const Index = () => {
         <div className="border-b bg-card px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Button
-                variant="outline"
-                size="icon"
-                className="lg:hidden"
-                onClick={() => setIsFilterOpen(true)}
-              >
+              <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setIsFilterOpen(true)}>
                 <Filter className="h-4 w-4" />
               </Button>
               <div>
@@ -277,47 +270,43 @@ const Index = () => {
             </div>
             {canUpload && (
               <UploadLockGuard>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
-                    <Upload className="h-4 w-4" />
-                    <span className="hidden xs:inline">UPLOAD</span>
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => setPdfUploadOpen(true)}>
-                    <FileText className="h-4 w-4 mr-2" />
-                    Upload PDFs Only
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setCombinedUploadOpen(true)}>
-                    <Files className="h-4 w-4 mr-2" />
-                    Upload PDFs + Metadata
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setBulkZipOpen(true)}>
-                    <FileArchive className="h-4 w-4 mr-2" />
-                    Bulk Upload ZIPs
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+                      <Upload className="h-4 w-4" />
+                      <span className="hidden xs:inline">UPLOAD</span>
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => setPdfUploadOpen(true)}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Upload PDFs Only
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setCombinedUploadOpen(true)}>
+                      <Files className="h-4 w-4 mr-2" />
+                      Upload PDFs + Metadata
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setBulkZipOpen(true)}>
+                      <FileArchive className="h-4 w-4 mr-2" />
+                      Bulk Upload ZIPs
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </UploadLockGuard>
             )}
 
             {/* Upload Dialogs - only render if canUpload */}
             {canUpload && (
               <>
-                <UploadDialog 
-                  onUploadComplete={fetchAudits} 
+                <UploadDialog
+                  onUploadComplete={fetchAudits}
                   open={pdfUploadOpen}
                   onOpenChange={setPdfUploadOpen}
                   onUploadProgress={setActiveUpload}
                 />
-                <BulkZipUploadDialog 
-                  onUploadComplete={fetchAudits}
-                  open={bulkZipOpen}
-                  onOpenChange={setBulkZipOpen}
-                />
-                <CombinedUploadDialog 
+                <BulkZipUploadDialog onUploadComplete={fetchAudits} open={bulkZipOpen} onOpenChange={setBulkZipOpen} />
+                <CombinedUploadDialog
                   onUploadComplete={fetchAudits}
                   open={combinedUploadOpen}
                   onOpenChange={setCombinedUploadOpen}
@@ -332,10 +321,10 @@ const Index = () => {
         <main className="flex-1 p-4 sm:p-6 flex flex-col overflow-x-auto">
           {/* Admin Stats Cards */}
           <AdminStatsCard />
-          
+
           {/* Auditor Stats Cards */}
           <AuditorStatsCard />
-          
+
           {!isOnline ? (
             <OfflineTablePlaceholder />
           ) : isLoading ? (
@@ -363,12 +352,7 @@ const Index = () => {
         <FilterSidebar onFilterChange={setFilters} />
       </div>
       {/* Floating Upload Progress */}
-      {activeUpload && (
-        <FloatingUploadProgress
-          {...activeUpload}
-          onClose={() => setActiveUpload(null)}
-        />
-      )}
+      {activeUpload && <FloatingUploadProgress {...activeUpload} onClose={() => setActiveUpload(null)} />}
     </div>
   );
 };
