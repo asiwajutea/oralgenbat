@@ -260,7 +260,7 @@ const App = () => (
               element={
                 <FullAdminRoute>
                   <Layout>
-                    <SmsLogs />
+                    <NotificationCenter />
                   </Layout>
                 </FullAdminRoute>
               }
