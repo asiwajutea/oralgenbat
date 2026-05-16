@@ -40,15 +40,30 @@ async function logAttempt(args: {
   }
 }
 
-async function uploadToBucket(bucket: string, path: string, file: File): Promise<string> {
+async function uploadToBucket(
+  bucket: string,
+  path: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<string> {
   const { data: signed, error: signErr } = await supabase.storage.from(bucket).createSignedUploadUrl(path);
   if (signErr) throw signErr;
-  const res = await fetch(signed.signedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || (path.endsWith(".pdf") ? "application/pdf" : "application/zip") },
-    body: file,
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    });
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100);
+        resolve();
+      } else reject(new Error(`Upload failed (${xhr.status})`));
+    });
+    xhr.addEventListener("error", () => reject(new Error("Upload failed")));
+    xhr.open("PUT", signed.signedUrl);
+    xhr.setRequestHeader("Content-Type", file.type || (path.endsWith(".pdf") ? "application/pdf" : "application/zip"));
+    xhr.send(file);
   });
-  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
   return publicUrl;
 }
@@ -57,8 +72,9 @@ export async function uploadInterviewFile(opts: {
   file: File;
   mode: UploadMode;
   userId: string;
+  onProgress?: (pct: number) => void;
 }): Promise<UploadOutcome> {
-  const { file, mode, userId } = opts;
+  const { file, mode, userId, onProgress } = opts;
   const kind = detectKind(file);
   const baseName = file.name.replace(/\.(pdf|zip)$/i, "");
 
@@ -108,7 +124,7 @@ export async function uploadInterviewFile(opts: {
           return out;
         }
         const path = `${baseName}_${Date.now()}.pdf`;
-        const publicUrl = await uploadToBucket("audit-pdfs", path, f);
+        const publicUrl = await uploadToBucket("audit-pdfs", path, f, onProgress);
         const { data: ins, error: insErr } = await supabase.from("audits").insert({
           file_name: baseName, file_url: publicUrl, status: "Pending", uploaded_by: userId,
         }).select("id").single();
@@ -123,10 +139,10 @@ export async function uploadInterviewFile(opts: {
           return out;
         }
         const path = `${baseName}_${Date.now()}.pdf`;
-        const publicUrl = await uploadToBucket("audit-pdfs", path, f);
+        const publicUrl = await uploadToBucket("audit-pdfs", path, f, onProgress);
         const { error: updErr } = await supabase.from("audits").update({
           file_url: publicUrl,
-          status: "Pending",
+          status: "Awaiting Review",
           is_re_audit: true,
           re_audit_count: ((existing as any).re_audit_count || 0) + 1,
           last_modified: new Date().toISOString(),
@@ -154,13 +170,13 @@ export async function uploadInterviewFile(opts: {
       return out;
     }
     const zipPath = `${baseName}_${Date.now()}.zip`;
-    const publicUrl = await uploadToBucket("mobile-zips", zipPath, file);
+    const publicUrl = await uploadToBucket("mobile-zips", zipPath, file, onProgress);
     const updatePayload: any = {
       mobile_zip_url: publicUrl,
       mobile_zip_uploaded_at: new Date().toISOString(),
     };
     if (mode === "re_audit") {
-      updatePayload.status = "Pending";
+      updatePayload.status = "Awaiting Review";
       updatePayload.is_re_audit = true;
       updatePayload.re_audit_count = ((existing as any).re_audit_count || 0) + 1;
       updatePayload.last_modified = new Date().toISOString();
