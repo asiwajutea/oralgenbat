@@ -1,60 +1,44 @@
-## Root cause
+## Upload Center improvements
 
-The Upload Center re-audit path is broken in one specific spot: `src/lib/uploadInterviewFile.ts` invokes the `process-mobile-zip` edge function **without** the `mobileZipUrl` argument:
+**File:** `src/pages/UploadCenter.tsx` and `src/lib/uploadInterviewFile.ts`
 
-```ts
-supabase.functions.invoke("process-mobile-zip", { body: { auditId: existing.id } })
-```
+1. **Scrollable file list** — wrap the `<ul>` of selected files in a `max-h-[420px] overflow-y-auto` container (smaller on mobile, e.g. `max-h-[55vh]`) so the Start Upload button stays visible.
 
-But the edge function (`supabase/functions/process-mobile-zip/index.ts` line 26) requires **both** `auditId` and `mobileZipUrl` and throws "Missing required parameters" otherwise. Every other caller in the app (Combined upload, Bulk Zip, Bulk Metadata, Failed Interview modal, MobileZipUpload, AuditTable, InterviewTracking) correctly passes both. Only the Upload Center call is missing it.
+2. **Per-row remove (X) icon**
+   - Show an X button on every row.
+   - While the batch is running, only rows with `status === "pending"` (not yet started) can be removed — the X is hidden/disabled on `uploading`, `done`, `failed` rows.
 
-Result for re-audit ZIPs uploaded via Upload Center:
-- The new ZIP gets stored and `mobile_zip_url` is updated, so the audit appears as "Awaiting Review" again.
-- The edge function call fails immediately, so old `interview_metadata` and `interview_photos` rows are never deleted and the new ones are never parsed.
-- The review page therefore still shows the old metadata, and the auditor can't see the corrected data. That explains issues #2 and #3.
+3. **Concurrency = 5 worker pool**
+   - Replace the current sequential `for` loop in `start()` with a 5-worker pool: maintain an index pointer; each worker pulls the next `pending` row, runs `uploadInterviewFile`, then pulls the next. As soon as any worker finishes, it starts the next pending file — keeping up to 5 in flight at all times.
+   - Removed rows are naturally skipped.
 
-Issue #1 (showing "Awaiting Review" instead of "Re-Audit Required" badge): the badge in `AuditTable.tsx` requires `status === "Awaiting Review" && is_re_audit === true`. The upload code does set `is_re_audit: true`, so for any interview whose re-upload succeeded the badge should be red. The orange ones in the screenshot are almost certainly the same broken-reparse interviews where `is_re_audit` was set but they look like "fresh" awaiting-review items — we'll confirm by querying and the backfill will repair them either way.
+4. **Per-file upload percentage**
+   - Extend `uploadInterviewFile` to accept an optional `onProgress: (pct: number) => void` callback.
+   - Replace the `fetch` call in `uploadToBucket` with `XMLHttpRequest` so we can hook `xhr.upload.onprogress` and forward `(loaded/total)*100` to the callback. (Pattern already used in `UploadDialog.tsx`.)
+   - In `UploadCenter`, store a `progress` number per row; render it next to each row (e.g. `45%` + a thin `Progress` bar) instead of the generic "Uploading…" text.
+   - The overall progress bar at the top remains and shows completed-count / total.
 
-## Changes
+5. **Mobile friendliness**
+   - Stack header/meta vertically on small screens; ensure padding, font sizes, and the file list height work at ≤414px.
+   - Make Start Upload button full-width on mobile (already mostly the case).
+   - Ensure the row layout (icon + filename + % + X) doesn't overflow — truncate the filename and right-align controls in a flex row that wraps on very narrow widths.
 
-### 1. Fix the missing argument (1-line bug)
+## Re-Audit badge fix
 
-`src/lib/uploadInterviewFile.ts` — pass `mobileZipUrl` when invoking the parser:
+**Root cause confirmed via DB query:** every interview re-uploaded through Upload Center has `is_re_audit = true` but `status = "Pending"`. The badge in `AuditTable.tsx` only renders when `status === "Awaiting Review" && is_re_audit`, so it never appears. The Failed-Interview-Modal path correctly sets `status: "Awaiting Review"`; Upload Center's `uploadInterviewFile.ts` sets `status: "Pending"`.
 
-```ts
-supabase.functions.invoke("process-mobile-zip", {
-  body: { auditId: existing.id, mobileZipUrl: publicUrl }
-}).catch(() => {});
-```
-
-Applies to both the `new` ZIP path and the `re_audit` ZIP path (single shared block at the bottom of the file).
-
-### 2. Backfill all affected interviews
-
-For every audit that:
-- has `mobile_zip_url IS NOT NULL`
-- is currently `Awaiting Review`, `Pending`, or `Ready for Review` (i.e. not yet audited)
-- AND whose `interview_metadata.updated_at` is older than `mobile_zip_uploaded_at` (stale parse), OR has no `interview_metadata` row at all
-
-…re-invoke `process-mobile-zip` with the correct `mobileZipUrl`. Done as a one-shot script run from chat that:
-
-1. Queries the affected rows via `supabase--read_query`.
-2. Calls the edge function in batches (concurrency ~3) so we don't overwhelm it.
-3. Reports a summary (succeeded / failed / skipped) back in chat.
-
-No schema migration is needed — we're only triggering reparses against existing data.
-
-### 3. Verify the re-audit badge after backfill
-
-After step 2 finishes, re-query a few of the previously-orange interviews to confirm `is_re_audit = true` is set and the badge now renders red ("Re-Audit Required"). If any are still false but were truly re-uploaded, we'll patch their `is_re_audit` flag from the upload_attempts log (mode = `re_audit`, latest successful attempt per audit).
+**Fix:**
+- In `src/lib/uploadInterviewFile.ts`, for `mode === "re_audit"` change the `updatePayload.status` from `"Pending"` to `"Awaiting Review"` for both the PDF and ZIP branches.
+- **Backfill:** update existing affected rows so the badge appears immediately:
+  ```sql
+  UPDATE audits
+  SET status = 'Awaiting Review'
+  WHERE is_re_audit = true
+    AND re_audit_count > 0
+    AND status = 'Pending';
+  ```
+  (Run via a one-off migration.)
 
 ## Out of scope
-
-- No UI/component refactors — the fix is one argument plus a backfill.
-- No changes to other upload entry points (they're already correct).
-- No changes to the edge function itself.
-
-## Files touched
-
-- `src/lib/uploadInterviewFile.ts` (one line)
-- One-shot backfill executed from chat (no committed script)
+- No changes to other upload entry points, edge functions, or DB schema beyond the backfill.
+- History tab, lock logic, and mode selector untouched.
