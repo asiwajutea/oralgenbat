@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Upload, FileText, Archive, X, CheckCircle2, AlertTriangle, Lock, Repeat, History, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -54,6 +54,9 @@ const UploadCenter = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [running, setRunning] = useState(false);
   const [completed, setCompleted] = useState(0);
+  const [summary, setSummary] = useState<{ ok: number; failed: number; duplicate: number; blocked: number } | null>(null);
+  const rowsRef = useRef<Row[]>([]);
+  useEffect(() => { rowsRef.current = rows; }, [rows]);
 
   // If "new" uploads are locked, default the mode to re-audit
   useEffect(() => {
@@ -68,6 +71,7 @@ const UploadCenter = () => {
       ...files.map(f => ({ id: `${f.name}-${Date.now()}-${Math.random()}`, file: f, status: "pending" as const, progress: 0 })),
     ]);
     e.target.value = "";
+    setSummary(null);
   };
 
   const remove = (id: string) => setRows(prev => prev.filter(r => r.id !== id || r.status !== "pending"));
@@ -78,12 +82,14 @@ const UploadCenter = () => {
     if (mode === "new" && lock.locked) return toast.error(`Uploads locked: ${lock.reason}`);
     setRunning(true);
     setCompleted(0);
+    setSummary(null);
 
     // Snapshot the queue (ids) at start time; removals during run will filter naturally.
     const queueIds = rows.filter(r => r.status !== "done").map(r => r.id);
     let cursor = 0;
     let done = 0;
     const CONCURRENCY = 5;
+    const claimed = new Set<string>();
 
     const getNextId = (): string | null => {
       while (cursor < queueIds.length) {
@@ -97,14 +103,12 @@ const UploadCenter = () => {
       while (true) {
         const id = getNextId();
         if (!id) return;
-        // Resolve row from latest state — if user removed it, skip.
-        let target: Row | undefined;
-        setRows(prev => {
-          target = prev.find(x => x.id === id);
-          if (!target || target.status !== "pending") return prev;
-          return prev.map(x => x.id === id ? { ...x, status: "uploading", progress: 0 } : x);
-        });
+        if (claimed.has(id)) continue;
+        claimed.add(id);
+        // Resolve row from a ref snapshot (avoids React StrictMode double-invocation of state updaters).
+        const target = rowsRef.current.find(x => x.id === id);
         if (!target || target.status !== "pending") continue;
+        setRows(prev => prev.map(x => x.id === id && x.status === "pending" ? { ...x, status: "uploading", progress: 0 } : x));
 
         const outcome = await uploadInterviewFile({
           file: target.file,
@@ -127,7 +131,21 @@ const UploadCenter = () => {
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queueIds.length) }, () => worker()));
     setRunning(false);
-    toast.success("Upload run finished");
+    // Compute summary from the latest snapshot
+    const finalRows = rowsRef.current;
+    const ok = finalRows.filter(r => r.outcome?.status === "success").length;
+    const failed = finalRows.filter(r => r.outcome?.status === "failed").length;
+    const duplicate = finalRows.filter(r => r.outcome?.status === "duplicate").length;
+    const blocked = finalRows.filter(r => r.outcome?.status === "locked" || r.outcome?.status === "quota_blocked").length;
+    setSummary({ ok, failed, duplicate, blocked });
+    const parts = [
+      `${ok} succeeded`,
+      failed > 0 && `${failed} failed`,
+      duplicate > 0 && `${duplicate} duplicate`,
+      blocked > 0 && `${blocked} blocked`,
+    ].filter(Boolean).join(", ");
+    if (failed > 0 && ok === 0) toast.error(`Upload complete: ${parts}`);
+    else toast.success(`Upload complete: ${parts}`);
   };
 
   const totalProgress = rows.length === 0 ? 0 : Math.round((completed / rows.length) * 100);
@@ -213,15 +231,38 @@ const UploadCenter = () => {
                     {running && <div className="text-xs text-muted-foreground">{completed}/{rows.length}</div>}
                   </div>
                   {running && <Progress value={totalProgress} className="h-2" />}
+                  {summary && !running && (
+                    <div className="rounded-md border bg-muted/30 p-3 text-sm flex items-start justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="font-medium">Upload summary</div>
+                        <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+                          <span className="text-emerald-600">{summary.ok} succeeded</span>
+                          {summary.failed > 0 && <span className="text-red-600">{summary.failed} failed</span>}
+                          {summary.duplicate > 0 && <span className="text-amber-600">{summary.duplicate} duplicate</span>}
+                          {summary.blocked > 0 && <span className="text-amber-600">{summary.blocked} blocked</span>}
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setSummary(null)} aria-label="Dismiss summary">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                   <ul className="divide-y rounded-md border max-h-[55vh] sm:max-h-[420px] overflow-y-auto">
                     {rows.map(r => {
                       const kind = detectKind(r.file);
                       const removable = r.status === "pending";
+                      const modeLabel =
+                        mode === "new" ? { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
+                        : kind === "pdf" ? { text: "Re-audit", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+                        : { text: "Replace metadata", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
                       return (
                         <li key={r.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 text-sm">
                           {kind === "pdf" ? <FileText className="h-4 w-4 shrink-0 text-rose-500" /> : <Archive className="h-4 w-4 shrink-0 text-blue-500" />}
                           <div className="flex-1 min-w-0">
-                            <div className="truncate text-xs sm:text-sm">{r.file.name}</div>
+                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                              <span className="truncate text-xs sm:text-sm">{r.file.name}</span>
+                              <Badge variant="secondary" className={`${modeLabel.cls} text-[10px] px-1.5 py-0`}>{modeLabel.text}</Badge>
+                            </div>
                             {r.status === "uploading" && (
                               <Progress value={r.progress} className="h-1 mt-1" />
                             )}

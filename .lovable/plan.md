@@ -1,44 +1,80 @@
-## Upload Center improvements
+# Upload Center — fix stuck uploads + add mode labels & summary
 
-**File:** `src/pages/UploadCenter.tsx` and `src/lib/uploadInterviewFile.ts`
+## Problem 1: Upload stuck at 0%, instant "Upload run finished"
 
-1. **Scrollable file list** — wrap the `<ul>` of selected files in a `max-h-[420px] overflow-y-auto` container (smaller on mobile, e.g. `max-h-[55vh]`) so the Start Upload button stays visible.
+**Root cause:** In `src/pages/UploadCenter.tsx` the worker reads the target row inside a `setRows(prev => ...)` updater and assigns it to an outer variable. React StrictMode runs functional updaters **twice** in dev. On the second pass the row is already `"uploading"`, so the outer `target` gets reassigned to that uploading snapshot. The subsequent guard `if (!target || target.status !== "pending") continue;` then skips the file. Every worker bails immediately → nothing uploads, progress stays at 0%, and `Promise.all` resolves so the success toast fires.
 
-2. **Per-row remove (X) icon**
-   - Show an X button on every row.
-   - While the batch is running, only rows with `status === "pending"` (not yet started) can be removed — the X is hidden/disabled on `uploading`, `done`, `failed` rows.
+**Fix:** Don't capture state from inside an updater. Track claimed IDs in a plain `Set` (ref) outside React state, claim the ID before calling `setRows`, and use a pure updater that only transitions `pending → uploading`.
 
-3. **Concurrency = 5 worker pool**
-   - Replace the current sequential `for` loop in `start()` with a 5-worker pool: maintain an index pointer; each worker pulls the next `pending` row, runs `uploadInterviewFile`, then pulls the next. As soon as any worker finishes, it starts the next pending file — keeping up to 5 in flight at all times.
-   - Removed rows are naturally skipped.
+```ts
+const claimed = new Set<string>();
+const worker = async () => {
+  while (true) {
+    const id = getNextId();
+    if (!id) return;
+    if (claimed.has(id)) continue;
+    claimed.add(id);
 
-4. **Per-file upload percentage**
-   - Extend `uploadInterviewFile` to accept an optional `onProgress: (pct: number) => void` callback.
-   - Replace the `fetch` call in `uploadToBucket` with `XMLHttpRequest` so we can hook `xhr.upload.onprogress` and forward `(loaded/total)*100` to the callback. (Pattern already used in `UploadDialog.tsx`.)
-   - In `UploadCenter`, store a `progress` number per row; render it next to each row (e.g. `45%` + a thin `Progress` bar) instead of the generic "Uploading…" text.
-   - The overall progress bar at the top remains and shows completed-count / total.
+    // Read the file once from current state via a ref/snapshot
+    const row = rowsRef.current.find(r => r.id === id);
+    if (!row || row.status !== "pending") continue;
 
-5. **Mobile friendliness**
-   - Stack header/meta vertically on small screens; ensure padding, font sizes, and the file list height work at ≤414px.
-   - Make Start Upload button full-width on mobile (already mostly the case).
-   - Ensure the row layout (icon + filename + % + X) doesn't overflow — truncate the filename and right-align controls in a flex row that wraps on very narrow widths.
+    setRows(prev => prev.map(x => x.id === id ? { ...x, status: "uploading", progress: 0 } : x));
 
-## Re-Audit badge fix
+    const outcome = await uploadInterviewFile({ file: row.file, mode, userId: user.id,
+      onProgress: pct => setRows(prev => prev.map(x => x.id === id ? { ...x, progress: pct } : x)) });
 
-**Root cause confirmed via DB query:** every interview re-uploaded through Upload Center has `is_re_audit = true` but `status = "Pending"`. The badge in `AuditTable.tsx` only renders when `status === "Awaiting Review" && is_re_audit`, so it never appears. The Failed-Interview-Modal path correctly sets `status: "Awaiting Review"`; Upload Center's `uploadInterviewFile.ts` sets `status: "Pending"`.
+    setRows(prev => prev.map(x => x.id === id ? {
+      ...x, status: outcome.status === "success" ? "done" : "failed", progress: 100, outcome,
+    } : x));
+    done++; setCompleted(done);
+  }
+};
+```
 
-**Fix:**
-- In `src/lib/uploadInterviewFile.ts`, for `mode === "re_audit"` change the `updatePayload.status` from `"Pending"` to `"Awaiting Review"` for both the PDF and ZIP branches.
-- **Backfill:** update existing affected rows so the badge appears immediately:
-  ```sql
-  UPDATE audits
-  SET status = 'Awaiting Review'
-  WHERE is_re_audit = true
-    AND re_audit_count > 0
-    AND status = 'Pending';
-  ```
-  (Run via a one-off migration.)
+Add a `rowsRef` synced via `useEffect` so the worker always sees the latest file objects without re-reading via `setRows`.
+
+## Problem 2: Show upload type per file + completion summary
+
+### Per-row mode badge
+Each row already knows the global `mode` (`new` or `re_audit`). For ZIPs, "re_audit" effectively means "Replace metadata"; for PDFs it means "Re-audit PDF". Show a small `Badge` next to the file name:
+
+- `mode === "new"` → blue badge **"New interview"**
+- `mode === "re_audit"` + PDF → amber badge **"Re-audit"**
+- `mode === "re_audit"` + ZIP → amber badge **"Replace metadata"**
+
+Place inline with the filename in the row (above the progress bar), responsive (wraps under filename on mobile).
+
+### Post-run summary
+Replace the generic `toast.success("Upload run finished")` with a summary toast and an inline summary card shown above the file list when `running === false && completed > 0`.
+
+Aggregate counts from `rows` after the run:
+- `success` — N succeeded
+- `failed` — N failed
+- `duplicate` — N skipped (already exists)
+- `locked` / `quota_blocked` — N blocked
+
+Toast (sonner):
+```
+toast.success(`Upload complete: ${ok} succeeded, ${failed} failed${dup ? `, ${dup} duplicate` : ""}`)
+```
+(use `toast.error` if `failed > 0 && ok === 0`).
+
+Inline summary card (above the file list, dismissible with an X):
+- Header: "Upload summary"
+- Lines per category with icon + count
+- For each row, the existing per-row outcome message already renders, so the card stays compact
+
+## Files to change
+
+- `src/pages/UploadCenter.tsx`
+  - Add `rowsRef` synced from `rows`
+  - Rewrite worker with `claimed` Set + pure updaters (fixes StrictMode bug)
+  - Add mode badge in row markup
+  - Add post-run summary state + card + summary toast
+
+No backend, no DB, no edge-function changes. No changes to `uploadInterviewFile.ts`.
 
 ## Out of scope
-- No changes to other upload entry points, edge functions, or DB schema beyond the backfill.
-- History tab, lock logic, and mode selector untouched.
+- Other upload entry points (Combined, Bulk, FailedInterview modals) — they don't share this worker code.
+- Changing the global mode picker per-file (still one mode per run).
