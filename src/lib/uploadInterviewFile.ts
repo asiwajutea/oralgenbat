@@ -167,8 +167,10 @@ export async function uploadInterviewFile(opts: {
     }
     const { error: updErr } = await supabase.from("audits").update(updatePayload).eq("id", existing.id);
     if (updErr) throw updErr;
-    // best-effort parse
-    supabase.functions.invoke("process-mobile-zip", { body: { auditId: existing.id } }).catch(() => {});
+    // best-effort parse — MUST include mobileZipUrl, the edge function requires both args
+    supabase.functions.invoke("process-mobile-zip", {
+      body: { auditId: existing.id, mobileZipUrl: publicUrl },
+    }).catch(() => {});
     const out: UploadOutcome = { status: "success", message: "Metadata uploaded.", audit_id: existing.id };
     await logAttempt({ user_id: userId, file_name: file.name, detected_kind: kind, mode, outcome: out });
     return out;

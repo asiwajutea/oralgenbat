@@ -1,60 +1,60 @@
-## Goal
-Completely remove every trace of the previous Gmail integration (code, edge functions, DB tables, triggers, route changes) so nothing references the deleted `Zamoph.audit@gmail.com` connection. Then rebuild it cleanly once you reconnect Gmail.
+## Root cause
 
----
+The Upload Center re-audit path is broken in one specific spot: `src/lib/uploadInterviewFile.ts` invokes the `process-mobile-zip` edge function **without** the `mobileZipUrl` argument:
 
-## Phase 1 — Full teardown
+```ts
+supabase.functions.invoke("process-mobile-zip", { body: { auditId: existing.id } })
+```
 
-### Edge functions to delete (code + deployed copies)
-- `supabase/functions/send-gmail/`
-- `supabase/functions/send-email-notification/`
-- `supabase/functions/send-test-email/`
+But the edge function (`supabase/functions/process-mobile-zip/index.ts` line 26) requires **both** `auditId` and `mobileZipUrl` and throws "Missing required parameters" otherwise. Every other caller in the app (Combined upload, Bulk Zip, Bulk Metadata, Failed Interview modal, MobileZipUpload, AuditTable, InterviewTracking) correctly passes both. Only the Upload Center call is missing it.
 
-Also call `delete_edge_functions` for each so the old deployed versions stop running (the DB trigger still calls `send-email-notification` until that function is gone and the trigger is dropped — order matters, see Phase 1 step order below).
+Result for re-audit ZIPs uploaded via Upload Center:
+- The new ZIP gets stored and `mobile_zip_url` is updated, so the audit appears as "Awaiting Review" again.
+- The edge function call fails immediately, so old `interview_metadata` and `interview_photos` rows are never deleted and the new ones are never parsed.
+- The review page therefore still shows the old metadata, and the auditor can't see the corrected data. That explains issues #2 and #3.
 
-### Database objects to drop (one migration)
-- Trigger `trg_dispatch_email_on_notification` on `user_notifications`
-- Function `public.dispatch_email_on_notification()`
-- Function `public.email_set_updated_at()`
-- Triggers `trg_email_templates_updated_at`, `trg_user_email_prefs_updated_at`
-- Tables: `public.email_notification_logs`, `public.email_templates`, `public.user_email_preferences`
-- Any vault secret rows the old migration inserted for the dispatcher (service-role key reference)
+Issue #1 (showing "Awaiting Review" instead of "Re-Audit Required" badge): the badge in `AuditTable.tsx` requires `status === "Awaiting Review" && is_re_audit === true`. The upload code does set `is_re_audit: true`, so for any interview whose re-upload succeeded the badge should be red. The orange ones in the screenshot are almost certainly the same broken-reparse interviews where `is_re_audit` was set but they look like "fresh" awaiting-review items — we'll confirm by querying and the backfill will repair them either way.
 
-### Frontend code to revert / remove
-- `src/pages/NotificationCenter.tsx` → delete
-- `src/App.tsx` → restore `/admin/sms-logs` route to point back at the original `SmsLogs` page (`src/pages/SmsLogs.tsx` still exists and is untouched)
-- Remove the `NotificationCenter` import in `src/App.tsx`
-- `src/integrations/supabase/types.ts` is auto-generated — it will regenerate after the migration drops the tables; do not hand-edit
+## Changes
 
-### Order of operations (critical to avoid breakage)
-1. Drop the `trg_dispatch_email_on_notification` trigger first (otherwise every `user_notifications` insert keeps trying to `pg_net` the dead edge function and will surface noisy errors)
-2. Drop functions and tables in the same migration
-3. Delete edge function code files and call `delete_edge_functions`
-4. Revert the App route and delete `NotificationCenter.tsx`
+### 1. Fix the missing argument (1-line bug)
 
----
+`src/lib/uploadInterviewFile.ts` — pass `mobileZipUrl` when invoking the parser:
 
-## Phase 2 — What to avoid so nothing else breaks
+```ts
+supabase.functions.invoke("process-mobile-zip", {
+  body: { auditId: existing.id, mobileZipUrl: publicUrl }
+}).catch(() => {});
+```
 
-- **Do not touch `user_notifications`**, `notifications`, `sms_logs`, `SmsLogs.tsx`, push notifications, or the existing `useNotifications` hook. The old work only added on top — the in-app notification system keeps working untouched.
-- **Do not edit `src/integrations/supabase/client.ts` or `types.ts`** — types regenerate automatically.
-- **Do not remove the `pg_net` extension** — other features may rely on it.
-- **Do not delete the connector itself from Connectors UI a second time** — you already removed it. We just need a clean reconnect after teardown.
-- **Header / MobileNav** were never changed in the final version (the route alias was kept), so no nav cleanup is needed. I will double-check during build.
-- **Vault / secrets**: do not delete `LOVABLE_API_KEY`. The only cleanup is any `gmail_dispatcher_*` secret rows the old migration inserted (if any). Will check and only drop email-specific entries.
+Applies to both the `new` ZIP path and the `re_audit` ZIP path (single shared block at the bottom of the file).
 
----
+### 2. Backfill all affected interviews
 
-## Phase 3 — Rebuild (after you reconnect Gmail as `Zamoph.audit@gmail.com`)
+For every audit that:
+- has `mobile_zip_url IS NOT NULL`
+- is currently `Awaiting Review`, `Pending`, or `Ready for Review` (i.e. not yet audited)
+- AND whose `interview_metadata.updated_at` is older than `mobile_zip_uploaded_at` (stale parse), OR has no `interview_metadata` row at all
 
-Once you confirm the new Gmail connection is linked:
+…re-invoke `process-mobile-zip` with the correct `mobileZipUrl`. Done as a one-shot script run from chat that:
 
-1. **`send-gmail` edge function** — minimal, single-purpose: accepts `{to, subject, html, text, cc?, bcc?}`, builds RFC 2822 MIME, base64url-encodes, POSTs to `connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send` with `LOVABLE_API_KEY` + `GOOGLE_MAIL_API_KEY`. Sender: `"BAT Audit" <Zamoph.audit@gmail.com>`, Reply-To same.
-2. **Verify credentials first** via the gateway `verify_credentials` endpoint before wiring anything else — surface a clear error if it fails so we don't repeat the previous "Credential not found" loop.
-3. **Migration** — recreate `email_templates`, `email_notification_logs`, `user_email_preferences` (+ RLS for admin/super_admin), seed default templates.
-4. **`send-email-notification`** dispatcher — same contract as before (template render + log).
-5. **`send-test-email`** — admin-only test endpoint.
-6. **DB trigger** on `user_notifications` to dispatch emails — added LAST, only after all 3 functions are deployed and the test send succeeds.
-7. **`NotificationCenter` page** with SMS Logs + Email Logs + Templates + Test Send tabs, mounted at `/admin/sms-logs`.
+1. Queries the affected rows via `supabase--read_query`.
+2. Calls the edge function in batches (concurrency ~3) so we don't overwhelm it.
+3. Reports a summary (succeeded / failed / skipped) back in chat.
 
-I'll wait for your go-ahead, then execute Phase 1 immediately. Reconnect Gmail when Phase 1 is done, and I'll proceed with Phase 3.
+No schema migration is needed — we're only triggering reparses against existing data.
+
+### 3. Verify the re-audit badge after backfill
+
+After step 2 finishes, re-query a few of the previously-orange interviews to confirm `is_re_audit = true` is set and the badge now renders red ("Re-Audit Required"). If any are still false but were truly re-uploaded, we'll patch their `is_re_audit` flag from the upload_attempts log (mode = `re_audit`, latest successful attempt per audit).
+
+## Out of scope
+
+- No UI/component refactors — the fix is one argument plus a backfill.
+- No changes to other upload entry points (they're already correct).
+- No changes to the edge function itself.
+
+## Files touched
+
+- `src/lib/uploadInterviewFile.ts` (one line)
+- One-shot backfill executed from chat (no committed script)
