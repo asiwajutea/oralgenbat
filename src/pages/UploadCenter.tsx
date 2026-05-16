@@ -23,6 +23,8 @@ interface Row {
   status: "pending" | "uploading" | "done" | "failed";
   progress: number;
   outcome?: UploadOutcome;
+  existingStatus?: string | null; // status of matching audit (for badge labelling)
+  lookupDone?: boolean;
 }
 
 interface AttemptRow {
@@ -57,6 +59,7 @@ const UploadCenter = () => {
   const [summary, setSummary] = useState<{ ok: number; failed: number; duplicate: number; blocked: number } | null>(null);
   const rowsRef = useRef<Row[]>([]);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
+  const [summaryText, setSummaryText] = useState<string | null>(null);
 
   // If "new" uploads are locked, default the mode to re-audit
   useEffect(() => {
@@ -64,14 +67,34 @@ const UploadCenter = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lock.locked]);
 
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setRows(prev => [
-      ...prev,
-      ...files.map(f => ({ id: `${f.name}-${Date.now()}-${Math.random()}`, file: f, status: "pending" as const, progress: 0 })),
-    ]);
+    const newRows: Row[] = files.map(f => ({
+      id: `${f.name}-${Date.now()}-${Math.random()}`,
+      file: f,
+      status: "pending" as const,
+      progress: 0,
+      lookupDone: false,
+    }));
+    setRows(prev => [...prev, ...newRows]);
     e.target.value = "";
     setSummary(null);
+    setSummaryText(null);
+
+    // Batch-fetch matching audits to label rows correctly (Re-audit vs Replace)
+    const baseNames = Array.from(new Set(newRows.map(r => r.file.name.replace(/\.(pdf|zip)$/i, ""))));
+    if (baseNames.length === 0) return;
+    const { data } = await supabase
+      .from("audits")
+      .select("file_name, status")
+      .in("file_name", baseNames);
+    const statusByName = new Map<string, string>();
+    (data || []).forEach((a: any) => statusByName.set(a.file_name, a.status));
+    setRows(prev => prev.map(r => {
+      if (!newRows.find(n => n.id === r.id)) return r;
+      const base = r.file.name.replace(/\.(pdf|zip)$/i, "");
+      return { ...r, existingStatus: statusByName.get(base) ?? null, lookupDone: true };
+    }));
   };
 
   const remove = (id: string) => setRows(prev => prev.filter(r => r.id !== id || r.status !== "pending"));
@@ -83,6 +106,7 @@ const UploadCenter = () => {
     setRunning(true);
     setCompleted(0);
     setSummary(null);
+    setSummaryText(null);
 
     // Snapshot the queue (ids) at start time; removals during run will filter naturally.
     const queueIds = rows.filter(r => r.status !== "done").map(r => r.id);
@@ -90,6 +114,7 @@ const UploadCenter = () => {
     let done = 0;
     const CONCURRENCY = 5;
     const claimed = new Set<string>();
+    const outcomes = new Map<string, UploadOutcome>();
 
     const getNextId = (): string | null => {
       while (cursor < queueIds.length) {
@@ -118,6 +143,7 @@ const UploadCenter = () => {
             setRows(prev => prev.map(x => x.id === id ? { ...x, progress: pct } : x));
           },
         });
+        outcomes.set(id, outcome);
         setRows(prev => prev.map(x => x.id === id ? {
           ...x,
           status: outcome.status === "success" ? "done" : "failed",
@@ -131,21 +157,38 @@ const UploadCenter = () => {
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queueIds.length) }, () => worker()));
     setRunning(false);
-    // Compute summary from the latest snapshot
-    const finalRows = rowsRef.current;
-    const ok = finalRows.filter(r => r.outcome?.status === "success").length;
-    const failed = finalRows.filter(r => r.outcome?.status === "failed").length;
-    const duplicate = finalRows.filter(r => r.outcome?.status === "duplicate").length;
-    const blocked = finalRows.filter(r => r.outcome?.status === "locked" || r.outcome?.status === "quota_blocked").length;
+    // Compute summary from the local outcomes map (avoids React commit timing issues)
+    const rowById = new Map(rowsRef.current.map(r => [r.id, r]));
+    let ok = 0, failed = 0, duplicate = 0, blocked = 0;
+    let reaudit = 0, replace = 0;
+    outcomes.forEach((o, id) => {
+      if (o.status === "success") {
+        ok++;
+        if (mode === "re_audit") {
+          const row = rowById.get(id);
+          if (row?.existingStatus === "Failed") reaudit++;
+          else replace++;
+        }
+      } else if (o.status === "failed") failed++;
+      else if (o.status === "duplicate") duplicate++;
+      else if (o.status === "locked" || o.status === "quota_blocked") blocked++;
+    });
     setSummary({ ok, failed, duplicate, blocked });
-    const parts = [
-      `${ok} succeeded`,
-      failed > 0 && `${failed} failed`,
-      duplicate > 0 && `${duplicate} duplicate`,
-      blocked > 0 && `${blocked} blocked`,
-    ].filter(Boolean).join(", ");
-    if (failed > 0 && ok === 0) toast.error(`Upload complete: ${parts}`);
-    else toast.success(`Upload complete: ${parts}`);
+
+    let text = `${ok} uploaded successfully.`;
+    if (mode === "re_audit" && ok > 0) {
+      const splits = [
+        replace > 0 && `${replace} replace`,
+        reaudit > 0 && `${reaudit} re-audit`,
+      ].filter(Boolean).join(", ");
+      if (splits) text += ` ${splits}.`;
+    }
+    if (failed > 0) text += ` ${failed} failed.`;
+    if (duplicate > 0) text += ` ${duplicate} duplicate.`;
+    if (blocked > 0) text += ` ${blocked} blocked.`;
+    setSummaryText(text);
+    if (failed > 0 && ok === 0) toast.error(text);
+    else toast.success(text);
   };
 
   const totalProgress = rows.length === 0 ? 0 : Math.round((completed / rows.length) * 100);
@@ -235,12 +278,7 @@ const UploadCenter = () => {
                     <div className="rounded-md border bg-muted/30 p-3 text-sm flex items-start justify-between gap-3">
                       <div className="space-y-0.5">
                         <div className="font-medium">Upload summary</div>
-                        <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
-                          <span className="text-emerald-600">{summary.ok} succeeded</span>
-                          {summary.failed > 0 && <span className="text-red-600">{summary.failed} failed</span>}
-                          {summary.duplicate > 0 && <span className="text-amber-600">{summary.duplicate} duplicate</span>}
-                          {summary.blocked > 0 && <span className="text-amber-600">{summary.blocked} blocked</span>}
-                        </div>
+                        <div className="text-xs text-muted-foreground">{summaryText}</div>
                       </div>
                       <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => setSummary(null)} aria-label="Dismiss summary">
                         <X className="h-4 w-4" />
@@ -251,10 +289,17 @@ const UploadCenter = () => {
                     {rows.map(r => {
                       const kind = detectKind(r.file);
                       const removable = r.status === "pending";
+                      const isFailed = r.existingStatus === "Failed";
                       const modeLabel =
-                        mode === "new" ? { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
-                        : kind === "pdf" ? { text: "Re-audit", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
-                        : { text: "Replace metadata", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+                        mode === "new"
+                          ? { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
+                          : !r.lookupDone
+                            ? { text: "Checking…", cls: "bg-muted text-muted-foreground" }
+                            : isFailed
+                              ? { text: "Re-audit", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+                              : kind === "pdf"
+                                ? { text: "Replace PDF", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
+                                : { text: "Replace metadata", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" };
                       return (
                         <li key={r.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 text-sm">
                           {kind === "pdf" ? <FileText className="h-4 w-4 shrink-0 text-rose-500" /> : <Archive className="h-4 w-4 shrink-0 text-blue-500" />}
