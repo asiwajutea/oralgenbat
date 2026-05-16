@@ -21,6 +21,7 @@ interface Row {
   id: string;
   file: File;
   status: "pending" | "uploading" | "done" | "failed";
+  progress: number;
   outcome?: UploadOutcome;
 }
 
@@ -64,12 +65,12 @@ const UploadCenter = () => {
     const files = Array.from(e.target.files || []);
     setRows(prev => [
       ...prev,
-      ...files.map(f => ({ id: `${f.name}-${Date.now()}-${Math.random()}`, file: f, status: "pending" as const })),
+      ...files.map(f => ({ id: `${f.name}-${Date.now()}-${Math.random()}`, file: f, status: "pending" as const, progress: 0 })),
     ]);
     e.target.value = "";
   };
 
-  const remove = (id: string) => setRows(prev => prev.filter(r => r.id !== id));
+  const remove = (id: string) => setRows(prev => prev.filter(r => r.id !== id || r.status !== "pending"));
 
   const start = async () => {
     if (!user) return;
@@ -77,19 +78,54 @@ const UploadCenter = () => {
     if (mode === "new" && lock.locked) return toast.error(`Uploads locked: ${lock.reason}`);
     setRunning(true);
     setCompleted(0);
+
+    // Snapshot the queue (ids) at start time; removals during run will filter naturally.
+    const queueIds = rows.filter(r => r.status !== "done").map(r => r.id);
+    let cursor = 0;
     let done = 0;
-    for (const r of rows) {
-      if (r.status === "done") { done++; continue; }
-      setRows(prev => prev.map(x => x.id === r.id ? { ...x, status: "uploading" } : x));
-      const outcome = await uploadInterviewFile({ file: r.file, mode, userId: user.id });
-      setRows(prev => prev.map(x => x.id === r.id ? {
-        ...x,
-        status: outcome.status === "success" ? "done" : "failed",
-        outcome,
-      } : x));
-      done++;
-      setCompleted(done);
-    }
+    const CONCURRENCY = 5;
+
+    const getNextId = (): string | null => {
+      while (cursor < queueIds.length) {
+        const id = queueIds[cursor++];
+        return id;
+      }
+      return null;
+    };
+
+    const worker = async () => {
+      while (true) {
+        const id = getNextId();
+        if (!id) return;
+        // Resolve row from latest state — if user removed it, skip.
+        let target: Row | undefined;
+        setRows(prev => {
+          target = prev.find(x => x.id === id);
+          if (!target || target.status !== "pending") return prev;
+          return prev.map(x => x.id === id ? { ...x, status: "uploading", progress: 0 } : x);
+        });
+        if (!target || target.status !== "pending") continue;
+
+        const outcome = await uploadInterviewFile({
+          file: target.file,
+          mode,
+          userId: user.id,
+          onProgress: (pct) => {
+            setRows(prev => prev.map(x => x.id === id ? { ...x, progress: pct } : x));
+          },
+        });
+        setRows(prev => prev.map(x => x.id === id ? {
+          ...x,
+          status: outcome.status === "success" ? "done" : "failed",
+          progress: 100,
+          outcome,
+        } : x));
+        done++;
+        setCompleted(done);
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queueIds.length) }, () => worker()));
     setRunning(false);
     toast.success("Upload run finished");
   };
@@ -172,29 +208,41 @@ const UploadCenter = () => {
 
               {rows.length > 0 && (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="text-sm font-medium">{rows.length} file(s) ready</div>
                     {running && <div className="text-xs text-muted-foreground">{completed}/{rows.length}</div>}
                   </div>
                   {running && <Progress value={totalProgress} className="h-2" />}
-                  <ul className="divide-y rounded-md border">
+                  <ul className="divide-y rounded-md border max-h-[55vh] sm:max-h-[420px] overflow-y-auto">
                     {rows.map(r => {
                       const kind = detectKind(r.file);
+                      const removable = r.status === "pending";
                       return (
-                        <li key={r.id} className="flex items-center gap-3 p-3 text-sm">
-                          {kind === "pdf" ? <FileText className="h-4 w-4 text-rose-500" /> : <Archive className="h-4 w-4 text-blue-500" />}
+                        <li key={r.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 text-sm">
+                          {kind === "pdf" ? <FileText className="h-4 w-4 shrink-0 text-rose-500" /> : <Archive className="h-4 w-4 shrink-0 text-blue-500" />}
                           <div className="flex-1 min-w-0">
-                            <div className="truncate">{r.file.name}</div>
+                            <div className="truncate text-xs sm:text-sm">{r.file.name}</div>
+                            {r.status === "uploading" && (
+                              <Progress value={r.progress} className="h-1 mt-1" />
+                            )}
                             {r.outcome?.message && (
-                              <div className={`text-xs ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
+                              <div className={`text-[11px] sm:text-xs ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
                                 {r.outcome.message}
                               </div>
                             )}
                           </div>
-                          {r.status === "uploading" && <span className="text-xs text-muted-foreground">Uploading…</span>}
-                          {r.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                          {r.status === "failed" && <AlertTriangle className="h-4 w-4 text-red-500" />}
-                          {!running && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(r.id)}><X className="h-4 w-4" /></Button>}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {r.status === "uploading" && (
+                              <span className="text-[11px] sm:text-xs tabular-nums text-muted-foreground w-10 text-right">{r.progress}%</span>
+                            )}
+                            {r.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                            {r.status === "failed" && <AlertTriangle className="h-4 w-4 text-red-500" />}
+                            {removable && (
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(r.id)} aria-label="Remove">
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </li>
                       );
                     })}
