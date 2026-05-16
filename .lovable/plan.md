@@ -1,80 +1,43 @@
-# Upload Center — fix stuck uploads + add mode labels & summary
+## Goal
+Fix Upload Center badges and summary on the re-audit replace flow.
 
-## Problem 1: Upload stuck at 0%, instant "Upload run finished"
+## Changes (all in `src/pages/UploadCenter.tsx`)
 
-**Root cause:** In `src/pages/UploadCenter.tsx` the worker reads the target row inside a `setRows(prev => ...)` updater and assigns it to an outer variable. React StrictMode runs functional updaters **twice** in dev. On the second pass the row is already `"uploading"`, so the outer `target` gets reassigned to that uploading snapshot. The subsequent guard `if (!target || target.status !== "pending") continue;` then skips the file. Every worker bails immediately → nothing uploads, progress stays at 0%, and `Promise.all` resolves so the success toast fires.
+### 1. Correct badge per file (based on existing audit status)
+Today, in `re_audit` mode every PDF shows "Re-audit" and every ZIP shows "Replace metadata". The label should instead depend on whether the existing interview actually **failed an audit**:
 
-**Fix:** Don't capture state from inside an updater. Track claimed IDs in a plain `Set` (ref) outside React state, claim the ID before calling `setRows`, and use a pure updater that only transitions `pending → uploading`.
+- Existing audit `status === "Failed"` → amber **"Re-audit"** badge
+- Existing audit in any other state (Pending, Awaiting Review, etc.) → blue **"Replace PDF"** (for `.pdf`) or **"Replace metadata"** (for `.zip`)
+- `mode === "new"` → unchanged blue **"New interview"** badge
 
-```ts
-const claimed = new Set<string>();
-const worker = async () => {
-  while (true) {
-    const id = getNextId();
-    if (!id) return;
-    if (claimed.has(id)) continue;
-    claimed.add(id);
+Implementation:
+- When files are added via `onPick`, batch-query `audits` for matching `file_name` (base names) and store the discovered `status` on each row (`existingStatus?: string | null`).
+- The badge in the list row uses `existingStatus` to choose between "Re-audit" vs "Replace …".
+- Show a tiny "Checking…" placeholder until the lookup resolves (only a sub-second flash; non-blocking for upload).
 
-    // Read the file once from current state via a ref/snapshot
-    const row = rowsRef.current.find(r => r.id === id);
-    if (!row || row.status !== "pending") continue;
+### 2. Fix off-by-one summary (shows 7 of 8, or 0 of 1)
+Root cause: after `Promise.all(workers)`, we read `rowsRef.current` to compute the summary, but the **last** `setRows` updates that set `outcome` haven't flushed yet (React batches state, and `rowsRef` is synced via `useEffect` after commit). So the most recently completed file is still missing its `outcome`.
 
-    setRows(prev => prev.map(x => x.id === id ? { ...x, status: "uploading", progress: 0 } : x));
+Fix:
+- Maintain a local `outcomes` Map (id → `UploadOutcome`) inside `start()`, updated synchronously inside the worker right after `uploadInterviewFile` resolves.
+- Compute the summary from this Map (not from `rowsRef.current`). State updates remain for the UI; the summary calculation no longer depends on React commit timing.
 
-    const outcome = await uploadInterviewFile({ file: row.file, mode, userId: user.id,
-      onProgress: pct => setRows(prev => prev.map(x => x.id === id ? { ...x, progress: pct } : x)) });
+### 3. New summary format
+Replace the current `"Upload summary / 7 succeeded …"` block and the toast text with:
 
-    setRows(prev => prev.map(x => x.id === id ? {
-      ...x, status: outcome.status === "success" ? "done" : "failed", progress: 100, outcome,
-    } : x));
-    done++; setCompleted(done);
-  }
-};
+```
+8 uploaded successfully. 5 replace, 2 re-audit.
 ```
 
-Add a `rowsRef` synced via `useEffect` so the worker always sees the latest file objects without re-reading via `setRows`.
+Counting rules (only successes count toward the split):
+- `re-audit` = successful rows where existing audit had `status === "Failed"`
+- `replace` = successful rows in `re_audit` mode where existing audit was NOT failed (Replace PDF / Replace metadata)
+- For `mode === "new"` runs, omit the split: `"8 uploaded successfully."`
 
-## Problem 2: Show upload type per file + completion summary
+Also append a tail when applicable: `" 1 failed."`, `" 2 duplicate."`, `" 1 blocked."` — keeping the same single-line feel.
 
-### Per-row mode badge
-Each row already knows the global `mode` (`new` or `re_audit`). For ZIPs, "re_audit" effectively means "Replace metadata"; for PDFs it means "Re-audit PDF". Show a small `Badge` next to the file name:
-
-- `mode === "new"` → blue badge **"New interview"**
-- `mode === "re_audit"` + PDF → amber badge **"Re-audit"**
-- `mode === "re_audit"` + ZIP → amber badge **"Replace metadata"**
-
-Place inline with the filename in the row (above the progress bar), responsive (wraps under filename on mobile).
-
-### Post-run summary
-Replace the generic `toast.success("Upload run finished")` with a summary toast and an inline summary card shown above the file list when `running === false && completed > 0`.
-
-Aggregate counts from `rows` after the run:
-- `success` — N succeeded
-- `failed` — N failed
-- `duplicate` — N skipped (already exists)
-- `locked` / `quota_blocked` — N blocked
-
-Toast (sonner):
-```
-toast.success(`Upload complete: ${ok} succeeded, ${failed} failed${dup ? `, ${dup} duplicate` : ""}`)
-```
-(use `toast.error` if `failed > 0 && ok === 0`).
-
-Inline summary card (above the file list, dismissible with an X):
-- Header: "Upload summary"
-- Lines per category with icon + count
-- For each row, the existing per-row outcome message already renders, so the card stays compact
-
-## Files to change
-
-- `src/pages/UploadCenter.tsx`
-  - Add `rowsRef` synced from `rows`
-  - Rewrite worker with `claimed` Set + pure updaters (fixes StrictMode bug)
-  - Add mode badge in row markup
-  - Add post-run summary state + card + summary toast
-
-No backend, no DB, no edge-function changes. No changes to `uploadInterviewFile.ts`.
+Toast text matches the summary card text exactly.
 
 ## Out of scope
-- Other upload entry points (Combined, Bulk, FailedInterview modals) — they don't share this worker code.
-- Changing the global mode picker per-file (still one mode per run).
+- No backend, RLS, edge-function, or `uploadInterviewFile.ts` changes.
+- No changes to other upload entry points or the History tab.
