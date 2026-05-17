@@ -26,6 +26,7 @@ const MyPenalties = () => {
   const [summary, setSummary] = useState<Summary[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [auditMap, setAuditMap] = useState<Record<string, string>>({});
 
   const load = async () => {
     if (!user) return;
@@ -37,6 +38,13 @@ const MyPenalties = () => {
     setSummary((s as Summary[]) || []);
     setCharges((c as Charge[]) || []);
     setPayments((p as Payment[]) || []);
+    const ids = Array.from(new Set(((c as Charge[]) || []).map((r) => r.audit_id).filter(Boolean)));
+    if (ids.length) {
+      const { data: audits } = await supabase.from("audits").select("id, file_name").in("id", ids);
+      const map: Record<string, string> = {};
+      (audits || []).forEach((a: any) => { map[a.id] = a.file_name; });
+      setAuditMap(map);
+    }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [user?.id]);
 
@@ -87,11 +95,11 @@ const MyPenalties = () => {
         <CardContent>
           <Table>
             <TableHeader><TableRow>
-              <TableHead>When</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Appeal</TableHead><TableHead></TableHead>
+              <TableHead>When</TableHead><TableHead>Interview</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Appeal</TableHead><TableHead></TableHead>
             </TableRow></TableHeader>
             <TableBody>
-              {charges.length === 0 ? <TableRow><TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
-                charges.map(c => <ChargeRow key={c.id} c={c} onDone={load} />)}
+              {charges.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
+                charges.map(c => <ChargeRow key={c.id} c={c} fileName={auditMap[c.audit_id]} onDone={load} />)}
             </TableBody>
           </Table>
         </CardContent>
@@ -120,7 +128,7 @@ const MyPenalties = () => {
   );
 };
 
-const ChargeRow = ({ c, onDone }: { c: Charge; onDone: () => void }) => {
+const ChargeRow = ({ c, fileName, onDone }: { c: Charge; fileName?: string; onDone: () => void }) => {
   const appeal = async () => {
     const reason = prompt("Reason for appeal");
     if (!reason) return;
@@ -130,6 +138,7 @@ const ChargeRow = ({ c, onDone }: { c: Charge; onDone: () => void }) => {
   return (
     <TableRow>
       <TableCell className="text-xs">{format(new Date(c.created_at), "MMM d")}</TableCell>
+      <TableCell className="text-xs font-mono">{fileName || "—"}</TableCell>
       <TableCell className="text-xs font-mono">{c.currency} {Number(c.amount).toLocaleString()}</TableCell>
       <TableCell className="text-xs font-mono">{c.currency} {Number(c.paid_amount).toLocaleString()}</TableCell>
       <TableCell><Badge variant="secondary">{c.status}</Badge></TableCell>

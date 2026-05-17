@@ -469,7 +469,7 @@ const InterviewTracking = () => {
 
   // Fetch burned audit IDs to exclude from listing
   const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0, scopedNames: 0 } } = useQuery({
-    queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole],
+    queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole, teamAssignments],
     queryFn: async () => {
       const { data } = await supabase
         .from("burn_queue")
@@ -481,7 +481,14 @@ const InterviewTracking = () => {
       // Scope count by user's contractor for non-admins
       const effectiveCid = profile?.active_contractor_id || profile?.contractor_id;
       let scopedItems = allBurned;
-      if (!isSuperAdmin && effectiveCid) {
+      if (isFieldManager || isAdmin) {
+        // Scope to interviewer codes in the user's team assignments (file_name format: NGXX_<code>_...)
+        const codes = new Set((teamAssignments || []).map((t: any) => t.interviewer_code));
+        scopedItems = allBurned.filter((b) => {
+          const parts = (b.file_name || "").split("_");
+          return parts[1] && codes.has(parts[1]);
+        });
+      } else if (!isSuperAdmin && effectiveCid) {
         scopedItems = allBurned.filter(b => b.file_name?.startsWith(effectiveCid));
       }
       const scopedCount = scopedItems.length;

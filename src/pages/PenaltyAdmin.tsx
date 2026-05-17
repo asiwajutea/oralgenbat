@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldOff, CheckCircle2, XCircle, Search, HelpCircle } from "lucide-react";
+import { Plus, Trash2, ShieldOff, CheckCircle2, XCircle, Search, HelpCircle, DollarSign, CreditCard, AlertCircle, FileWarning, Receipt, CalendarClock } from "lucide-react";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +16,7 @@ import { ScopePicker } from "@/components/penalty/ScopePicker";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { SummaryCard } from "@/components/analytics/SummaryCard";
 
 interface Setting {
   id: string; set_by: string; set_by_role: string;
@@ -48,6 +49,8 @@ const PenaltyAdmin = () => {
         <h1 className="text-2xl font-semibold">Penalty Charges</h1>
         <p className="text-sm text-muted-foreground">Configure penalties for failed first audits, manage exemptions, and confirm payments.</p>
       </header>
+
+      <AdminPenaltySummary />
 
       <Tabs defaultValue="settings">
         <TabsList>
@@ -314,9 +317,18 @@ const ExemptionPanel = ({ settingId }: { settingId: string }) => {
 
 const ChargesTab = () => {
   const [rows, setRows] = useState<Charge[]>([]);
+  const [auditMap, setAuditMap] = useState<Record<string, string>>({});
   const load = async () => {
     const { data } = await supabase.from("penalty_charges").select("*").order("created_at", { ascending: false }).limit(500);
-    setRows((data as Charge[]) || []);
+    const list = (data as Charge[]) || [];
+    setRows(list);
+    const ids = Array.from(new Set(list.map((r) => r.audit_id).filter(Boolean)));
+    if (ids.length) {
+      const { data: audits } = await supabase.from("audits").select("id, file_name").in("id", ids);
+      const map: Record<string, string> = {};
+      (audits || []).forEach((a: any) => { map[a.id] = a.file_name; });
+      setAuditMap(map);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -343,6 +355,7 @@ const ChargesTab = () => {
           <TableHeader>
             <TableRow>
               <TableHead>When</TableHead>
+              <TableHead>Interview</TableHead>
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Amount</TableHead>
@@ -353,10 +366,11 @@ const ChargesTab = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 ? <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
+            {rows.length === 0 ? <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
               rows.map(r => (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs">{format(new Date(r.created_at), "MMM d")}</TableCell>
+                  <TableCell className="text-xs font-mono">{auditMap[r.audit_id] || "—"}</TableCell>
                   <TableCell className="text-xs font-mono">{r.charged_user_id.slice(0, 8)}</TableCell>
                   <TableCell className="text-xs">{r.charged_user_role.replace("_", " ")}</TableCell>
                   <TableCell className="text-xs font-mono">{r.currency} {Number(r.amount).toLocaleString()}</TableCell>
@@ -430,6 +444,40 @@ const PaymentsTab = () => {
         </Table>
       </CardContent>
     </Card>
+  );
+};
+
+const AdminPenaltySummary = () => {
+  const [charges, setCharges] = useState<{ amount: number; paid_amount: number; currency: string; status: string }[]>([]);
+  const [payments, setPayments] = useState<{ amount: number; currency: string; declared_at: string; status: string }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: c }, { data: p }] = await Promise.all([
+        supabase.from("penalty_charges").select("amount, paid_amount, currency, status"),
+        supabase.from("penalty_payments").select("amount, currency, declared_at, status").order("declared_at", { ascending: false }),
+      ]);
+      setCharges((c as any[]) || []);
+      setPayments((p as any[]) || []);
+    })();
+  }, []);
+
+  const totalCharged = charges.reduce((a, c) => a + Number(c.amount || 0), 0);
+  const totalPaid = charges.reduce((a, c) => a + Number(c.paid_amount || 0), 0);
+  const balance = totalCharged - totalPaid;
+  const openCount = charges.filter((c) => c.status === "open" || c.status === "partial").length;
+  const currency = charges[0]?.currency || "";
+  const lastPayment = payments.find((p) => p.status === "confirmed")?.declared_at || payments[0]?.declared_at;
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <SummaryCard title="Total charged" value={`${currency} ${totalCharged.toLocaleString()}`} icon={<DollarSign className="h-4 w-4" />} />
+      <SummaryCard title="Total paid" value={`${currency} ${totalPaid.toLocaleString()}`} icon={<CreditCard className="h-4 w-4" />} />
+      <SummaryCard title="Outstanding" value={`${currency} ${balance.toLocaleString()}`} icon={<AlertCircle className={`h-4 w-4 ${balance > 0 ? "text-red-600" : ""}`} />} />
+      <SummaryCard title="Open charges" value={openCount} icon={<FileWarning className="h-4 w-4" />} />
+      <SummaryCard title="Payments" value={payments.length} icon={<Receipt className="h-4 w-4" />} />
+      <SummaryCard title="Last payment" value={lastPayment ? format(new Date(lastPayment), "MMM d") : "—"} icon={<CalendarClock className="h-4 w-4" />} />
+    </div>
   );
 };
 

@@ -11,8 +11,8 @@ export function parseFailureReasons(row: {
   const out = new Set<FailureToken>();
   for (const a of row.artifact_correction || []) {
     const v = String(a).toLowerCase().trim();
-    if (v === "pdf") out.add("pdf");
-    else if (v === "metadata") out.add("metadata");
+    if (v === "pdf" || v === "scanned_pdf") out.add("pdf");
+    else if (v === "metadata" || v === "mobile_metadata" || v === "zip" || v === "photos") out.add("metadata");
     else if (v === "field_audit" || v === "field-audit" || v === "fieldaudit") out.add("field_audit");
   }
   const text = row.review_comment || "";

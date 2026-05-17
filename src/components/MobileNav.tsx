@@ -210,14 +210,11 @@ const MobileNav = () => {
                 {userRole === 'super_admin' && <NavItem to="/admin/chat-policies" icon={Shield}>Chat Policies</NavItem>}
               </>
             )}
-            {(userRole === 'field_manager' || userRole === 'sub_contractor' || userRole === 'contractor') && (
-              <>
-              <SectionHeader>Penalties</SectionHeader>
-              <NavItem to="/admin/penalties" icon={DollarSign}>Penalty Charges</NavItem>
-              </>
-            )}
             {(userRole === 'field_manager' || userRole === 'sub_contractor') && (
-              <NavItem to="/my-penalties" icon={DollarSign}>My Penalties</NavItem>
+              <>
+                <SectionHeader>Penalties</SectionHeader>
+                <NavItem to="/my-penalties" icon={DollarSign}>My Penalties</NavItem>
+              </>
             )}
           </nav>
 

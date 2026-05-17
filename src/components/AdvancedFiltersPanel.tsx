@@ -48,7 +48,12 @@ export const AdvancedFiltersPanel = ({ value, onChange }: Props) => {
             {active && <Badge variant="secondary" className="ml-1 h-5 px-1.5">{countActive(value)}</Badge>}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[min(92vw,520px)] max-h-[80vh] overflow-y-auto" align="end">
+        <PopoverContent
+          className="w-[calc(100vw-1rem)] sm:w-[520px] max-w-[520px] max-h-[80vh] overflow-y-auto"
+          align="end"
+          sideOffset={8}
+          collisionPadding={8}
+        >
           <div className="space-y-4">
             <div>
               <Label className="text-xs font-semibold uppercase text-muted-foreground">Failure reasons</Label>
