@@ -83,6 +83,8 @@ import { AuditPagination } from "@/components/AuditPagination";
 import SendToBurnDialog from "@/components/SendToBurnDialog";
 import { useBurnHistory } from "@/hooks/useBurnHistory";
 import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
+import { AdvancedFiltersPanel } from "@/components/AdvancedFiltersPanel";
+import { AdvancedFilterState, emptyAdvancedFilter, matchesAdvancedFilter, isAdvancedFilterActive } from "@/lib/parseFailureReasons";
 import { ReassignFMDialog } from "@/components/tracking/ReassignFMDialog";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
@@ -506,6 +508,15 @@ const InterviewTracking = () => {
   });
   const burnedAuditIds = burnedAuditData.ids;
   const { data: burnHistoryMap } = useBurnHistory();
+  const [advFilter, setAdvFilter] = useState<AdvancedFilterState>(() => {
+    try {
+      const saved = localStorage.getItem("tracking-adv-filter");
+      return saved ? JSON.parse(saved) : emptyAdvancedFilter;
+    } catch { return emptyAdvancedFilter; }
+  });
+  useEffect(() => {
+    localStorage.setItem("tracking-adv-filter", JSON.stringify(advFilter));
+  }, [advFilter]);
 
   // Filter out burned interviews
   const nonBurnedInterviews = useMemo(() => {
@@ -669,9 +680,21 @@ const InterviewTracking = () => {
       // Contractor filter
       if (filters.contractor && (interview as any).contractor_id !== filters.contractor) return false;
       
+      // Advanced filters (failure reasons, people, dates, re-audit, burn history)
+      if (isAdvancedFilterActive(advFilter)) {
+        const proxy = {
+          ...interview,
+          uploaded_at: (interview as any).uploaded_at,
+          reviewed_at: (interview as any).reviewed_at,
+          last_modified: (interview as any).last_modified,
+          contractor_id: (interview as any).contractor_id,
+          interviewer_code: (interview as any).interviewer_code,
+        } as any;
+        if (!matchesAdvancedFilter(proxy, advFilter, burnHistoryMap)) return false;
+      }
       return true;
     });
-  }, [interviewsWithUnreadCounts, searchQuery, filters, fmOverrideMap, teamAssignments]);
+  }, [interviewsWithUnreadCounts, searchQuery, filters, fmOverrideMap, teamAssignments, advFilter, burnHistoryMap]);
 
   // Sort interviews
   const sortedInterviews = useMemo(() => {
