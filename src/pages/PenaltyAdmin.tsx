@@ -436,4 +436,38 @@ const PaymentsTab = () => {
   );
 };
 
+const AdminPenaltySummary = () => {
+  const [charges, setCharges] = useState<{ amount: number; paid_amount: number; currency: string; status: string }[]>([]);
+  const [payments, setPayments] = useState<{ amount: number; currency: string; declared_at: string; status: string }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: c }, { data: p }] = await Promise.all([
+        supabase.from("penalty_charges").select("amount, paid_amount, currency, status"),
+        supabase.from("penalty_payments").select("amount, currency, declared_at, status").order("declared_at", { ascending: false }),
+      ]);
+      setCharges((c as any[]) || []);
+      setPayments((p as any[]) || []);
+    })();
+  }, []);
+
+  const totalCharged = charges.reduce((a, c) => a + Number(c.amount || 0), 0);
+  const totalPaid = charges.reduce((a, c) => a + Number(c.paid_amount || 0), 0);
+  const balance = totalCharged - totalPaid;
+  const openCount = charges.filter((c) => c.status === "open" || c.status === "partial").length;
+  const currency = charges[0]?.currency || "";
+  const lastPayment = payments.find((p) => p.status === "confirmed")?.declared_at || payments[0]?.declared_at;
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <SummaryCard title="Total charged" value={`${currency} ${totalCharged.toLocaleString()}`} icon={<DollarSign className="h-4 w-4" />} />
+      <SummaryCard title="Total paid" value={`${currency} ${totalPaid.toLocaleString()}`} icon={<CreditCard className="h-4 w-4" />} />
+      <SummaryCard title="Outstanding" value={`${currency} ${balance.toLocaleString()}`} icon={<AlertCircle className={`h-4 w-4 ${balance > 0 ? "text-red-600" : ""}`} />} />
+      <SummaryCard title="Open charges" value={openCount} icon={<FileWarning className="h-4 w-4" />} />
+      <SummaryCard title="Payments" value={payments.length} icon={<Receipt className="h-4 w-4" />} />
+      <SummaryCard title="Last payment" value={lastPayment ? format(new Date(lastPayment), "MMM d") : "—"} icon={<CalendarClock className="h-4 w-4" />} />
+    </div>
+  );
+};
+
 export default PenaltyAdmin;
