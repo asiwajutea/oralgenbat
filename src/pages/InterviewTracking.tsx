@@ -1410,10 +1410,13 @@ const InterviewTracking = () => {
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Filters</CardTitle>
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
-                  <X className="h-4 w-4" />
-                  Clear All
-                </Button>
+                <div className="flex items-center gap-2">
+                  <AdvancedFiltersPanel value={advFilter} onChange={setAdvFilter} />
+                  <Button variant="ghost" size="sm" onClick={() => { clearFilters(); setAdvFilter(emptyAdvancedFilter); }} className="gap-1">
+                    <X className="h-4 w-4" />
+                    Clear All
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
