@@ -49,13 +49,20 @@ const AdminDashboard = () => {
     queryFn: async () => {
       const { fetchAllRows } = await import("@/utils/paginatedFetch");
       const audits = await fetchAllRows("audits", "id, status, is_re_audit");
+      // Exclude currently-burned audits so counts match Tracking/Dashboard
+      const { data: burned } = await supabase
+        .from("burn_queue")
+        .select("audit_id")
+        .is("restored_at", null);
+      const burnedIds = new Set((burned || []).map((b: any) => b.audit_id));
+      const visible = audits.filter((a: any) => !burnedIds.has(a.id));
       return {
-        total: audits.length,
-        passed: audits.filter(a => a.status === "Audit Passed").length,
-        failed: audits.filter(a => a.status === "Audit Failed").length,
-        pending: audits.filter(a => a.status === "Pending").length,
-        awaiting: audits.filter(a => a.status === "Awaiting Review").length,
-        reAudit: audits.filter(a => a.is_re_audit && a.status === "Awaiting Review").length,
+        total: visible.length,
+        passed: visible.filter(a => a.status === "Audit Passed").length,
+        failed: visible.filter(a => a.status === "Audit Failed").length,
+        pending: visible.filter(a => a.status === "Pending").length,
+        awaiting: visible.filter(a => a.status === "Awaiting Review").length,
+        reAudit: visible.filter(a => a.is_re_audit && a.status === "Awaiting Review").length,
       };
     },
   });

@@ -22,6 +22,10 @@ import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import SendToBurnDialog from "@/components/SendToBurnDialog";
 import { useAuth } from "@/contexts/AuthContext";
+import { AdvancedFiltersPanel } from "@/components/AdvancedFiltersPanel";
+import { AdvancedFilterState, emptyAdvancedFilter, isAdvancedFilterActive, matchesAdvancedFilter } from "@/lib/parseFailureReasons";
+import { useBurnHistory } from "@/hooks/useBurnHistory";
+import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
 
 type SortField = "file_name" | "reviewed_by" | "status" | "reviewed_at" | "review_duration_seconds" | "re_audit_count";
 type SortDirection = "asc" | "desc";
@@ -66,6 +70,16 @@ const AdminReviewHistory = () => {
   const queryClient = useQueryClient();
   const { userRole } = useAuth();
   const isAdmin = userRole === "admin" || userRole === "super_admin";
+  const { data: burnHistoryMap } = useBurnHistory();
+  const [advFilter, setAdvFilter] = useState<AdvancedFilterState>(() => {
+    try {
+      const saved = localStorage.getItem("admin-review-adv-filter");
+      return saved ? JSON.parse(saved) : emptyAdvancedFilter;
+    } catch { return emptyAdvancedFilter; }
+  });
+  useEffect(() => {
+    localStorage.setItem("admin-review-adv-filter", JSON.stringify(advFilter));
+  }, [advFilter]);
   
   // Burn dialog state
   const [showBurnDialog, setShowBurnDialog] = useState(false);
@@ -1006,6 +1020,8 @@ const AdminReviewHistory = () => {
             Clear Filters
           </Button>
         )}
+
+        <AdvancedFiltersPanel value={advFilter} onChange={setAdvFilter} />
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1111,7 +1127,10 @@ const AdminReviewHistory = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                {data?.audits.map((audit, index) => (
+                {(isAdvancedFilterActive(advFilter)
+                  ? (data?.audits || []).filter(a => matchesAdvancedFilter(a as any, advFilter, burnHistoryMap))
+                  : (data?.audits || [])
+                ).map((audit, index) => (
                     <TableRow
                       key={audit.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -1121,7 +1140,10 @@ const AdminReviewHistory = () => {
                         {(currentPage - 1) * itemsPerPage + index + 1}
                       </TableCell>
                       <TableCell className="font-medium font-mono text-sm">
-                        {audit.file_name}
+                        <span className="inline-flex items-center gap-1.5">
+                          {audit.file_name}
+                          <BurnHistoryIcon entry={burnHistoryMap?.get(audit.id)} />
+                        </span>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5 text-sm">

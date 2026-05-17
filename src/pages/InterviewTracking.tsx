@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -81,6 +81,10 @@ import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
 import SendToBurnDialog from "@/components/SendToBurnDialog";
+import { useBurnHistory } from "@/hooks/useBurnHistory";
+import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
+import { AdvancedFiltersPanel } from "@/components/AdvancedFiltersPanel";
+import { AdvancedFilterState, emptyAdvancedFilter, matchesAdvancedFilter, isAdvancedFilterActive } from "@/lib/parseFailureReasons";
 import { ReassignFMDialog } from "@/components/tracking/ReassignFMDialog";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
@@ -503,6 +507,16 @@ const InterviewTracking = () => {
     },
   });
   const burnedAuditIds = burnedAuditData.ids;
+  const { data: burnHistoryMap } = useBurnHistory();
+  const [advFilter, setAdvFilter] = useState<AdvancedFilterState>(() => {
+    try {
+      const saved = localStorage.getItem("tracking-adv-filter");
+      return saved ? JSON.parse(saved) : emptyAdvancedFilter;
+    } catch { return emptyAdvancedFilter; }
+  });
+  useEffect(() => {
+    localStorage.setItem("tracking-adv-filter", JSON.stringify(advFilter));
+  }, [advFilter]);
 
   // Filter out burned interviews
   const nonBurnedInterviews = useMemo(() => {
@@ -666,9 +680,21 @@ const InterviewTracking = () => {
       // Contractor filter
       if (filters.contractor && (interview as any).contractor_id !== filters.contractor) return false;
       
+      // Advanced filters (failure reasons, people, dates, re-audit, burn history)
+      if (isAdvancedFilterActive(advFilter)) {
+        const proxy = {
+          ...interview,
+          uploaded_at: (interview as any).uploaded_at,
+          reviewed_at: (interview as any).reviewed_at,
+          last_modified: (interview as any).last_modified,
+          contractor_id: (interview as any).contractor_id,
+          interviewer_code: (interview as any).interviewer_code,
+        } as any;
+        if (!matchesAdvancedFilter(proxy, advFilter, burnHistoryMap)) return false;
+      }
       return true;
     });
-  }, [interviewsWithUnreadCounts, searchQuery, filters, fmOverrideMap, teamAssignments]);
+  }, [interviewsWithUnreadCounts, searchQuery, filters, fmOverrideMap, teamAssignments, advFilter, burnHistoryMap]);
 
   // Sort interviews
   const sortedInterviews = useMemo(() => {
@@ -1384,10 +1410,13 @@ const InterviewTracking = () => {
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Filters</CardTitle>
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
-                  <X className="h-4 w-4" />
-                  Clear All
-                </Button>
+                <div className="flex items-center gap-2">
+                  <AdvancedFiltersPanel value={advFilter} onChange={setAdvFilter} />
+                  <Button variant="ghost" size="sm" onClick={() => { clearFilters(); setAdvFilter(emptyAdvancedFilter); }} className="gap-1">
+                    <X className="h-4 w-4" />
+                    Clear All
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -1506,6 +1535,7 @@ const InterviewTracking = () => {
                             <span className="font-mono text-sm font-medium truncate max-w-[200px]">
                               {interview.file_name}
                             </span>
+                            <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
                           </div>
                           <div className="flex items-center gap-2">
                             {/* Mobile team badge */}
@@ -1669,7 +1699,10 @@ const InterviewTracking = () => {
                             }
                           }}
                         >
-                          {interview.file_name}
+                          <span className="inline-flex items-center gap-1.5">
+                            {interview.file_name}
+                            <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
+                          </span>
                         </TableCell>
                         <TableCell>{interview.field_manager || "-"}</TableCell>
                         <TableCell>{interview.total_names || "-"}</TableCell>
