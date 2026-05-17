@@ -4,6 +4,7 @@ import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import { AnnouncementProvider } from "@/components/announcements/AnnouncementProvider";
 import { useGlobalErrorCapture } from "@/hooks/useGlobalErrorCapture";
+import UnassignedAgentNagModal from "@/components/UnassignedAgentNagModal";
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,6 +21,7 @@ const Layout = ({ children }: LayoutProps) => {
         </main>
         <PushNotificationPrompt />
         <PWAUpdatePrompt />
+        <UnassignedAgentNagModal />
       </div>
     </AnnouncementProvider>
   );
