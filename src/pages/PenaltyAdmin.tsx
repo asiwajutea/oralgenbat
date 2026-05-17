@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, ShieldOff, CheckCircle2, XCircle, Search, HelpCircle } from "lucide-react";
+import { Plus, Trash2, ShieldOff, CheckCircle2, XCircle, Search, HelpCircle, DollarSign, CreditCard, AlertCircle, FileWarning, Receipt, CalendarClock } from "lucide-react";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +16,7 @@ import { ScopePicker } from "@/components/penalty/ScopePicker";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { SummaryCard } from "@/components/analytics/SummaryCard";
 
 interface Setting {
   id: string; set_by: string; set_by_role: string;
@@ -48,6 +49,8 @@ const PenaltyAdmin = () => {
         <h1 className="text-2xl font-semibold">Penalty Charges</h1>
         <p className="text-sm text-muted-foreground">Configure penalties for failed first audits, manage exemptions, and confirm payments.</p>
       </header>
+
+      <AdminPenaltySummary />
 
       <Tabs defaultValue="settings">
         <TabsList>
