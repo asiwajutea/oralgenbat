@@ -406,7 +406,13 @@ const FieldManagerDashboard = () => {
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
                     <FileWarning className="h-4 w-4 text-red-500" />
                     Corrections Needed
+                    <span className="ml-auto text-base font-bold text-red-600">
+                      {correctionStats.pdfOnly + correctionStats.metadataOnly + correctionStats.both}
+                    </span>
                   </CardTitle>
+                  <CardDescription className="text-xs">
+                    Total unique interviews that still need to be corrected
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex gap-4 flex-wrap">
