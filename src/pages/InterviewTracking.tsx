@@ -81,6 +81,8 @@ import { MarkResolvedDialog } from "@/components/tracking/MarkResolvedDialog";
 import { ResolvedCommentsModal } from "@/components/tracking/ResolvedCommentsModal";
 import { AuditPagination } from "@/components/AuditPagination";
 import SendToBurnDialog from "@/components/SendToBurnDialog";
+import { useBurnHistory } from "@/hooks/useBurnHistory";
+import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
 import { ReassignFMDialog } from "@/components/tracking/ReassignFMDialog";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
@@ -503,6 +505,7 @@ const InterviewTracking = () => {
     },
   });
   const burnedAuditIds = burnedAuditData.ids;
+  const { data: burnHistoryMap } = useBurnHistory();
 
   // Filter out burned interviews
   const nonBurnedInterviews = useMemo(() => {
@@ -1506,6 +1509,7 @@ const InterviewTracking = () => {
                             <span className="font-mono text-sm font-medium truncate max-w-[200px]">
                               {interview.file_name}
                             </span>
+                            <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
                           </div>
                           <div className="flex items-center gap-2">
                             {/* Mobile team badge */}
@@ -1669,7 +1673,10 @@ const InterviewTracking = () => {
                             }
                           }}
                         >
-                          {interview.file_name}
+                          <span className="inline-flex items-center gap-1.5">
+                            {interview.file_name}
+                            <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
+                          </span>
                         </TableCell>
                         <TableCell>{interview.field_manager || "-"}</TableCell>
                         <TableCell>{interview.total_names || "-"}</TableCell>
