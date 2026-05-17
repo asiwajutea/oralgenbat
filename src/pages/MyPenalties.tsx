@@ -11,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { SummaryCard } from "@/components/analytics/SummaryCard";
+import { DollarSign, CreditCard, AlertCircle, FileWarning, Receipt, CalendarClock } from "lucide-react";
 
 interface Charge {
   id: string; audit_id: string; amount: number; currency: string;
@@ -41,6 +43,25 @@ const MyPenalties = () => {
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-5xl">
       <header><h1 className="text-2xl font-semibold">My Penalty Charges</h1></header>
+
+      {(() => {
+        const totalCharged = summary.reduce((a, s) => a + Number(s.total_charged || 0), 0);
+        const totalPaid = summary.reduce((a, s) => a + Number(s.total_paid || 0), 0);
+        const balance = summary.reduce((a, s) => a + Number(s.balance || 0), 0);
+        const openCount = summary.reduce((a, s) => a + Number(s.open_count || 0), 0);
+        const currency = summary[0]?.currency || "";
+        const lastPayment = payments[0]?.declared_at;
+        return (
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+            <SummaryCard title="Total charged" value={`${currency} ${totalCharged.toLocaleString()}`} icon={<DollarSign className="h-4 w-4" />} />
+            <SummaryCard title="Total paid" value={`${currency} ${totalPaid.toLocaleString()}`} icon={<CreditCard className="h-4 w-4" />} />
+            <SummaryCard title="Outstanding" value={`${currency} ${balance.toLocaleString()}`} icon={<AlertCircle className={`h-4 w-4 ${balance > 0 ? "text-red-600" : ""}`} />} />
+            <SummaryCard title="Open charges" value={openCount} icon={<FileWarning className="h-4 w-4" />} />
+            <SummaryCard title="Payments" value={payments.length} icon={<Receipt className="h-4 w-4" />} />
+            <SummaryCard title="Last payment" value={lastPayment ? format(new Date(lastPayment), "MMM d") : "—"} icon={<CalendarClock className="h-4 w-4" />} />
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {summary.length === 0 ? (
