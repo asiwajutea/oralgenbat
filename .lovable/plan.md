@@ -1,43 +1,81 @@
-## Goal
-Fix Upload Center badges and summary on the re-audit replace flow.
+# Plan — 5 enhancements
 
-## Changes (all in `src/pages/UploadCenter.tsx`)
+## 1. Advanced Filter (Tracking + Admin Review pages)
 
-### 1. Correct badge per file (based on existing audit status)
-Today, in `re_audit` mode every PDF shows "Re-audit" and every ZIP shows "Replace metadata". The label should instead depend on whether the existing interview actually **failed an audit**:
+Add an "Advanced Filters" collapsible panel inside the existing filter sidebar / filter bar on both `src/pages/InterviewTracking.tsx` and `src/pages/AdminReviewHistory.tsx`.
 
-- Existing audit `status === "Failed"` → amber **"Re-audit"** badge
-- Existing audit in any other state (Pending, Awaiting Review, etc.) → blue **"Replace PDF"** (for `.pdf`) or **"Replace metadata"** (for `.zip`)
-- `mode === "new"` → unchanged blue **"New interview"** badge
+**Dimensions (per user selection):**
 
-Implementation:
-- When files are added via `onPick`, batch-query `audits` for matching `file_name` (base names) and store the discovered `status` on each row (`existingStatus?: string | null`).
-- The badge in the list row uses `existingStatus` to choose between "Re-audit" vs "Replace …".
-- Show a tiny "Checking…" placeholder until the lookup resolves (only a sub-second flash; non-blocking for upload).
+- **Failure reasons + match mode**
+  - Categories: `Field Audit`, `Metadata`, `PDF / Artifact`, `Checklist Question (Q0–Q13 multi-pick)`
+  - Match mode toggle:
+    - `INCLUDES` — failure reasons contain any of the selected categories
+    - `ONLY` — failure reasons are exactly the selected set (no others)
+  - Source of truth: `audits.review_comment` parsed for `Q#:` markers + `audits.artifact_correction` array (`pdf`, `metadata`, `field_audit`) for the P/M/F/B flags already used elsewhere, plus AVTool field-audit failure flag.
+- **People**
+  - Field Manager (from `interview_metadata.field_manager` or `interview_fm_overrides`)
+  - Contractor (`contractor_id`)
+  - Interviewer code
+- **Date range on a chosen event**: dropdown to pick which date column to filter on (`uploaded_at`, `reviewed_at`, `last_modified`) + start/end pickers.
+- **Re-audit count + burn history**
+  - Re-audits: `0`, `1`, `2+`
+  - Burn history: `Never burned`, `Ever burned`, `Currently burned`, `Previously burned (restored)`
 
-### 2. Fix off-by-one summary (shows 7 of 8, or 0 of 1)
-Root cause: after `Promise.all(workers)`, we read `rowsRef.current` to compute the summary, but the **last** `setRows` updates that set `outcome` haven't flushed yet (React batches state, and `rowsRef` is synced via `useEffect` after commit). So the most recently completed file is still missing its `outcome`.
+**UX**: Active filter chips shown above the table with a one-click clear. Persist to localStorage alongside existing `FilterSidebar` storage. URL is not changed.
 
-Fix:
-- Maintain a local `outcomes` Map (id → `UploadOutcome`) inside `start()`, updated synchronously inside the worker right after `uploadInterviewFile` resolves.
-- Compute the summary from this Map (not from `rowsRef.current`). State updates remain for the UI; the summary calculation no longer depends on React commit timing.
+**Scope**: Frontend-only filtering on already-fetched rows where possible; the failure-reason parsing uses `review_comment` text and `artifact_correction` array — both already in the audits row.
 
-### 3. New summary format
-Replace the current `"Upload summary / 7 succeeded …"` block and the toast text with:
+## 2. Super Admin Homepage "Failed" count (112 vs 76 → fix to 76)
 
-```
-8 uploaded successfully. 5 replace, 2 re-audit.
-```
+Root cause: `src/components/home/AdminDashboard.tsx` counts every `status === "Audit Failed"` in `audits`, but Tracking excludes audits whose `id` appears in `burn_queue` (any state in the active query, currently `restored_at IS NULL`).
 
-Counting rules (only successes count toward the split):
-- `re-audit` = successful rows where existing audit had `status === "Failed"`
-- `replace` = successful rows in `re_audit` mode where existing audit was NOT failed (Replace PDF / Replace metadata)
-- For `mode === "new"` runs, omit the split: `"8 uploaded successfully."`
+**Fix**: In the AdminDashboard stats query, fetch the set of burned (non-restored) audit IDs (same query Tracking uses) and exclude them from the `failed` count. Apply the same exclusion consistently to passed / pending so totals reconcile. Also exclude audits with later successful re-audit if Tracking does (verify in same change).
 
-Also append a tail when applicable: `" 1 failed."`, `" 2 duplicate."`, `" 1 blocked."` — keeping the same single-line feel.
+## 3. Burn-history fire icons
 
-Toast text matches the summary card text exactly.
+In the Tracking interviews table row (and any list using `AuditTable`):
+
+- Add a small fire icon (`Flame`) next to the interview ID/name when its `audit_id` has ANY row in `burn_queue` (ever burned).
+  - `restored_at IS NULL` (currently in burn) → **red** icon, tooltip "Currently in burn queue".
+  - `restored_at IS NOT NULL` (previously burned, now restored) → **blue** icon, tooltip "Previously burned — restored on {date}".
+- A single batched query: `select audit_id, max(sent_at), bool_or(restored_at is null) as currently_burned from burn_queue where audit_id in (...) group by audit_id`. Cache via React Query.
+- Note: items "currently burned" are already excluded from Tracking listing — so in practice Tracking will mostly show the blue (restored) icon. Burn Queue page itself can use the red icon for currently-burned rows.
+
+## 4. Unassigned-agent recurring nag
+
+**Definition**: An interviewer code present in `interview_metadata` (or `team_assignments`) that has no active row linking it to a Field Manager — i.e. shows up in the existing `unassignedInterviewers` query on `src/pages/TeamApprovals.tsx`.
+
+**Behavior**: When user role is `admin`, `sub_contractor`, or `super_admin`, and the unassigned-agent count > 0:
+
+- Show a modal at login (after the existing LoginWelcomeModal) listing the unassigned agents with a CTA "Go to Team Approvals".
+- Recurring timer: re-open the modal every 30 minutes during the session as long as the count remains > 0. Reset the timer when the user assigns someone (refetch on `TeamApprovals` mutation success invalidates the count → if zero, timer stops).
+- Dismiss button closes the current modal but does not stop the timer.
+- Component: new `src/components/UnassignedAgentNagModal.tsx`, mounted in `Layout.tsx` behind a role check.
+
+## 5. Penalty Charges page — add summary cards
+
+In `src/pages/MyPenalties.tsx` (and the admin equivalent `src/pages/PenaltyAdmin.tsx` if applicable), add a row of `SummaryCard`s at the top:
+
+- **Total charged** (lifetime, per currency)
+- **Total paid** (lifetime)
+- **Outstanding balance** (highlight red if > 0)
+- **Open charges count**
+- **Payment records count** (lifetime)
+- **Last payment date**
+
+Data already comes from `get_penalty_summary` RPC + `penalty_payments` table. Reuse `src/components/analytics/SummaryCard.tsx`.
+
+---
+
+## Technical notes
+
+- No DB migrations needed; all data exists.
+- React Query keys: add `["burn-history", auditIds]` for the icon lookup; reuse `unassignedInterviewers` query key for the nag.
+- Mobile: advanced filter panel collapses inside existing mobile sheet; fire icon shown inline with name (already-mobile-friendly accordion pattern preserved).
+- Failure-reason parsing helper: new `src/lib/parseFailureReasons.ts` returning `Set<"field_audit"|"metadata"|"pdf"|`Q${n}`>` from a row.
 
 ## Out of scope
-- No backend, RLS, edge-function, or `uploadInterviewFile.ts` changes.
-- No changes to other upload entry points or the History tab.
+
+- Changing burn-queue retention or workflow.
+- Backend changes to `get_review_stats` (homepage fix is client-side exclusion).
+- Redesigning the existing filter sidebar — only adding an "Advanced" section.
