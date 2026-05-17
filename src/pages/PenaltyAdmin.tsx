@@ -317,9 +317,18 @@ const ExemptionPanel = ({ settingId }: { settingId: string }) => {
 
 const ChargesTab = () => {
   const [rows, setRows] = useState<Charge[]>([]);
+  const [auditMap, setAuditMap] = useState<Record<string, string>>({});
   const load = async () => {
     const { data } = await supabase.from("penalty_charges").select("*").order("created_at", { ascending: false }).limit(500);
-    setRows((data as Charge[]) || []);
+    const list = (data as Charge[]) || [];
+    setRows(list);
+    const ids = Array.from(new Set(list.map((r) => r.audit_id).filter(Boolean)));
+    if (ids.length) {
+      const { data: audits } = await supabase.from("audits").select("id, file_name").in("id", ids);
+      const map: Record<string, string> = {};
+      (audits || []).forEach((a: any) => { map[a.id] = a.file_name; });
+      setAuditMap(map);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -346,6 +355,7 @@ const ChargesTab = () => {
           <TableHeader>
             <TableRow>
               <TableHead>When</TableHead>
+              <TableHead>Interview</TableHead>
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Amount</TableHead>
@@ -356,10 +366,11 @@ const ChargesTab = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 ? <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
+            {rows.length === 0 ? <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
               rows.map(r => (
                 <TableRow key={r.id}>
                   <TableCell className="text-xs">{format(new Date(r.created_at), "MMM d")}</TableCell>
+                  <TableCell className="text-xs font-mono">{auditMap[r.audit_id] || "—"}</TableCell>
                   <TableCell className="text-xs font-mono">{r.charged_user_id.slice(0, 8)}</TableCell>
                   <TableCell className="text-xs">{r.charged_user_role.replace("_", " ")}</TableCell>
                   <TableCell className="text-xs font-mono">{r.currency} {Number(r.amount).toLocaleString()}</TableCell>
