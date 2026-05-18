@@ -1,81 +1,99 @@
-# Plan — 5 enhancements
+# Plan
 
-## 1. Advanced Filter (Tracking + Admin Review pages)
+## 1. Team Assignments — Export History fixes
 
-Add an "Advanced Filters" collapsible panel inside the existing filter sidebar / filter bar on both `src/pages/InterviewTracking.tsx` and `src/pages/AdminReviewHistory.tsx`.
+**File:** `supabase/functions/export-team-pdfs/index.ts` (re-download branch around lines 47–87).
 
-**Dimensions (per user selection):**
+- Expand the audits SELECT to include `mobile_zip_url, is_re_audit, passed_with_failures`.
+- Look up matching `re_audit_submissions` (replaced_zip=true) for re-audited audits.
+- Build `pdfList` the same way as the fresh-export branch:
+  - `baseName = passed_with_failures ? "${file_name}_attention" : file_name`
+  - Include `metadataUrl` / `metadataFileName` for re-audited audits with replaced zips.
+- Also regenerate / re-attach the override-notes PDF if any overridden audits exist in the batch (reuse the existing block, factored into a helper).
 
-- **Failure reasons + match mode**
-  - Categories: `Field Audit`, `Metadata`, `PDF / Artifact`, `Checklist Question (Q0–Q13 multi-pick)`
-  - Match mode toggle:
-    - `INCLUDES` — failure reasons contain any of the selected categories
-    - `ONLY` — failure reasons are exactly the selected set (no others)
-  - Source of truth: `audits.review_comment` parsed for `Q#:` markers + `audits.artifact_correction` array (`pdf`, `metadata`, `field_audit`) for the P/M/F/B flags already used elsewhere, plus AVTool field-audit failure flag.
-- **People**
-  - Field Manager (from `interview_metadata.field_manager` or `interview_fm_overrides`)
-  - Contractor (`contractor_id`)
-  - Interviewer code
-- **Date range on a chosen event**: dropdown to pick which date column to filter on (`uploaded_at`, `reviewed_at`, `last_modified`) + start/end pickers.
-- **Re-audit count + burn history**
-  - Re-audits: `0`, `1`, `2+`
-  - Burn history: `Never burned`, `Ever burned`, `Currently burned`, `Previously burned (restored)`
+**File:** `src/pages/TeamAssignments.tsx` `handleExportTeamPDFs` (lines 318–386).
 
-**UX**: Active filter chips shown above the table with a one-click clear. Persist to localStorage alongside existing `FilterSidebar` storage. URL is not changed.
+- Add a download progress UI for new batch downloads:
+  - State: `exportProgress = { current, total, fileName }` per team.
+  - Wrap the for-loop fetch in fetch-with-progress (use `Response.body` reader to count bytes; for simplicity, increment `current` per file completed and show `current/total` plus the filename).
+  - Replace the static `toast.info("Downloading N PDFs…")` with a sticky `toast.loading(...)` updated via `toast.message(id, …)` OR render a small inline progress bar next to the team row (preferred: a `Progress` bar component under the team card while `exportingTeamId === team.id`).
+- Reset progress in `finally`.
 
-**Scope**: Frontend-only filtering on already-fetched rows where possible; the failure-reason parsing uses `review_comment` text and `artifact_correction` array — both already in the audits row.
+## 2. Penalty pages — bulk actions
 
-## 2. Super Admin Homepage "Failed" count (112 vs 76 → fix to 76)
+Affected files: `src/pages/PenaltyAdmin.tsx`, `src/pages/MyPenalties.tsx`.
 
-Root cause: `src/components/home/AdminDashboard.tsx` counts every `status === "Audit Failed"` in `audits`, but Tracking excludes audits whose `id` appears in `burn_queue` (any state in the active query, currently `restored_at IS NULL`).
+Selected actions: **Mark Paid**, **Waive/Void**, **Mark Appealed**.
 
-**Fix**: In the AdminDashboard stats query, fetch the set of burned (non-restored) audit IDs (same query Tracking uses) and exclude them from the `failed` count. Apply the same exclusion consistently to passed / pending so totals reconcile. Also exclude audits with later successful re-audit if Tracking does (verify in same change).
+- Add row checkboxes + header "select all" checkbox to the Charges table on both pages.
+- Selection state: `Set<string>` of charge ids.
+- Render a sticky bulk-action toolbar above the table when selection > 0:
+  - Admin (`PenaltyAdmin`): "Mark Paid" + "Waive / Void" buttons.
+  - Non-admin (`MyPenalties`): "Mark Appealed" button.
+- Confirmation dialogs (`AlertDialog`) before each bulk action.
+- Implementations:
+  - **Mark Paid** (admin): for each selected charge, call existing single-charge payment confirmation flow in a loop (or insert one `penalty_payments` row per charge with `status='confirmed', amount=charge.amount - paid_amount`, then update `penalty_charges.status='paid'`). Reuse current single-action code path.
+  - **Waive/Void** (admin): bulk update `penalty_charges` set `status='voided', removed_by=auth.uid(), removed_at=now()` for selected ids.
+  - **Mark Appealed** (non-admin): bulk update own `penalty_charges` set `appeal_status='pending', appeal_reason=<reason from prompt textarea>` (single textarea applied to all).
+- Refresh data + toast summarizing count succeeded / failed.
 
-## 3. Burn-history fire icons
+No new tables, no DB migration. Uses existing columns (`status`, `appeal_status`, `appeal_reason`, `removed_at`, `removed_by`, `penalty_payments`).
 
-In the Tracking interviews table row (and any list using `AuditTable`):
+## 3. Inbox redesign — Gmail-style (mobile-first, 2-pane desktop)
 
-- Add a small fire icon (`Flame`) next to the interview ID/name when its `audit_id` has ANY row in `burn_queue` (ever burned).
-  - `restored_at IS NULL` (currently in burn) → **red** icon, tooltip "Currently in burn queue".
-  - `restored_at IS NOT NULL` (previously burned, now restored) → **blue** icon, tooltip "Previously burned — restored on {date}".
-- A single batched query: `select audit_id, max(sent_at), bool_or(restored_at is null) as currently_burned from burn_queue where audit_id in (...) group by audit_id`. Cache via React Query.
-- Note: items "currently burned" are already excluded from Tracking listing — so in practice Tracking will mostly show the blue (restored) icon. Burn Queue page itself can use the red icon for currently-burned rows.
+**Files:**
+- `src/pages/Inbox.tsx` — full rewrite of layout, keep all data hooks and handlers intact.
+- `src/components/InboxBell.tsx` — change unread cap.
+- `src/components/NotificationBell.tsx` — change unread cap to match.
 
-## 4. Unassigned-agent recurring nag
+### Layout
 
-**Definition**: An interviewer code present in `interview_metadata` (or `team_assignments`) that has no active row linking it to a Field Manager — i.e. shows up in the existing `unassignedInterviewers` query on `src/pages/TeamApprovals.tsx`.
+```text
+Desktop (md+):  [ Sidebar (categories) | Main pane                              ]
+                |                       | header (search + new + actions)        |
+                |                       | thread list OR open thread (toggle)    |
+                |                       |                                        |
 
-**Behavior**: When user role is `admin`, `sub_contractor`, or `super_admin`, and the unassigned-agent count > 0:
+Mobile (<md):   Stack. Default = thread list (full width). Tap thread → full
+                thread view with back button. Categories accessible via
+                Sheet drawer triggered by a hamburger button in the header.
+```
 
-- Show a modal at login (after the existing LoginWelcomeModal) listing the unassigned agents with a CTA "Go to Team Approvals".
-- Recurring timer: re-open the modal every 30 minutes during the session as long as the count remains > 0. Reset the timer when the user assigns someone (refetch on `TeamApprovals` mutation success invalidates the count → if zero, timer stops).
-- Dismiss button closes the current modal but does not stop the timer.
-- Component: new `src/components/UnassignedAgentNagModal.tsx`, mounted in `Layout.tsx` behind a role check.
+Two-pane on desktop: clicking a conversation hides the list and shows the open thread full-width in the right pane. A back button (or "Inbox" breadcrumb) returns to the list. This matches Gmail behavior more closely than the current 3-pane.
 
-## 5. Penalty Charges page — add summary cards
+### Visual style
 
-In `src/pages/MyPenalties.tsx` (and the admin equivalent `src/pages/PenaltyAdmin.tsx` if applicable), add a row of `SummaryCard`s at the top:
+- Gmail-like list rows: avatar circle (initials), bold sender/title, single-line preview muted, right-aligned relative timestamp; unread rows have stronger weight + subtle left border in `--primary` and a faint background.
+- Sticky search bar at top of list; "New chat" + category filter chip row beneath.
+- Use existing design tokens (`bg-card`, `text-foreground`, `text-muted-foreground`, `--primary`); no hardcoded colors.
+- Replace `<select>` mobile category control with `Sheet` + button list mirroring desktop sidebar; categories show unread badge.
 
-- **Total charged** (lifetime, per currency)
-- **Total paid** (lifetime)
-- **Outstanding balance** (highlight red if > 0)
-- **Open charges count**
-- **Payment records count** (lifetime)
-- **Last payment date**
+### Functionality preserved
 
-Data already comes from `get_penalty_summary` RPC + `penalty_payments` table. Reuse `src/components/analytics/SummaryCard.tsx`.
+All existing handlers stay: `handleSend`, `handleRename`, `handleDeleteConversation`, `handleLeaveConversation`, `handleDeleteMessage`, attachments, interview ref, internal link, mark-read effect, realtime channel, closed-conversations section, category unread totals.
 
----
+### Mobile-friendly composer
 
-## Technical notes
+- Composer becomes a sticky bottom bar in the open-thread view with attachment menu collapsed into an icon button (already an `AttachmentMenu`).
+- Use `h-[100dvh]` instead of `h-[calc(100vh-…)]` so iOS Safari address bar doesn't clip.
 
-- No DB migrations needed; all data exists.
-- React Query keys: add `["burn-history", auditIds]` for the icon lookup; reuse `unassignedInterviewers` query key for the nag.
-- Mobile: advanced filter panel collapses inside existing mobile sheet; fire icon shown inline with name (already-mobile-friendly accordion pattern preserved).
-- Failure-reason parsing helper: new `src/lib/parseFailureReasons.ts` returning `Set<"field_audit"|"metadata"|"pdf"|`Q${n}`>` from a row.
+### Unread badge
+
+- `InboxBell.tsx`: `{unread > 99 ? "99+" : unread}` (currently `> 9 ? "9+"`).
+- `NotificationBell.tsx`: same change in both places (lines 143 and 151).
 
 ## Out of scope
 
-- Changing burn-queue retention or workflow.
-- Backend changes to `get_review_stats` (homepage fix is client-side exclusion).
-- Redesigning the existing filter sidebar — only adding an "Advanced" section.
+- No DB migrations, no edge-function deploys other than `export-team-pdfs`.
+- No change to chat schema, RPCs, or notification preferences UI.
+- No redesign of `MiniChatWindow` / `FloatingChatProvider`.
+
+## Files touched
+
+- `supabase/functions/export-team-pdfs/index.ts`
+- `src/pages/TeamAssignments.tsx`
+- `src/pages/PenaltyAdmin.tsx`
+- `src/pages/MyPenalties.tsx`
+- `src/pages/Inbox.tsx`
+- `src/components/InboxBell.tsx`
+- `src/components/NotificationBell.tsx`

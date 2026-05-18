@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +28,10 @@ const MyPenalties = () => {
   const [charges, setCharges] = useState<Charge[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [auditMap, setAuditMap] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [appealOpen, setAppealOpen] = useState(false);
+  const [appealReason, setAppealReason] = useState("");
+  const [appealBusy, setAppealBusy] = useState(false);
 
   const load = async () => {
     if (!user) return;
@@ -38,6 +43,7 @@ const MyPenalties = () => {
     setSummary((s as Summary[]) || []);
     setCharges((c as Charge[]) || []);
     setPayments((p as Payment[]) || []);
+    setSelected(new Set());
     const ids = Array.from(new Set(((c as Charge[]) || []).map((r) => r.audit_id).filter(Boolean)));
     if (ids.length) {
       const { data: audits } = await supabase.from("audits").select("id, file_name").in("id", ids);
@@ -89,17 +95,55 @@ const MyPenalties = () => {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <div><CardTitle className="text-base">Charges</CardTitle></div>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">Charges</CardTitle>
+            {selected.size > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+                <Button size="sm" variant="outline" onClick={() => { setAppealReason(""); setAppealOpen(true); }}>
+                  Mark as appealed
+                </Button>
+              </>
+            )}
+          </div>
           <DeclarePaymentDialog onDone={load} />
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader><TableRow>
+              <TableHead className="w-8">
+                <input
+                  type="checkbox"
+                  aria-label="Select all"
+                  checked={(() => {
+                    const eligible = charges.filter(c => !c.appeal_status && c.status !== "waived" && c.status !== "removed" && c.status !== "paid");
+                    return eligible.length > 0 && eligible.every(c => selected.has(c.id));
+                  })()}
+                  onChange={() => {
+                    const eligibleIds = charges.filter(c => !c.appeal_status && c.status !== "waived" && c.status !== "removed" && c.status !== "paid").map(c => c.id);
+                    const allSel = eligibleIds.length > 0 && eligibleIds.every(id => selected.has(id));
+                    setSelected(allSel ? new Set() : new Set(eligibleIds));
+                  }}
+                />
+              </TableHead>
               <TableHead>When</TableHead><TableHead>Interview</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Appeal</TableHead><TableHead></TableHead>
             </TableRow></TableHeader>
             <TableBody>
-              {charges.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
-                charges.map(c => <ChargeRow key={c.id} c={c} fileName={auditMap[c.audit_id]} onDone={load} />)}
+              {charges.length === 0 ? <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
+                charges.map(c => (
+                  <ChargeRow
+                    key={c.id}
+                    c={c}
+                    fileName={auditMap[c.audit_id]}
+                    onDone={load}
+                    selected={selected.has(c.id)}
+                    onToggle={() => {
+                      const s = new Set(selected);
+                      if (s.has(c.id)) s.delete(c.id); else s.add(c.id);
+                      setSelected(s);
+                    }}
+                  />
+                ))}
             </TableBody>
           </Table>
         </CardContent>
@@ -124,11 +168,48 @@ const MyPenalties = () => {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={appealOpen} onOpenChange={setAppealOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Appeal {selected.size} charge{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The same reason will be submitted for each selected charge. An admin will review.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            placeholder="Reason for appeal…"
+            value={appealReason}
+            onChange={(e) => setAppealReason(e.target.value)}
+            rows={4}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={appealBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!appealReason.trim() || appealBusy}
+              onClick={async () => {
+                setAppealBusy(true);
+                let ok = 0, fail = 0;
+                for (const id of Array.from(selected)) {
+                  const { error } = await supabase.rpc("appeal_penalty_charge", { _charge_id: id, _reason: appealReason.trim() });
+                  if (error) fail++; else ok++;
+                }
+                setAppealBusy(false);
+                setAppealOpen(false);
+                toast.success(`${ok} appealed${fail ? `, ${fail} failed` : ""}`);
+                load();
+              }}
+            >
+              {appealBusy ? "Submitting…" : "Submit appeals"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
 
-const ChargeRow = ({ c, fileName, onDone }: { c: Charge; fileName?: string; onDone: () => void }) => {
+const ChargeRow = ({ c, fileName, onDone, selected, onToggle }: { c: Charge; fileName?: string; onDone: () => void; selected?: boolean; onToggle?: () => void }) => {
   const appeal = async () => {
     const reason = prompt("Reason for appeal");
     if (!reason) return;
@@ -137,6 +218,15 @@ const ChargeRow = ({ c, fileName, onDone }: { c: Charge; fileName?: string; onDo
   };
   return (
     <TableRow>
+      <TableCell>
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={onToggle}
+          disabled={!!c.appeal_status || c.status === "waived" || c.status === "removed" || c.status === "paid"}
+          aria-label="Select row"
+        />
+      </TableCell>
       <TableCell className="text-xs">{format(new Date(c.created_at), "MMM d")}</TableCell>
       <TableCell className="text-xs font-mono">{fileName || "—"}</TableCell>
       <TableCell className="text-xs font-mono">{c.currency} {Number(c.amount).toLocaleString()}</TableCell>

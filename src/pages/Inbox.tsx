@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +46,9 @@ import {
   Pencil,
   Trash2,
   LogOut,
+  ArrowLeft,
+  Menu,
+  Search as SearchIcon,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -87,6 +91,46 @@ type Message = {
   created_at: string;
 };
 
+const SidebarCategories = ({
+  activeCategory,
+  onSelect,
+  categoryUnread,
+}: {
+  activeCategory: string;
+  onSelect: (k: string) => void;
+  categoryUnread: Record<string, number>;
+}) => {
+  return (
+    <div className="py-2">
+      {Object.entries(CATEGORY_META).map(([key, meta]) => {
+        const Icon = meta.icon;
+        const unread = key === "all"
+          ? Object.values(categoryUnread).reduce((s, n) => s + n, 0)
+          : categoryUnread[key] || 0;
+        const active = activeCategory === key;
+        return (
+          <button
+            key={key}
+            onClick={() => onSelect(key)}
+            className={cn(
+              "w-full flex items-center justify-between gap-2 pl-6 pr-3 py-2 text-sm rounded-r-full transition-colors",
+              active ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted text-foreground/80"
+            )}
+          >
+            <span className="flex items-center gap-3">
+              <Icon className={cn("h-4 w-4", active ? "text-primary" : meta.color)} />
+              {meta.label}
+            </span>
+            {unread > 0 && (
+              <span className="text-[11px] font-semibold text-foreground/90">{unread > 99 ? "99+" : unread}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 const Inbox = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -105,6 +149,7 @@ const Inbox = () => {
   const [composerAttachments, setComposerAttachments] = useState<any[]>([]);
   const [composerInterview, setComposerInterview] = useState<any | null>(null);
   const [composerLink, setComposerLink] = useState<any | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const { open: openFloating } = useFloatingChat();
 
@@ -183,10 +228,7 @@ const Inbox = () => {
   const visibleConvIds = useMemo(() => filteredConvs.map((c) => c.id), [filteredConvs]);
   const { data: participantsByConv = {} } = useConversationParticipants(visibleConvIds);
 
-  // Auto-select first conversation
-  useEffect(() => {
-    if (!selectedConvId && openConvs.length > 0) setSelectedConvId(openConvs[0].id);
-  }, [openConvs, selectedConvId]);
+  // Note: do NOT auto-select — Gmail-style: show list first, user taps a thread to open it.
 
   const selectedConv = useMemo(
     () => (conversations as any[]).find((c) => c.id === selectedConvId) as (Conversation & { unread_count: number }) | undefined,
@@ -324,149 +366,183 @@ const Inbox = () => {
   }, [conversations]);
 
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4">
-      <div className="grid grid-cols-1 md:grid-cols-[260px_minmax(280px,1fr)_1.5fr] gap-3 h-[calc(100vh-7rem)]">
-        {/* Categories */}
-        <Card className="hidden md:flex flex-col p-2">
-          <Button onClick={() => setShowNewChat(true)} className="mb-2 gap-2">
-            <Plus className="h-4 w-4" /> New chat
-          </Button>
-          <ScrollArea className="flex-1">
-            {Object.entries(CATEGORY_META).map(([key, meta]) => {
-              const Icon = meta.icon;
-              const unread = key === "all"
-                ? Object.values(categoryUnread).reduce((s, n) => s + n, 0)
-                : categoryUnread[key] || 0;
-              return (
-                <button
-                  key={key}
-                  onClick={() => { setActiveCategory(key); setSelectedConvId(null); }}
-                  className={cn(
-                    "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm",
-                    activeCategory === key ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-                  )}
-                >
-                  <span className="flex items-center gap-2">
-                    <Icon className={cn("h-4 w-4", meta.color)} />
-                    {meta.label}
-                  </span>
-                  {unread > 0 && <Badge variant="destructive" className="h-5">{unread}</Badge>}
-                </button>
-              );
-            })}
-          </ScrollArea>
-        </Card>
-
-        {/* Conversation list */}
-        <Card className="flex flex-col p-2 min-w-0">
-          <div className="flex md:hidden gap-2 mb-2">
-            <Button onClick={() => setShowNewChat(true)} size="sm" className="gap-1">
-              <Plus className="h-3 w-3" /> New
+    <div className="h-[calc(100dvh-4rem)] flex flex-col bg-background">
+      <div className="flex-1 grid md:grid-cols-[240px_1fr] overflow-hidden min-h-0">
+        {/* Desktop sidebar */}
+        <aside className="hidden md:flex flex-col border-r bg-card min-h-0">
+          <div className="p-3 border-b">
+            <Button onClick={() => setShowNewChat(true)} className="w-full gap-2 rounded-2xl shadow-sm">
+              <Plus className="h-4 w-4" /> New chat
             </Button>
-            <select
-              className="border rounded px-2 text-sm bg-background flex-1"
-              value={activeCategory}
-              onChange={(e) => { setActiveCategory(e.target.value); setSelectedConvId(null); }}
-            >
-              {Object.entries(CATEGORY_META).map(([key, m]) => (
-                <option key={key} value={key}>{m.label}</option>
-              ))}
-            </select>
           </div>
-          <Input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} className="mb-2" />
           <ScrollArea className="flex-1">
-            {convLoading ? (
-              <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-              </div>
-            ) : filteredConvs.length === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                <InboxIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                No conversations yet.
-              </div>
+            <SidebarCategories
+              activeCategory={activeCategory}
+              onSelect={(k) => { setActiveCategory(k); setSelectedConvId(null); }}
+              categoryUnread={categoryUnread}
+            />
+          </ScrollArea>
+        </aside>
+
+        {/* Main pane */}
+        <main className="flex flex-col min-w-0 min-h-0 overflow-hidden bg-background">
+          {/* Top toolbar */}
+          <div className="flex items-center gap-2 px-2 sm:px-4 py-2 border-b bg-card">
+            {/* Mobile menu / back */}
+            {selectedConvId ? (
+              <Button variant="ghost" size="icon" onClick={() => setSelectedConvId(null)} className="md:hidden">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
             ) : (
-              <>
-              {openConvs.map((c: any) => {
-                const meta = CATEGORY_META[c.category] || CATEGORY_META.all;
-                const Icon = meta.icon;
-                const subtitle = describeOthers(participantsByConv[c.id], user?.id) || (c.last_message_preview || "—");
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedConvId(c.id)}
-                    className={cn(
-                      "w-full flex items-start gap-2 px-3 py-2 rounded-md text-left text-sm",
-                      selectedConvId === c.id ? "bg-accent" : "hover:bg-muted"
-                    )}
-                  >
-                    <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", meta.color)} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={cn("truncate font-medium", c.unread_count > 0 && "font-semibold")}>
-                          {c.title || "(untitled)"}
-                        </span>
-                        {c.unread_count > 0 && (
-                          <Badge variant="destructive" className="h-5">{c.unread_count}</Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
-                      {c.last_message_preview && (
-                        <p className="text-[11px] text-muted-foreground/80 truncate italic">
-                          {c.last_message_preview}
-                        </p>
-                      )}
-                      {c.last_message_at && (
-                        <p className="text-[10px] text-muted-foreground">
-                          {formatDistanceToNow(new Date(c.last_message_at), { addSuffix: true })}
-                        </p>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-              {closedConvs.length > 0 && (
-                <div className="mt-3 border-t pt-2">
-                  <button
-                    onClick={() => setShowClosed((v) => !v)}
-                    className="w-full text-left text-xs font-medium text-muted-foreground px-3 py-1 hover:bg-muted rounded"
-                  >
-                    {showClosed ? "▾" : "▸"} Closed ({closedConvs.length})
-                  </button>
-                  {showClosed && closedConvs.map((c: any) => {
+              <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="md:hidden">
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-72 p-0">
+                  <div className="p-3 border-b">
+                    <Button
+                      onClick={() => { setShowNewChat(true); setSidebarOpen(false); }}
+                      className="w-full gap-2 rounded-2xl"
+                    >
+                      <Plus className="h-4 w-4" /> New chat
+                    </Button>
+                  </div>
+                  <ScrollArea className="h-[calc(100dvh-5rem)]">
+                    <SidebarCategories
+                      activeCategory={activeCategory}
+                      onSelect={(k) => { setActiveCategory(k); setSelectedConvId(null); setSidebarOpen(false); }}
+                      categoryUnread={categoryUnread}
+                    />
+                  </ScrollArea>
+                </SheetContent>
+              </Sheet>
+            )}
+
+            {selectedConvId && (
+              <Button variant="ghost" size="sm" onClick={() => setSelectedConvId(null)} className="hidden md:inline-flex gap-1">
+                <ArrowLeft className="h-4 w-4" /> Inbox
+              </Button>
+            )}
+
+            {!selectedConvId && (
+              <div className="flex items-center gap-2 flex-1 max-w-2xl">
+                <div className="relative flex-1">
+                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search mail"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 rounded-full bg-muted/40 border-0 focus-visible:ring-1"
+                  />
+                </div>
+                <Button variant="default" size="sm" onClick={() => setShowNewChat(true)} className="gap-1 md:hidden">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {!selectedConvId && (
+              <span className="ml-auto text-xs text-muted-foreground hidden sm:inline">
+                {openConvs.length} thread{openConvs.length === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+
+          {/* Body: list or thread */}
+          {!selectedConvId ? (
+            <ScrollArea className="flex-1">
+              {convLoading ? (
+                <div className="p-6 text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                </div>
+              ) : filteredConvs.length === 0 ? (
+                <div className="p-10 text-center text-sm text-muted-foreground">
+                  <InboxIcon className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                  No conversations yet.
+                </div>
+              ) : (
+                <ul className="divide-y">
+                  {openConvs.map((c: any) => {
                     const meta = CATEGORY_META[c.category] || CATEGORY_META.all;
                     const Icon = meta.icon;
+                    const subtitle = describeOthers(participantsByConv[c.id], user?.id) || "";
+                    const unread = c.unread_count > 0;
                     return (
-                      <button
-                        key={c.id}
-                        onClick={() => setSelectedConvId(c.id)}
-                        className={cn(
-                          "w-full flex items-start gap-2 px-3 py-2 rounded-md text-left text-sm opacity-60 italic",
-                          selectedConvId === c.id ? "bg-accent" : "hover:bg-muted"
-                        )}
-                      >
-                        <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", meta.color)} />
-                        <div className="min-w-0 flex-1">
-                          <span className="truncate">{c.title || "(untitled)"}</span>
-                          <p className="text-[10px]">Closed thread</p>
-                        </div>
-                      </button>
+                      <li key={c.id}>
+                        <button
+                          onClick={() => setSelectedConvId(c.id)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-3 sm:px-4 py-3 text-left hover:bg-muted/60 transition-colors",
+                            unread && "bg-accent/30"
+                          )}
+                        >
+                          <Avatar className="h-9 w-9 flex-shrink-0">
+                            <AvatarFallback className={cn("text-xs", unread && "font-semibold")}>
+                              {initials(c.title || subtitle || "?")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className={cn("truncate text-sm", unread ? "font-bold text-foreground" : "font-medium text-foreground/90")}>
+                                {c.title || subtitle || "(untitled)"}
+                              </span>
+                              <Icon className={cn("h-3.5 w-3.5 flex-shrink-0", meta.color)} />
+                              {unread && (
+                                <Badge variant="default" className="h-5 px-1.5 text-[10px]">{c.unread_count}</Badge>
+                              )}
+                              <span className="ml-auto text-[10px] text-muted-foreground flex-shrink-0">
+                                {c.last_message_at && formatDistanceToNow(new Date(c.last_message_at), { addSuffix: false })}
+                              </span>
+                            </div>
+                            <p className={cn("text-xs truncate mt-0.5", unread ? "text-foreground/80" : "text-muted-foreground")}>
+                              {c.last_message_preview || subtitle || "—"}
+                            </p>
+                          </div>
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
+                  {closedConvs.length > 0 && (
+                    <li className="border-t bg-muted/20">
+                      <button
+                        onClick={() => setShowClosed((v) => !v)}
+                        className="w-full text-left text-xs font-medium text-muted-foreground px-4 py-2 hover:bg-muted"
+                      >
+                        {showClosed ? "▾" : "▸"} Closed ({closedConvs.length})
+                      </button>
+                      {showClosed && (
+                        <ul className="divide-y">
+                          {closedConvs.map((c: any) => (
+                            <li key={c.id}>
+                              <button
+                                onClick={() => setSelectedConvId(c.id)}
+                                className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-muted opacity-70 italic"
+                              >
+                                <Avatar className="h-8 w-8 flex-shrink-0">
+                                  <AvatarFallback className="text-[10px]">{initials(c.title || "?")}</AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm truncate">{c.title || "(untitled)"}</span>
+                                <span className="ml-auto text-[10px] text-muted-foreground">Closed</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  )}
+                </ul>
               )}
-              </>
-            )}
-          </ScrollArea>
-        </Card>
-
-        {/* Thread */}
-        <Card className="flex flex-col p-0 min-w-0">
-          {!selectedConv ? (
-            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-              Select a conversation to start
-            </div>
+            </ScrollArea>
           ) : (
-            <>
+            <div className="flex-1 flex flex-col min-h-0">
+              {!selectedConv ? (
+                <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                  Loading conversation…
+                </div>
+              ) : (
+                <>
               <div className="border-b px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -687,9 +763,11 @@ const Inbox = () => {
                   </Button>
                 </div>
               </div>
-            </>
+                </>
+              )}
+            </div>
           )}
-        </Card>
+        </main>
       </div>
 
       <NewChatDialog

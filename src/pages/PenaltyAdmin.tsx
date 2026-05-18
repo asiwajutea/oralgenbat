@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -318,10 +319,14 @@ const ExemptionPanel = ({ settingId }: { settingId: string }) => {
 const ChargesTab = () => {
   const [rows, setRows] = useState<Charge[]>([]);
   const [auditMap, setAuditMap] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<null | "paid" | "void">(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const load = async () => {
     const { data } = await supabase.from("penalty_charges").select("*").order("created_at", { ascending: false }).limit(500);
     const list = (data as Charge[]) || [];
     setRows(list);
+    setSelected(new Set());
     const ids = Array.from(new Set(list.map((r) => r.audit_id).filter(Boolean)));
     if (ids.length) {
       const { data: audits } = await supabase.from("audits").select("id, file_name").in("id", ids);
@@ -347,13 +352,89 @@ const ChargesTab = () => {
     else { toast.success("Done"); load(); }
   };
 
+  const eligibleIds = rows
+    .filter(r => r.status !== "removed" && r.status !== "waived" && r.status !== "paid")
+    .map(r => r.id);
+  const allSelected = eligibleIds.length > 0 && eligibleIds.every(id => selected.has(id));
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(eligibleIds));
+  };
+  const toggleOne = (id: string) => {
+    const s = new Set(selected);
+    if (s.has(id)) s.delete(id); else s.add(id);
+    setSelected(s);
+  };
+
+  const runBulkPaid = async () => {
+    setBulkBusy(true);
+    let ok = 0, fail = 0;
+    for (const id of Array.from(selected)) {
+      const charge = rows.find(r => r.id === id);
+      if (!charge) { fail++; continue; }
+      const remaining = Number(charge.amount) - Number(charge.paid_amount || 0);
+      if (remaining <= 0) { ok++; continue; }
+      const { data: { user: me } } = await supabase.auth.getUser();
+      if (!me) { fail++; continue; }
+      const { data: ins, error: insErr } = await supabase
+        .from("penalty_payments")
+        .insert({
+          charge_id: id,
+          charged_user_id: charge.charged_user_id,
+          amount: remaining,
+          currency: charge.currency,
+          declared_by: me.id,
+          note: "Bulk marked paid by admin",
+        })
+        .select("id")
+        .single();
+      if (insErr || !ins) { fail++; continue; }
+      const { error: confErr } = await supabase.rpc("confirm_penalty_payment", { _payment_id: ins.id, _accept: true, _note: "Bulk confirmation" });
+      if (confErr) { fail++; continue; }
+      ok++;
+    }
+    setBulkBusy(false);
+    setBulkAction(null);
+    toast.success(`${ok} marked paid${fail ? `, ${fail} failed` : ""}`);
+    load();
+  };
+
+  const runBulkVoid = async () => {
+    setBulkBusy(true);
+    let ok = 0, fail = 0;
+    for (const id of Array.from(selected)) {
+      const { error } = await supabase.rpc("remove_penalty_charge", { _charge_id: id, _reason: "Bulk void by admin" });
+      if (error) fail++; else ok++;
+    }
+    setBulkBusy(false);
+    setBulkAction(null);
+    toast.success(`${ok} voided${fail ? `, ${fail} failed` : ""}`);
+    load();
+  };
+
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">All charges</CardTitle></CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
+        <CardTitle className="text-base">All charges</CardTitle>
+        {selected.size > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+            <Button size="sm" variant="default" onClick={() => setBulkAction("paid")} disabled={bulkBusy}>
+              <CheckCircle2 className="h-4 w-4 mr-1" /> Mark paid
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setBulkAction("void")} disabled={bulkBusy}>
+              <ShieldOff className="h-4 w-4 mr-1" /> Waive / Void
+            </Button>
+          </div>
+        )}
+      </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all" />
+              </TableHead>
               <TableHead>When</TableHead>
               <TableHead>Interview</TableHead>
               <TableHead>User</TableHead>
@@ -366,9 +447,18 @@ const ChargesTab = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 ? <TableRow><TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
+            {rows.length === 0 ? <TableRow><TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
               rows.map(r => (
                 <TableRow key={r.id}>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleOne(r.id)}
+                      disabled={r.status === "removed" || r.status === "waived" || r.status === "paid"}
+                      aria-label="Select row"
+                    />
+                  </TableCell>
                   <TableCell className="text-xs">{format(new Date(r.created_at), "MMM d")}</TableCell>
                   <TableCell className="text-xs font-mono">{auditMap[r.audit_id] || "—"}</TableCell>
                   <TableCell className="text-xs font-mono">{r.charged_user_id.slice(0, 8)}</TableCell>
@@ -393,6 +483,27 @@ const ChargesTab = () => {
               ))}
           </TableBody>
         </Table>
+
+        <AlertDialog open={bulkAction !== null} onOpenChange={(o) => !o && setBulkAction(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {bulkAction === "paid" ? `Mark ${selected.size} charges as paid?` : `Waive / void ${selected.size} charges?`}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {bulkAction === "paid"
+                  ? "Each charge will be paid in full and confirmed automatically. This cannot be undone."
+                  : "These charges will be removed from outstanding balances. This cannot be undone."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={bulkBusy}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={bulkAction === "paid" ? runBulkPaid : runBulkVoid} disabled={bulkBusy}>
+                {bulkBusy ? "Working…" : "Confirm"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );

@@ -95,6 +95,7 @@ const TeamAssignments = () => {
   const [showManageTeams, setShowManageTeams] = useState(false);
   const [unassignDialog, setUnassignDialog] = useState<{ open: boolean; assignment: Assignment | null }>({ open: false, assignment: null });
   const [exportingTeamId, setExportingTeamId] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number; fileName: string; phase: string } | null>(null);
   const [selectedAssignedInterviews, setSelectedAssignedInterviews] = useState<Set<string>>(new Set());
   
   // Export history pagination
@@ -317,6 +318,7 @@ const TeamAssignments = () => {
 
   const handleExportTeamPDFs = async (team: Team, batchIdToRedownload?: string) => {
     setExportingTeamId(team.id);
+    setExportProgress({ current: 0, total: 0, fileName: 'Preparing…', phase: 'preparing' });
     try {
       const { data, error } = await supabase.functions.invoke('export-team-pdfs', {
         body: { teamId: team.id, teamName: team.name, batchId: batchIdToRedownload }
@@ -329,12 +331,14 @@ const TeamAssignments = () => {
         return;
       }
 
-      toast.info(`Downloading ${data.files.length} PDFs...`);
-
       const zip = new JSZip();
-      
+      const totalFiles = data.files.length;
+      setExportProgress({ current: 0, total: totalFiles, fileName: 'Starting download…', phase: 'downloading' });
+
       // Download and add each PDF to the zip
-      for (const file of data.files) {
+      for (let i = 0; i < data.files.length; i++) {
+        const file = data.files[i];
+        setExportProgress({ current: i, total: totalFiles, fileName: file.fileName, phase: 'downloading' });
         try {
           // Download PDF
           const response = await fetch(file.url);
@@ -354,6 +358,7 @@ const TeamAssignments = () => {
         } catch (err) {
           console.error(`Failed to download ${file.fileName}:`, err);
         }
+        setExportProgress({ current: i + 1, total: totalFiles, fileName: file.fileName, phase: 'downloading' });
       }
 
       // Generate filename with date and time from export timestamp
@@ -362,6 +367,7 @@ const TeamAssignments = () => {
       const sanitizedTeamName = team.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
       const fileName = `${sanitizedTeamName}_PDFs_${dateStr}.zip`;
 
+      setExportProgress({ current: totalFiles, total: totalFiles, fileName: 'Zipping files…', phase: 'zipping' });
       // Generate and download the zip
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(zipBlob);
@@ -382,6 +388,7 @@ const TeamAssignments = () => {
       toast.error('Failed to export PDFs');
     } finally {
       setExportingTeamId(null);
+      setExportProgress(null);
     }
   };
 
@@ -425,6 +432,25 @@ const TeamAssignments = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      {/* Export progress overlay */}
+      {exportProgress && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-card shadow-lg p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span className="text-sm font-medium">
+              {exportProgress.phase === 'zipping' ? 'Zipping files…' : exportProgress.phase === 'preparing' ? 'Preparing…' : `Downloading ${exportProgress.current} / ${exportProgress.total}`}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${exportProgress.total > 0 ? Math.round((exportProgress.current / exportProgress.total) * 100) : 0}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground truncate">{exportProgress.fileName}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
