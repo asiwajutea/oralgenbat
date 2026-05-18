@@ -172,7 +172,7 @@ const MyPenalties = () => {
   );
 };
 
-const ChargeRow = ({ c, fileName, onDone }: { c: Charge; fileName?: string; onDone: () => void }) => {
+const ChargeRow = ({ c, fileName, onDone, selected, onToggle }: { c: Charge; fileName?: string; onDone: () => void; selected?: boolean; onToggle?: () => void }) => {
   const appeal = async () => {
     const reason = prompt("Reason for appeal");
     if (!reason) return;
@@ -181,6 +181,15 @@ const ChargeRow = ({ c, fileName, onDone }: { c: Charge; fileName?: string; onDo
   };
   return (
     <TableRow>
+      <TableCell>
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={onToggle}
+          disabled={!!c.appeal_status || c.status === "waived" || c.status === "removed" || c.status === "paid"}
+          aria-label="Select row"
+        />
+      </TableCell>
       <TableCell className="text-xs">{format(new Date(c.created_at), "MMM d")}</TableCell>
       <TableCell className="text-xs font-mono">{fileName || "—"}</TableCell>
       <TableCell className="text-xs font-mono">{c.currency} {Number(c.amount).toLocaleString()}</TableCell>
