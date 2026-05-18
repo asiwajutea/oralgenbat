@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +46,9 @@ import {
   Pencil,
   Trash2,
   LogOut,
+  ArrowLeft,
+  Menu,
+  Search as SearchIcon,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -105,6 +109,7 @@ const Inbox = () => {
   const [composerAttachments, setComposerAttachments] = useState<any[]>([]);
   const [composerInterview, setComposerInterview] = useState<any | null>(null);
   const [composerLink, setComposerLink] = useState<any | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const { open: openFloating } = useFloatingChat();
 
