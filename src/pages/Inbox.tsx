@@ -497,14 +497,12 @@ const Inbox = () => {
             </ScrollArea>
           ) : (
             <div className="flex-1 flex flex-col min-h-0">
-              {/* Thread keeps original content */}
-              <ThreadWrapper>
-          {!selectedConv ? (
-            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-              Select a conversation to start
-            </div>
-          ) : (
-            <>
+              {!selectedConv ? (
+                <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                  Loading conversation…
+                </div>
+              ) : (
+                <>
               <div className="border-b px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -725,9 +723,11 @@ const Inbox = () => {
                   </Button>
                 </div>
               </div>
-            </>
+                </>
+              )}
+            </div>
           )}
-        </Card>
+        </main>
       </div>
 
       <NewChatDialog
