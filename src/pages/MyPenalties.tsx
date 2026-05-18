@@ -95,17 +95,55 @@ const MyPenalties = () => {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <div><CardTitle className="text-base">Charges</CardTitle></div>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">Charges</CardTitle>
+            {selected.size > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+                <Button size="sm" variant="outline" onClick={() => { setAppealReason(""); setAppealOpen(true); }}>
+                  Mark as appealed
+                </Button>
+              </>
+            )}
+          </div>
           <DeclarePaymentDialog onDone={load} />
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader><TableRow>
+              <TableHead className="w-8">
+                <input
+                  type="checkbox"
+                  aria-label="Select all"
+                  checked={(() => {
+                    const eligible = charges.filter(c => !c.appeal_status && c.status !== "waived" && c.status !== "removed" && c.status !== "paid");
+                    return eligible.length > 0 && eligible.every(c => selected.has(c.id));
+                  })()}
+                  onChange={() => {
+                    const eligibleIds = charges.filter(c => !c.appeal_status && c.status !== "waived" && c.status !== "removed" && c.status !== "paid").map(c => c.id);
+                    const allSel = eligibleIds.length > 0 && eligibleIds.every(id => selected.has(id));
+                    setSelected(allSel ? new Set() : new Set(eligibleIds));
+                  }}
+                />
+              </TableHead>
               <TableHead>When</TableHead><TableHead>Interview</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Appeal</TableHead><TableHead></TableHead>
             </TableRow></TableHeader>
             <TableBody>
-              {charges.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
-                charges.map(c => <ChargeRow key={c.id} c={c} fileName={auditMap[c.audit_id]} onDone={load} />)}
+              {charges.length === 0 ? <TableRow><TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-6">No charges.</TableCell></TableRow> :
+                charges.map(c => (
+                  <ChargeRow
+                    key={c.id}
+                    c={c}
+                    fileName={auditMap[c.audit_id]}
+                    onDone={load}
+                    selected={selected.has(c.id)}
+                    onToggle={() => {
+                      const s = new Set(selected);
+                      if (s.has(c.id)) s.delete(c.id); else s.add(c.id);
+                      setSelected(s);
+                    }}
+                  />
+                ))}
             </TableBody>
           </Table>
         </CardContent>
