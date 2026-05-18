@@ -432,6 +432,25 @@ const TeamAssignments = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      {/* Export progress overlay */}
+      {exportProgress && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 rounded-lg border bg-card shadow-lg p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <span className="text-sm font-medium">
+              {exportProgress.phase === 'zipping' ? 'Zipping files…' : exportProgress.phase === 'preparing' ? 'Preparing…' : `Downloading ${exportProgress.current} / ${exportProgress.total}`}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${exportProgress.total > 0 ? Math.round((exportProgress.current / exportProgress.total) * 100) : 0}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground truncate">{exportProgress.fileName}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
