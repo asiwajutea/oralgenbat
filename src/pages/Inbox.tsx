@@ -188,10 +188,7 @@ const Inbox = () => {
   const visibleConvIds = useMemo(() => filteredConvs.map((c) => c.id), [filteredConvs]);
   const { data: participantsByConv = {} } = useConversationParticipants(visibleConvIds);
 
-  // Auto-select first conversation
-  useEffect(() => {
-    if (!selectedConvId && openConvs.length > 0) setSelectedConvId(openConvs[0].id);
-  }, [openConvs, selectedConvId]);
+  // Note: do NOT auto-select — Gmail-style: show list first, user taps a thread to open it.
 
   const selectedConv = useMemo(
     () => (conversations as any[]).find((c) => c.id === selectedConvId) as (Conversation & { unread_count: number }) | undefined,
