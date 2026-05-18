@@ -374,15 +374,23 @@ const ChargesTab = () => {
       if (!charge) { fail++; continue; }
       const remaining = Number(charge.amount) - Number(charge.paid_amount || 0);
       if (remaining <= 0) { ok++; continue; }
-      const { data: pay, error: payErr } = await supabase.rpc("declare_penalty_payment", {
-        _charge_id: id, _amount: remaining, _note: "Bulk marked paid by admin",
-      });
-      if (payErr) { fail++; continue; }
-      const paymentId = (pay as any)?.id || (typeof pay === "string" ? pay : null);
-      if (paymentId) {
-        const { error: confErr } = await supabase.rpc("confirm_penalty_payment", { _payment_id: paymentId, _accept: true, _note: "Bulk confirmation" });
-        if (confErr) { fail++; continue; }
-      }
+      const { data: { user: me } } = await supabase.auth.getUser();
+      if (!me) { fail++; continue; }
+      const { data: ins, error: insErr } = await supabase
+        .from("penalty_payments")
+        .insert({
+          charge_id: id,
+          charged_user_id: charge.charged_user_id,
+          amount: remaining,
+          currency: charge.currency,
+          declared_by: me.id,
+          note: "Bulk marked paid by admin",
+        })
+        .select("id")
+        .single();
+      if (insErr || !ins) { fail++; continue; }
+      const { error: confErr } = await supabase.rpc("confirm_penalty_payment", { _payment_id: ins.id, _accept: true, _note: "Bulk confirmation" });
+      if (confErr) { fail++; continue; }
       ok++;
     }
     setBulkBusy(false);
