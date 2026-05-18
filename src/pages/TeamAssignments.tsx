@@ -95,6 +95,7 @@ const TeamAssignments = () => {
   const [showManageTeams, setShowManageTeams] = useState(false);
   const [unassignDialog, setUnassignDialog] = useState<{ open: boolean; assignment: Assignment | null }>({ open: false, assignment: null });
   const [exportingTeamId, setExportingTeamId] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number; fileName: string; phase: string } | null>(null);
   const [selectedAssignedInterviews, setSelectedAssignedInterviews] = useState<Set<string>>(new Set());
   
   // Export history pagination
@@ -317,6 +318,7 @@ const TeamAssignments = () => {
 
   const handleExportTeamPDFs = async (team: Team, batchIdToRedownload?: string) => {
     setExportingTeamId(team.id);
+    setExportProgress({ current: 0, total: 0, fileName: 'Preparing…', phase: 'preparing' });
     try {
       const { data, error } = await supabase.functions.invoke('export-team-pdfs', {
         body: { teamId: team.id, teamName: team.name, batchId: batchIdToRedownload }
@@ -329,12 +331,14 @@ const TeamAssignments = () => {
         return;
       }
 
-      toast.info(`Downloading ${data.files.length} PDFs...`);
-
       const zip = new JSZip();
-      
+      const totalFiles = data.files.length;
+      setExportProgress({ current: 0, total: totalFiles, fileName: 'Starting download…', phase: 'downloading' });
+
       // Download and add each PDF to the zip
-      for (const file of data.files) {
+      for (let i = 0; i < data.files.length; i++) {
+        const file = data.files[i];
+        setExportProgress({ current: i, total: totalFiles, fileName: file.fileName, phase: 'downloading' });
         try {
           // Download PDF
           const response = await fetch(file.url);
@@ -354,6 +358,7 @@ const TeamAssignments = () => {
         } catch (err) {
           console.error(`Failed to download ${file.fileName}:`, err);
         }
+        setExportProgress({ current: i + 1, total: totalFiles, fileName: file.fileName, phase: 'downloading' });
       }
 
       // Generate filename with date and time from export timestamp
@@ -362,6 +367,7 @@ const TeamAssignments = () => {
       const sanitizedTeamName = team.name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
       const fileName = `${sanitizedTeamName}_PDFs_${dateStr}.zip`;
 
+      setExportProgress({ current: totalFiles, total: totalFiles, fileName: 'Zipping files…', phase: 'zipping' });
       // Generate and download the zip
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(zipBlob);
@@ -382,6 +388,7 @@ const TeamAssignments = () => {
       toast.error('Failed to export PDFs');
     } finally {
       setExportingTeamId(null);
+      setExportProgress(null);
     }
   };
 
