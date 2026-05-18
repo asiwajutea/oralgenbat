@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +28,10 @@ const MyPenalties = () => {
   const [charges, setCharges] = useState<Charge[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [auditMap, setAuditMap] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [appealOpen, setAppealOpen] = useState(false);
+  const [appealReason, setAppealReason] = useState("");
+  const [appealBusy, setAppealBusy] = useState(false);
 
   const load = async () => {
     if (!user) return;
@@ -38,6 +43,7 @@ const MyPenalties = () => {
     setSummary((s as Summary[]) || []);
     setCharges((c as Charge[]) || []);
     setPayments((p as Payment[]) || []);
+    setSelected(new Set());
     const ids = Array.from(new Set(((c as Charge[]) || []).map((r) => r.audit_id).filter(Boolean)));
     if (ids.length) {
       const { data: audits } = await supabase.from("audits").select("id, file_name").in("id", ids);
