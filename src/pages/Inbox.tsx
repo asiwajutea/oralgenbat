@@ -91,6 +91,46 @@ type Message = {
   created_at: string;
 };
 
+const SidebarCategories = ({
+  activeCategory,
+  onSelect,
+  categoryUnread,
+}: {
+  activeCategory: string;
+  onSelect: (k: string) => void;
+  categoryUnread: Record<string, number>;
+}) => {
+  return (
+    <div className="py-2">
+      {Object.entries(CATEGORY_META).map(([key, meta]) => {
+        const Icon = meta.icon;
+        const unread = key === "all"
+          ? Object.values(categoryUnread).reduce((s, n) => s + n, 0)
+          : categoryUnread[key] || 0;
+        const active = activeCategory === key;
+        return (
+          <button
+            key={key}
+            onClick={() => onSelect(key)}
+            className={cn(
+              "w-full flex items-center justify-between gap-2 pl-6 pr-3 py-2 text-sm rounded-r-full transition-colors",
+              active ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted text-foreground/80"
+            )}
+          >
+            <span className="flex items-center gap-3">
+              <Icon className={cn("h-4 w-4", active ? "text-primary" : meta.color)} />
+              {meta.label}
+            </span>
+            {unread > 0 && (
+              <span className="text-[11px] font-semibold text-foreground/90">{unread > 99 ? "99+" : unread}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 const Inbox = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
