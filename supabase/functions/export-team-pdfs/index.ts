@@ -63,14 +63,51 @@ serve(async (req) => {
       const fileNames = batch.file_names as string[];
       const { data: audits } = await supabase
         .from('audits')
-        .select('id, file_name, file_url')
+        .select('id, file_name, file_url, mobile_zip_url, is_re_audit, passed_with_failures')
         .in('file_name', fileNames);
 
-      const pdfList = audits?.map(audit => ({
-        fileName: `${audit.file_name}.pdf`,
-        url: audit.file_url,
-        auditId: audit.id,
-      })) || [];
+      // For re-audited interviews, check if metadata was replaced
+      const reAuditedIdsR = (audits || []).filter(a => a.is_re_audit).map(a => a.id);
+      let metadataReplacedSetR = new Set<string>();
+      if (reAuditedIdsR.length > 0) {
+        const { data: reAuditSubs } = await supabase
+          .from('re_audit_submissions')
+          .select('audit_id, replaced_zip')
+          .in('audit_id', reAuditedIdsR)
+          .eq('replaced_zip', true);
+        metadataReplacedSetR = new Set(reAuditSubs?.map(s => s.audit_id) || []);
+      }
+
+      const pdfList: any[] = (audits || []).map(audit => {
+        const includeMetadata = audit.is_re_audit && metadataReplacedSetR.has(audit.id) && audit.mobile_zip_url;
+        const isOverride = !!audit.passed_with_failures;
+        const baseName = isOverride ? `${audit.file_name}_attention` : audit.file_name;
+        return {
+          fileName: `${baseName}.pdf`,
+          url: audit.file_url,
+          auditId: audit.id,
+          ...(includeMetadata ? {
+            metadataUrl: audit.mobile_zip_url,
+            metadataFileName: `${baseName}_metadata.zip`,
+          } : {}),
+        };
+      });
+
+      // Try to attach previously generated override-notes PDF if it exists
+      const overridePath = `override-notes/${batchId}.pdf`;
+      const { data: overrideUrlData } = supabase.storage.from('team-exports').getPublicUrl(overridePath);
+      if (overrideUrlData?.publicUrl) {
+        try {
+          const head = await fetch(overrideUrlData.publicUrl, { method: 'HEAD' });
+          if (head.ok) {
+            pdfList.unshift({
+              fileName: `Override_Notes_${batchId}.pdf`,
+              url: overrideUrlData.publicUrl,
+              auditId: 'override-notes',
+            });
+          }
+        } catch (_) { /* ignore */ }
+      }
 
       return new Response(
         JSON.stringify({
