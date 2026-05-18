@@ -168,6 +168,43 @@ const MyPenalties = () => {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={appealOpen} onOpenChange={setAppealOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Appeal {selected.size} charge{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The same reason will be submitted for each selected charge. An admin will review.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            placeholder="Reason for appeal…"
+            value={appealReason}
+            onChange={(e) => setAppealReason(e.target.value)}
+            rows={4}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={appealBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!appealReason.trim() || appealBusy}
+              onClick={async () => {
+                setAppealBusy(true);
+                let ok = 0, fail = 0;
+                for (const id of Array.from(selected)) {
+                  const { error } = await supabase.rpc("appeal_penalty_charge", { _charge_id: id, _reason: appealReason.trim() });
+                  if (error) fail++; else ok++;
+                }
+                setAppealBusy(false);
+                setAppealOpen(false);
+                toast.success(`${ok} appealed${fail ? `, ${fail} failed` : ""}`);
+                load();
+              }}
+            >
+              {appealBusy ? "Submitting…" : "Submit appeals"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
