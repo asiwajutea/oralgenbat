@@ -11,8 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { formatFileSize } from "@/utils/compressPdf";
 import { FloatingUploadProgress, type UploadProgressData } from "@/components/FloatingUploadProgress";
-import {
-  Search,
+import { 
+  Search, 
   Download,
   FileText,
   Calendar,
@@ -35,11 +35,24 @@ import {
   Flame,
   MoreHorizontal,
   Pencil,
-  Info,
+  Info
 } from "lucide-react";
 import { format } from "date-fns";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,16 +84,16 @@ import SendToBurnDialog from "@/components/SendToBurnDialog";
 import { useBurnHistory } from "@/hooks/useBurnHistory";
 import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
 import { AdvancedFiltersPanel } from "@/components/AdvancedFiltersPanel";
-import {
-  AdvancedFilterState,
-  emptyAdvancedFilter,
-  matchesAdvancedFilter,
-  isAdvancedFilterActive,
-} from "@/lib/parseFailureReasons";
+import { AdvancedFilterState, emptyAdvancedFilter, matchesAdvancedFilter, isAdvancedFilterActive } from "@/lib/parseFailureReasons";
 import { ReassignFMDialog } from "@/components/tracking/ReassignFMDialog";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from "jspdf";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useResolveIssue } from "@/hooks/useTeamAssignments";
 
@@ -131,7 +144,7 @@ const InterviewTracking = () => {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
-
+  
   // Filters
   const [filters, setFilters] = useState({
     fieldManager: "",
@@ -148,12 +161,12 @@ const InterviewTracking = () => {
     queryKey: ["user-contractor-assignments", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-
+      
       const { data, error } = await supabase
         .from("user_contractor_assignments")
         .select("contractor_id")
         .eq("user_id", user.id);
-
+      
       if (error) throw error;
       return data || [];
     },
@@ -174,7 +187,7 @@ const InterviewTracking = () => {
   // Mark Resolved dialog state
   const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
   const [markResolvedInterview, setMarkResolvedInterview] = useState<TrackingInterview | null>(null);
-
+  
   // Resolved Comments modal state
   const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
   const [resolvedCommentsInterview, setResolvedCommentsInterview] = useState<TrackingInterview | null>(null);
@@ -198,7 +211,7 @@ const InterviewTracking = () => {
 
   // File upload refs and progress tracking
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
+  
   interface UploadProgress {
     interviewId: string;
     fileName: string;
@@ -211,12 +224,12 @@ const InterviewTracking = () => {
   const [activeUpload, setActiveUpload] = useState<UploadProgress | null>(null);
   const uploadingId = activeUpload?.interviewId ?? null;
 
-  const isAdmin = userRole === "admin";
-  const isSuperAdmin = userRole === "super_admin";
-  const isFieldManager = userRole === "field_manager";
-  const isContractor = userRole === "contractor";
-  const isSubContractor = userRole === "sub_contractor";
-
+  const isAdmin = userRole === 'admin';
+  const isSuperAdmin = userRole === 'super_admin';
+  const isFieldManager = userRole === 'field_manager';
+  const isContractor = userRole === 'contractor';
+  const isSubContractor = userRole === 'sub_contractor';
+  
   // Use active_contractor_id if set, otherwise fall back to contractor_id
   const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
 
@@ -225,13 +238,13 @@ const InterviewTracking = () => {
     queryKey: ["admin-field-managers", user?.id],
     queryFn: async () => {
       if (!user?.id || !isAdmin) return [];
-
+      
       const { data, error } = await supabase
         .from("field_manager_admin_assignments")
         .select("field_manager_id")
         .eq("admin_id", user.id)
         .eq("is_active", true);
-
+      
       if (error) throw error;
       return data || [];
     },
@@ -243,13 +256,13 @@ const InterviewTracking = () => {
     queryKey: ["subcontractor-field-managers", user?.id],
     queryFn: async () => {
       if (!user?.id || !isSubContractor) return [];
-
+      
       const { data, error } = await supabase
         .from("field_manager_subcontractor_assignments")
         .select("field_manager_id")
         .eq("sub_contractor_id", user.id)
         .eq("is_active", true);
-
+      
       if (error) throw error;
       return data || [];
     },
@@ -264,12 +277,12 @@ const InterviewTracking = () => {
     queryKey: ["team-assignments-tracking", user?.id, assignedFieldManagers, isSuperAdmin],
     queryFn: async () => {
       if (!user?.id) return [];
-
+      
       let query = supabase
         .from("team_assignments")
         .select("interviewer_code, field_manager_id")
         .eq("status", "approved");
-
+      
       if (isSuperAdmin) {
         // Fetch all approved assignments for FM filtering
       } else if (isFieldManager) {
@@ -278,14 +291,12 @@ const InterviewTracking = () => {
         const fmIds = assignedFieldManagers.map((fm: any) => fm.field_manager_id);
         query = query.in("field_manager_id", fmIds);
       }
-
+      
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled:
-      !!user?.id &&
-      (isFieldManager || ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) || isSuperAdmin),
+    enabled: !!user?.id && (isFieldManager || ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) || isSuperAdmin),
   });
 
   // Main interviews query - uses JOIN to avoid large .in() queries that fail silently
@@ -298,12 +309,11 @@ const InterviewTracking = () => {
         let allAudits: any[] = [];
         let from = 0;
         let hasMore = true;
-
+        
         while (hasMore) {
           const { data: batch, error } = await supabase
             .from("audits")
-            .select(
-              `
+            .select(`
               id,
               file_name,
               file_url,
@@ -328,10 +338,9 @@ const InterviewTracking = () => {
                 interviewee_name,
                 interview_date
               )
-            `,
-            )
+            `)
             .range(from, from + batchSize - 1);
-
+          
           if (error) throw error;
           if (!batch || batch.length === 0) {
             hasMore = false;
@@ -345,24 +354,23 @@ const InterviewTracking = () => {
         }
         return allAudits;
       };
-
+      
       const auditsWithMeta = await fetchAllAudits();
-
+      
       if (!auditsWithMeta || auditsWithMeta.length === 0) return [];
-
+      
       // Get interview assignments separately
-      const auditIds = auditsWithMeta.map((a) => a.id);
-
+      const auditIds = auditsWithMeta.map(a => a.id);
+      
       // Batch assignments query to avoid URL length issues
       const batchSize = 200;
       const allAssignments: any[] = [];
-
+      
       for (let i = 0; i < auditIds.length; i += batchSize) {
         const batch = auditIds.slice(i, i + batchSize);
         const { data: batchAssignments, error: assignmentsError } = await supabase
           .from("interview_assignments")
-          .select(
-            `
+          .select(`
             id,
             audit_id, 
             team_id, 
@@ -375,30 +383,29 @@ const InterviewTracking = () => {
             issue_resolved_by,
             resolve_comment,
             data_entry_teams(name)
-          `,
-          )
+          `)
           .in("audit_id", batch);
-
+        
         if (assignmentsError) {
           console.error("Error fetching assignments batch:", assignmentsError);
         } else if (batchAssignments) {
           allAssignments.push(...batchAssignments);
         }
       }
-
-      const assignmentMap = new Map(allAssignments.map((a) => [a.audit_id, a]));
-
-      let results: TrackingInterview[] = auditsWithMeta.map((audit) => {
+      
+      const assignmentMap = new Map(allAssignments.map(a => [a.audit_id, a]));
+      
+      let results: TrackingInterview[] = auditsWithMeta.map(audit => {
         // interview_metadata comes as an array from the nested select (LEFT JOIN)
         const metaArray = audit.interview_metadata as any[];
         const meta = metaArray && metaArray.length > 0 ? metaArray[0] : null;
         const assignment = assignmentMap.get(audit.id);
-
+        
         // Extract contractor_id from file_name if not in metadata (format: NG71_711_20251208_0937)
-        const fileNameParts = audit.file_name.split("_");
+        const fileNameParts = audit.file_name.split('_');
         const contractorIdFromFileName = fileNameParts.length > 0 ? fileNameParts[0] : null;
         const interviewerCodeFromFileName = fileNameParts.length > 1 ? fileNameParts[1] : null;
-
+        
         return {
           id: audit.id,
           file_name: audit.file_name,
@@ -440,23 +447,21 @@ const InterviewTracking = () => {
           interviewer_code: meta?.interviewer_code || interviewerCodeFromFileName,
         };
       });
-
+      
       // Apply role-based filtering
       if (isContractor && effectiveContractorId) {
-        results = results.filter((r) => (r as any).contractor_id === effectiveContractorId);
+        results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
       } else if (isSubContractor && effectiveContractorId) {
-        results = results.filter((r) => (r as any).contractor_id === effectiveContractorId);
+        results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
       } else if (isAdmin && teamAssignments.length > 0) {
         const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter(
-          (r) => (r as any).interviewer_code && assignedCodes.includes((r as any).interviewer_code),
-        );
+        results = results.filter(r => (r as any).interviewer_code && assignedCodes.includes((r as any).interviewer_code));
       } else if (isFieldManager && teamAssignments.length > 0) {
         const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter((r) => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
+        results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
       }
       // Super admin sees all
-
+      
       return results;
     },
     enabled: !!user?.id,
@@ -466,10 +471,13 @@ const InterviewTracking = () => {
   const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0, scopedNames: 0 } } = useQuery({
     queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole, teamAssignments],
     queryFn: async () => {
-      const { data } = await supabase.from("burn_queue").select("audit_id, file_name").is("restored_at", null);
+      const { data } = await supabase
+        .from("burn_queue")
+        .select("audit_id, file_name")
+        .is("restored_at", null);
       const allBurned = data || [];
       const ids = new Set(allBurned.map((b) => b.audit_id));
-
+      
       // Scope count by user's contractor for non-admins
       const effectiveCid = profile?.active_contractor_id || profile?.contractor_id;
       let scopedItems = allBurned;
@@ -481,14 +489,14 @@ const InterviewTracking = () => {
           return parts[1] && codes.has(parts[1]);
         });
       } else if (!isSuperAdmin && effectiveCid) {
-        scopedItems = allBurned.filter((b) => b.file_name?.startsWith(effectiveCid));
+        scopedItems = allBurned.filter(b => b.file_name?.startsWith(effectiveCid));
       }
       const scopedCount = scopedItems.length;
-
-      // Fetch interview total names for scoped burned items
+      
+      // Fetch total names for scoped burned items
       let scopedNames = 0;
       if (scopedItems.length > 0) {
-        const burnedIds = scopedItems.map((b) => b.audit_id);
+        const burnedIds = scopedItems.map(b => b.audit_id);
         const batchSize = 200;
         for (let i = 0; i < burnedIds.length; i += batchSize) {
           const batch = burnedIds.slice(i, i + batchSize);
@@ -501,7 +509,7 @@ const InterviewTracking = () => {
           }
         }
       }
-
+      
       return { ids, scopedCount, scopedNames };
     },
   });
@@ -511,9 +519,7 @@ const InterviewTracking = () => {
     try {
       const saved = localStorage.getItem("tracking-adv-filter");
       return saved ? JSON.parse(saved) : emptyAdvancedFilter;
-    } catch {
-      return emptyAdvancedFilter;
-    }
+    } catch { return emptyAdvancedFilter; }
   });
   useEffect(() => {
     localStorage.setItem("tracking-adv-filter", JSON.stringify(advFilter));
@@ -529,14 +535,14 @@ const InterviewTracking = () => {
   const currentPageAuditIds = useMemo(() => {
     // We need to compute paginated IDs from nonBurnedInterviews after filtering/sorting
     // For now, use all non-burned IDs but cap for the current page
-    return nonBurnedInterviews.map((i) => i.id);
+    return nonBurnedInterviews.map(i => i.id);
   }, [nonBurnedInterviews]);
 
   const { data: unreadCommentCounts = {} } = useQuery({
     queryKey: ["unread-comment-counts", currentPageAuditIds, user?.id],
     queryFn: async () => {
       if (currentPageAuditIds.length === 0 || !user?.id) return {};
-
+      
       // Fetch all comments for all interviews (not by current user) - batch to avoid URL issues
       const batchSize = 200;
       let allComments: any[] = [];
@@ -550,11 +556,11 @@ const InterviewTracking = () => {
         if (batchComments) allComments.push(...batchComments);
       }
       const comments = allComments;
-
+      
       if (!comments || comments.length === 0) return {};
 
       // Fetch which of these comments the current user has already read
-      const commentIds = comments.map((c) => c.id);
+      const commentIds = comments.map(c => c.id);
       let allReads: any[] = [];
       for (let i = 0; i < commentIds.length; i += batchSize) {
         const batch = commentIds.slice(i, i + batchSize);
@@ -565,17 +571,17 @@ const InterviewTracking = () => {
           .in("comment_id", batch);
         if (reads) allReads.push(...reads);
       }
-
+      
       const readSet = new Set(allReads.map((r: any) => r.comment_id));
-
+      
       // Count unread comments per audit
       const counts: Record<string, number> = {};
-      comments.forEach((c) => {
+      comments.forEach(c => {
         if (!readSet.has(c.id)) {
           counts[c.audit_id] = (counts[c.audit_id] || 0) + 1;
         }
       });
-
+      
       return counts;
     },
     enabled: currentPageAuditIds.length > 0 && !!user?.id,
@@ -583,7 +589,7 @@ const InterviewTracking = () => {
 
   // Merge unread counts into interviews
   const interviewsWithUnreadCounts = useMemo(() => {
-    return nonBurnedInterviews.map((i) => ({
+    return nonBurnedInterviews.map(i => ({
       ...i,
       unread_comment_count: unreadCommentCounts[i.id] || 0,
     }));
@@ -593,10 +599,16 @@ const InterviewTracking = () => {
   const { data: canonicalFms = [] } = useQuery({
     queryKey: ["canonical-field-managers"],
     queryFn: async () => {
-      const { data: fmRoles } = await supabase.from("user_roles").select("user_id").eq("role", "field_manager");
+      const { data: fmRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "field_manager");
       if (!fmRoles?.length) return [];
-      const fmIds = fmRoles.map((r) => r.user_id);
-      const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", fmIds);
+      const fmIds = fmRoles.map(r => r.user_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", fmIds);
       return (profiles || []).sort((a, b) => a.full_name.localeCompare(b.full_name));
     },
   });
@@ -605,7 +617,9 @@ const InterviewTracking = () => {
   const { data: fmOverrides = [] } = useQuery({
     queryKey: ["interview-fm-overrides"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("interview_fm_overrides").select("audit_id, field_manager_id");
+      const { data, error } = await supabase
+        .from("interview_fm_overrides")
+        .select("audit_id, field_manager_id");
       if (error) throw error;
       return data || [];
     },
@@ -620,31 +634,29 @@ const InterviewTracking = () => {
 
   // Get unique values for filter dropdowns
   const filterOptions = useMemo(() => {
-    const statuses = [...new Set(interviewsWithUnreadCounts.map((i) => i.status).filter(Boolean))];
-    const contractors = [...new Set(interviewsWithUnreadCounts.map((i) => (i as any).contractor_id).filter(Boolean))];
+    const statuses = [...new Set(interviewsWithUnreadCounts.map(i => i.status).filter(Boolean))];
+    const contractors = [...new Set(interviewsWithUnreadCounts.map(i => (i as any).contractor_id).filter(Boolean))];
     return { statuses, contractors };
   }, [interviewsWithUnreadCounts]);
 
   // Apply filters and search
   const filteredInterviews = useMemo(() => {
-    return interviewsWithUnreadCounts.filter((interview) => {
+    return interviewsWithUnreadCounts.filter(interview => {
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchesSearch =
+        const matchesSearch = 
           interview.file_name.toLowerCase().includes(query) ||
           interview.interviewee_name?.toLowerCase().includes(query);
         if (!matchesSearch) return false;
       }
-
+      
       // Apply other filters
       // Field Manager filter - checks per-interview overrides first, then falls back to team_assignments
       if (filters.fieldManager) {
         // Determine effective FM for this interview: override takes priority
         const overrideFmId = fmOverrideMap.get(interview.id);
-        const teamFmId = teamAssignments.find(
-          (t: any) => t.interviewer_code === (interview as any).interviewer_code,
-        )?.field_manager_id;
+        const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (interview as any).interviewer_code)?.field_manager_id;
         const effectiveFmId = overrideFmId || teamFmId;
 
         if (filters.fieldManager === "not_assigned") {
@@ -653,7 +665,7 @@ const InterviewTracking = () => {
           if (effectiveFmId !== filters.fieldManager) return false;
         }
       }
-
+      
       // Status filter - special cases for "With Issues", "Failed - Unresolved", and "Failed - Resolved"
       if (filters.status === "With Issues") {
         if (!interview.is_flagged_for_issue || interview.issue_resolved_at) return false;
@@ -664,17 +676,17 @@ const InterviewTracking = () => {
       } else if (filters.status && interview.status !== filters.status) {
         return false;
       }
-
+      
       if (filters.startDate && interview.interview_date && interview.interview_date < filters.startDate) return false;
       if (filters.endDate && interview.interview_date && interview.interview_date > filters.endDate) return false;
-
+      
       // Metadata status filter
       if (filters.metadataStatus === "with_metadata" && !interview.has_metadata) return false;
       if (filters.metadataStatus === "without_metadata" && interview.has_metadata) return false;
-
+      
       // Contractor filter
       if (filters.contractor && (interview as any).contractor_id !== filters.contractor) return false;
-
+      
       // Advanced filters (failure reasons, people, dates, re-audit, burn history)
       if (isAdvancedFilterActive(advFilter)) {
         const proxy = {
@@ -696,14 +708,14 @@ const InterviewTracking = () => {
     return [...filteredInterviews].sort((a, b) => {
       let aVal = a[sortField as keyof TrackingInterview];
       let bVal = b[sortField as keyof TrackingInterview];
-
+      
       if (aVal === null) aVal = "";
       if (bVal === null) bVal = "";
-
+      
       if (typeof aVal === "number" && typeof bVal === "number") {
         return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
       }
-
+      
       const aStr = String(aVal);
       const bStr = String(bVal);
       return sortOrder === "asc" ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
@@ -720,17 +732,18 @@ const InterviewTracking = () => {
 
   // Calculate total names for stat cards
   const nameStats = useMemo(() => {
-    const passed = interviewsWithUnreadCounts.filter((i) => i.status === "Audit Passed");
-    const failed = interviewsWithUnreadCounts.filter((i) => i.status === "Audit Failed");
-    const pending = interviewsWithUnreadCounts.filter((i) => i.status === "Pending" || i.status === "Awaiting Review");
+    const passed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed");
+    const failed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed");
+    const pending = interviewsWithUnreadCounts.filter(i => i.status === "Pending" || i.status === "Awaiting Review");
+    
+    const sum = (list: typeof interviewsWithUnreadCounts) => 
+      list.reduce((acc, i) => acc + (i.total_names || 0), 0);
 
-    const sum = (list: typeof interviewsWithUnreadCounts) => list.reduce((acc, i) => acc + (i.total_names || 0), 0);
-
-    const filteredPassed = filteredInterviews.filter((i) => i.status === "Audit Passed");
-    const filteredFailed = filteredInterviews.filter((i) => i.status === "Audit Failed");
-    const filteredUnresolved = filteredInterviews.filter((i) => i.is_flagged_for_issue && !i.issue_resolved_at);
-    const filteredNoMeta = filteredInterviews.filter((i) => !i.has_metadata);
-
+    const filteredPassed = filteredInterviews.filter(i => i.status === "Audit Passed");
+    const filteredFailed = filteredInterviews.filter(i => i.status === "Audit Failed");
+    const filteredUnresolved = filteredInterviews.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at);
+    const filteredNoMeta = filteredInterviews.filter(i => !i.has_metadata);
+    
     return {
       total: sum(interviewsWithUnreadCounts),
       passed: sum(passed),
@@ -760,30 +773,20 @@ const InterviewTracking = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = [
-      "Interview ID",
-      "Field Manager",
-      "Total Names",
-      "Interviewee",
-      "Interview Date",
-      "Status",
-      "Team Assigned",
-      "PDF",
-      "Metadata",
-    ];
-    const rows = sortedInterviews.map((i) => [
+    const headers = ["Interview ID", "Field Manager", "Total Names", "Interviewee", "Interview Date", "Status", "Team Assigned", "PDF", "Metadata"];
+    const rows = sortedInterviews.map(i => [
       i.file_name,
       i.field_manager || "",
       i.total_names?.toString() || "",
       i.interviewee_name || "",
       i.interview_date || "",
       i.status,
-      i.team_assigned ? i.team_name || "Yes" : "No",
+      i.team_assigned ? (i.team_name || "Yes") : "No",
       i.has_pdf ? "Yes" : "No",
       i.has_metadata ? "Yes" : "No",
     ]);
-
-    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    
+    const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -804,7 +807,7 @@ const InterviewTracking = () => {
 
       const addPageHeader = (isFirstPage: boolean = false) => {
         doc.setFillColor(31, 41, 55);
-        doc.rect(0, 0, pageWidth, isFirstPage ? 25 : 15, "F");
+        doc.rect(0, 0, pageWidth, isFirstPage ? 25 : 15, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(isFirstPage ? 16 : 10);
         doc.setFont("helvetica", "bold");
@@ -812,7 +815,7 @@ const InterviewTracking = () => {
           doc.text("Interview Tracking Report", margin, 15);
         } else {
           doc.text("Interview Tracking Report", margin, 10);
-          doc.text(`Page ${pageNum}`, pageWidth - margin, 10, { align: "right" });
+          doc.text(`Page ${pageNum}`, pageWidth - margin, 10, { align: 'right' });
         }
         doc.setTextColor(0, 0, 0);
       };
@@ -838,17 +841,9 @@ const InterviewTracking = () => {
         doc.text(`${i + 1}. ${interview.file_name}`, margin, y);
         doc.setFont("helvetica", "normal");
         y += 4.5;
-        doc.text(
-          `Status: ${interview.status} | Field Manager: ${interview.field_manager || "-"} | Names: ${interview.total_names || "-"}`,
-          margin,
-          y,
-        );
+        doc.text(`Status: ${interview.status} | Field Manager: ${interview.field_manager || "-"} | Names: ${interview.total_names || "-"}`, margin, y);
         y += 4.5;
-        doc.text(
-          `Interviewee: ${interview.interviewee_name || "-"} | Date: ${interview.interview_date || "-"} | PDF: ${interview.has_pdf ? "Yes" : "No"} | Meta: ${interview.has_metadata ? "Yes" : "No"}`,
-          margin,
-          y,
-        );
+        doc.text(`Interviewee: ${interview.interviewee_name || "-"} | Date: ${interview.interview_date || "-"} | PDF: ${interview.has_pdf ? "Yes" : "No"} | Meta: ${interview.has_metadata ? "Yes" : "No"}`, margin, y);
         y += 6;
       });
 
@@ -870,7 +865,7 @@ const InterviewTracking = () => {
     setSearchQuery("");
   };
 
-  const hasActiveFilters = Object.values(filters).some((v) => v) || searchQuery;
+  const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery;
 
   // Build status options including "With Issues" and "Failed - Unresolved"
   const statusFilterOptions = useMemo(() => {
@@ -884,7 +879,7 @@ const InterviewTracking = () => {
     if (!options.includes("Failed - Resolved")) {
       options.push("Failed - Resolved");
     }
-    return options.sort((a, b) => (a ?? "").localeCompare(b ?? ""));
+    return options.sort((a, b) => (a ?? '').localeCompare(b ?? ''));
   }, [filterOptions.statuses]);
 
   // Check if user can resolve issues (field managers, admins, super admins, sub_contractors)
@@ -932,7 +927,7 @@ const InterviewTracking = () => {
     }
 
     // Completed - GREEN
-    if (interview.entry_status === "data_entry_complete") {
+    if (interview.entry_status === 'data_entry_complete') {
       return (
         <Badge className="gap-1 bg-green-500 text-white border-green-600">
           <Users className="h-3 w-3" />
@@ -954,31 +949,13 @@ const InterviewTracking = () => {
     const badge = (() => {
       switch (status) {
         case "Audit Passed":
-          return (
-            <Badge className="bg-success text-success-foreground gap-1">
-              <CheckCircle className="h-3 w-3" />
-              Passed
-            </Badge>
-          );
+          return <Badge className="bg-success text-success-foreground gap-1"><CheckCircle className="h-3 w-3" />Passed</Badge>;
         case "Audit Failed":
-          return (
-            <Badge variant="destructive" className="gap-1">
-              <XCircle className="h-3 w-3" />
-              Failed
-            </Badge>
-          );
+          return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
         case "Awaiting Review":
-          return (
-            <Badge variant="outline" className="text-warning border-warning gap-1">
-              Pending
-            </Badge>
-          );
+          return <Badge variant="outline" className="text-warning border-warning gap-1">Pending</Badge>;
         case "In Review":
-          return (
-            <Badge variant="secondary" className="gap-1">
-              In Review
-            </Badge>
-          );
+          return <Badge variant="secondary" className="gap-1">In Review</Badge>;
         default:
           return <Badge variant="outline">{status}</Badge>;
       }
@@ -989,26 +966,18 @@ const InterviewTracking = () => {
       const hasPdf = artifactCorrection.includes("scanned_pdf");
       const hasMeta = artifactCorrection.includes("mobile_metadata");
       const hasFieldAudit = artifactCorrection.includes("no_field_audit");
-
+      
       let correctionBadge = null;
       if (hasPdf && hasMeta && hasFieldAudit) {
-        correctionBadge = (
-          <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B+F</Badge>
-        );
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B+F</Badge>;
       } else if (hasPdf && hasMeta) {
-        correctionBadge = (
-          <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>
-        );
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B</Badge>;
       } else if (hasPdf) {
         correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-red-100 text-red-700 border-red-300">P</Badge>;
       } else if (hasMeta) {
-        correctionBadge = (
-          <Badge className="h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-orange-300">M</Badge>
-        );
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-orange-300">M</Badge>;
       } else if (hasFieldAudit) {
-        correctionBadge = (
-          <Badge className="h-5 px-1.5 text-[10px] bg-yellow-100 text-yellow-700 border-yellow-300">F</Badge>
-        );
+        correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-yellow-100 text-yellow-700 border-yellow-300">F</Badge>;
       }
 
       return (
@@ -1027,10 +996,7 @@ const InterviewTracking = () => {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span
-                  className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-300 cursor-help"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <span className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-300 cursor-help" onClick={(e) => e.stopPropagation()}>
                   <AlertTriangle className="h-3 w-3" />
                 </span>
               </TooltipTrigger>
@@ -1038,9 +1004,7 @@ const InterviewTracking = () => {
                 <p className="font-semibold text-xs mb-1">Passed with Override</p>
                 <p className="text-xs">{interview.pass_override_reason || "No reason provided"}</p>
                 {interview.pass_override_action_plan && (
-                  <p className="text-xs mt-1 text-muted-foreground">
-                    Action Plan: {interview.pass_override_action_plan}
-                  </p>
+                  <p className="text-xs mt-1 text-muted-foreground">Action Plan: {interview.pass_override_action_plan}</p>
                 )}
               </TooltipContent>
             </Tooltip>
@@ -1059,7 +1023,7 @@ const InterviewTracking = () => {
 
   // Handle metadata upload from tracking page
   const handleMetadataUpload = async (interviewId: string, fileName: string, file: File) => {
-    if (!file || !file.name.endsWith(".zip")) {
+    if (!file || !file.name.endsWith('.zip')) {
       toast({
         title: "Invalid file",
         description: "Please upload a ZIP file containing metadata",
@@ -1076,7 +1040,7 @@ const InterviewTracking = () => {
       progress: 0,
       status: "uploading",
     });
-
+    
     try {
       const zipPath = `mobile-zips/${interviewId}/${Date.now()}_${file.name}`;
 
@@ -1091,7 +1055,7 @@ const InterviewTracking = () => {
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 80);
-            setActiveUpload((prev) => (prev ? { ...prev, progress: pct } : prev));
+            setActiveUpload(prev => prev ? { ...prev, progress: pct } : prev);
           }
         };
         xhr.onload = () => {
@@ -1104,9 +1068,11 @@ const InterviewTracking = () => {
         xhr.send(file);
       });
 
-      setActiveUpload((prev) => (prev ? { ...prev, progress: 82, status: "processing" } : prev));
+      setActiveUpload(prev => prev ? { ...prev, progress: 82, status: "processing" } : prev);
 
-      const { data: urlData } = supabase.storage.from("mobile-zips").getPublicUrl(zipPath);
+      const { data: urlData } = supabase.storage
+        .from("mobile-zips")
+        .getPublicUrl(zipPath);
 
       const { error: updateError } = await supabase
         .from("audits")
@@ -1118,7 +1084,7 @@ const InterviewTracking = () => {
 
       if (updateError) throw updateError;
 
-      setActiveUpload((prev) => (prev ? { ...prev, progress: 90 } : prev));
+      setActiveUpload(prev => prev ? { ...prev, progress: 90 } : prev);
 
       const { error: processError } = await supabase.functions.invoke("process-mobile-zip", {
         body: { auditId: interviewId, mobileZipUrl: urlData.publicUrl },
@@ -1128,7 +1094,7 @@ const InterviewTracking = () => {
         console.error("Process error:", processError);
       }
 
-      setActiveUpload((prev) => (prev ? { ...prev, progress: 100, status: "success" } : prev));
+      setActiveUpload(prev => prev ? { ...prev, progress: 100, status: "success" } : prev);
       queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
 
       toast({
@@ -1137,9 +1103,7 @@ const InterviewTracking = () => {
       });
     } catch (error: any) {
       console.error("Upload error:", error);
-      setActiveUpload((prev) =>
-        prev ? { ...prev, status: "error", errorMessage: error.message || "Upload failed" } : prev,
-      );
+      setActiveUpload(prev => prev ? { ...prev, status: "error", errorMessage: error.message || "Upload failed" } : prev);
       toast({
         title: "Upload failed",
         description: error.message || "Failed to upload metadata",
@@ -1164,7 +1128,7 @@ const InterviewTracking = () => {
         <DropdownMenuContent align="end">
           {/* View PDF - only for interviews with PDF but no metadata */}
           {interview.has_pdf && interview.file_url && !interview.has_metadata && (
-            <DropdownMenuItem onClick={() => window.open(interview.file_url!, "_blank")}>
+            <DropdownMenuItem onClick={() => window.open(interview.file_url!, '_blank')}>
               <FileText className="h-4 w-4 mr-2" />
               View PDF
             </DropdownMenuItem>
@@ -1177,9 +1141,8 @@ const InterviewTracking = () => {
             </DropdownMenuItem>
           )}
           {/* Comment / Resolved */}
-          {interview.status !== "Audit Passed" &&
-            !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) &&
-            (interview.artifact_correction_resolved_at ? (
+          {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
+            interview.artifact_correction_resolved_at ? (
               <DropdownMenuItem onClick={() => handleViewResolutionComments(interview)}>
                 <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
                 Resolved
@@ -1199,7 +1162,8 @@ const InterviewTracking = () => {
                   </Badge>
                 )}
               </DropdownMenuItem>
-            ))}
+            )
+          )}
           {/* View Issue */}
           {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
             <DropdownMenuItem onClick={() => handleViewIssue(interview)} className="text-destructive">
@@ -1216,25 +1180,21 @@ const InterviewTracking = () => {
           )}
           {/* Edit Filename - only for interviews without metadata */}
           {!interview.has_metadata && (
-            <DropdownMenuItem
-              onClick={() => {
-                setEditFilenameInterview(interview);
-                setNewFilename(interview.file_name);
-                setShowEditFilename(true);
-              }}
-            >
+            <DropdownMenuItem onClick={() => {
+              setEditFilenameInterview(interview);
+              setNewFilename(interview.file_name);
+              setShowEditFilename(true);
+            }}>
               <Pencil className="h-4 w-4 mr-2" />
               Edit Filename
             </DropdownMenuItem>
           )}
           {/* Reassign FM - visible when interview has metadata */}
           {(interview as any).interviewer_code && (
-            <DropdownMenuItem
-              onClick={() => {
-                setReassignInterview(interview);
-                setShowReassignDialog(true);
-              }}
-            >
+            <DropdownMenuItem onClick={() => {
+              setReassignInterview(interview);
+              setShowReassignDialog(true);
+            }}>
               <Users className="h-4 w-4 mr-2" />
               Reassign FM
             </DropdownMenuItem>
@@ -1243,11 +1203,8 @@ const InterviewTracking = () => {
           {interview.status !== "Audit Passed" && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  setBurnInterview(interview);
-                  setShowBurnDialog(true);
-                }}
+              <DropdownMenuItem 
+                onClick={() => { setBurnInterview(interview); setShowBurnDialog(true); }}
                 className="text-orange-600 focus:text-orange-600"
               >
                 <Flame className="h-4 w-4 mr-2" />
@@ -1268,53 +1225,46 @@ const InterviewTracking = () => {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Interview Tracking</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1">
-              {isSuperAdmin
-                ? "View all interviews"
-                : isAdmin || isSubContractor
-                  ? "View interviews from your assigned field managers"
-                  : isFieldManager
-                    ? "View interviews from your team"
-                    : "View interviews from your contractor"}
+              {isSuperAdmin ? "View all interviews" :
+               (isAdmin || isSubContractor) ? "View interviews from your assigned field managers" :
+               isFieldManager ? "View interviews from your team" :
+               "View interviews from your contractor"}
             </p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <UploadLockGuard>
-              <BulkMetadataUploadDialog
-                onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
-                trigger={
-                  <Button variant="outline" className="gap-2 text-xs sm:text-sm">
-                    <FileArchive className="h-4 w-4" />
-                    <span className="sm:hidden text-[10px]">ZIP</span>
-                    <span className="hidden sm:inline">Bulk Metadata</span>
-                  </Button>
+            {false && <UploadLockGuard>
+            <BulkMetadataUploadDialog
+              onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
+              trigger={
+                <Button variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <FileArchive className="h-4 w-4" />
+                  <span className="sm:hidden text-[10px]">ZIP</span>
+                  <span className="hidden sm:inline">Bulk Metadata</span>
+                </Button>
+              }
+            />
+            </UploadLockGuard>}
+            {false && <UploadLockGuard>
+            <BulkPdfUploadDialog
+              onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
+              onUploadProgress={(p) => {
+                if (p) {
+                  setActiveUpload({ interviewId: "bulk-pdf", ...p });
                 }
-              />
-            </UploadLockGuard>
-            <UploadLockGuard>
-              <BulkPdfUploadDialog
-                onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
-                onUploadProgress={(p) => {
-                  if (p) {
-                    setActiveUpload({ interviewId: "bulk-pdf", ...p });
-                  }
-                }}
-                trigger={
-                  <Button variant="outline" className="gap-2 text-xs sm:text-sm">
-                    <Upload className="h-4 w-4" />
-                    <span className="sm:hidden text-[10px]">PDF</span>
-                    <span className="hidden sm:inline">Bulk PDF</span>
-                  </Button>
-                }
-              />
-            </UploadLockGuard>
+              }}
+              trigger={
+                <Button variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <Upload className="h-4 w-4" />
+                  <span className="sm:hidden text-[10px]">PDF</span>
+                  <span className="hidden sm:inline">Bulk PDF</span>
+                </Button>
+              }
+            />
+            </UploadLockGuard>}
             <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2 text-xs sm:text-sm">
               <Filter className="h-4 w-4" />
               <span className="hidden sm:inline">Filters</span>
-              {hasActiveFilters && (
-                <Badge variant="secondary" className="ml-1">
-                  Active
-                </Badge>
-              )}
+              {hasActiveFilters && <Badge variant="secondary" className="ml-1">Active</Badge>}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1342,14 +1292,11 @@ const InterviewTracking = () => {
                 <p className="text-xs sm:text-sm text-muted-foreground">Total</p>
                 <p className="text-lg sm:text-2xl font-bold">
                   {interviewsWithUnreadCounts.length}
-                  {hasActiveFilters && (
-                    <span className="text-sm font-semibold text-muted-foreground">
-                      {" "}
-                      ({nameStats.filteredInterviewCount})
-                    </span>
-                  )}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredInterviewCount})</span>}
                 </p>
-                <p className="text-xs font-medium text-primary">{nameStats.total.toLocaleString()} names</p>
+                <p className="text-xs font-medium text-primary">
+                  {nameStats.total.toLocaleString()} names
+                </p>
                 {hasActiveFilters && nameStats.filteredTotal !== nameStats.total && (
                   <p className="text-xs text-muted-foreground">({nameStats.filteredTotal.toLocaleString()} names)</p>
                 )}
@@ -1364,15 +1311,12 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Passed</p>
                 <p className="text-lg sm:text-2xl font-bold">
-                  {interviewsWithUnreadCounts.filter((i) => i.status === "Audit Passed").length}
-                  {hasActiveFilters && (
-                    <span className="text-sm font-semibold text-muted-foreground">
-                      {" "}
-                      ({nameStats.filteredPassedCount})
-                    </span>
-                  )}
+                  {interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed").length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredPassedCount})</span>}
                 </p>
-                <p className="text-xs font-medium text-success">{nameStats.passed.toLocaleString()} names</p>
+                <p className="text-xs font-medium text-success">
+                  {nameStats.passed.toLocaleString()} names
+                </p>
                 {hasActiveFilters && nameStats.filteredPassed !== nameStats.passed && (
                   <p className="text-xs text-muted-foreground">({nameStats.filteredPassed.toLocaleString()} names)</p>
                 )}
@@ -1387,15 +1331,12 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Failed</p>
                 <p className="text-lg sm:text-2xl font-bold">
-                  {interviewsWithUnreadCounts.filter((i) => i.status === "Audit Failed").length}
-                  {hasActiveFilters && (
-                    <span className="text-sm font-semibold text-muted-foreground">
-                      {" "}
-                      ({nameStats.filteredFailedCount})
-                    </span>
-                  )}
+                  {interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed").length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredFailedCount})</span>}
                 </p>
-                <p className="text-xs font-medium text-destructive">{nameStats.failed.toLocaleString()} names</p>
+                <p className="text-xs font-medium text-destructive">
+                  {nameStats.failed.toLocaleString()} names
+                </p>
                 {hasActiveFilters && nameStats.filteredFailed !== nameStats.failed && (
                   <p className="text-xs text-muted-foreground">({nameStats.filteredFailed.toLocaleString()} names)</p>
                 )}
@@ -1410,18 +1351,11 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Unresolved Issues</p>
                 <p className="text-lg sm:text-2xl font-bold text-red-600">
-                  {interviewsWithUnreadCounts.filter((i) => i.is_flagged_for_issue && !i.issue_resolved_at).length}
-                  {hasActiveFilters && (
-                    <span className="text-sm font-semibold text-muted-foreground">
-                      {" "}
-                      ({nameStats.filteredUnresolvedCount})
-                    </span>
-                  )}
+                  {interviewsWithUnreadCounts.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at).length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredUnresolvedCount})</span>}
                 </p>
                 {hasActiveFilters && (
-                  <p className="text-xs text-muted-foreground">
-                    ({nameStats.filteredUnresolved.toLocaleString()} names)
-                  </p>
+                  <p className="text-xs text-muted-foreground">({nameStats.filteredUnresolved.toLocaleString()} names)</p>
                 )}
               </div>
             </CardContent>
@@ -1434,13 +1368,8 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">No Metadata</p>
                 <p className="text-lg sm:text-2xl font-bold text-orange-600">
-                  {interviewsWithUnreadCounts.filter((i) => !i.has_metadata).length}
-                  {hasActiveFilters && (
-                    <span className="text-sm font-semibold text-muted-foreground">
-                      {" "}
-                      ({nameStats.filteredNoMetaCount})
-                    </span>
-                  )}
+                  {interviewsWithUnreadCounts.filter(i => !i.has_metadata).length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredNoMetaCount})</span>}
                 </p>
                 {hasActiveFilters && (
                   <p className="text-xs text-muted-foreground">({nameStats.filteredNoMeta.toLocaleString()} names)</p>
@@ -1473,11 +1402,14 @@ const InterviewTracking = () => {
               <div>
                 <p className="text-xs sm:text-sm text-muted-foreground">Filtered</p>
                 <p className="text-lg sm:text-2xl font-bold">{filteredInterviews.length}</p>
-                <p className="text-xs font-medium text-purple-600">{nameStats.filtered.toLocaleString()} names</p>
+                <p className="text-xs font-medium text-purple-600">
+                  {nameStats.filtered.toLocaleString()} names
+                </p>
               </div>
             </CardContent>
           </Card>
         </div>
+
 
         {/* Filters Panel */}
         {showFilters && (
@@ -1487,15 +1419,7 @@ const InterviewTracking = () => {
                 <CardTitle className="text-lg">Filters</CardTitle>
                 <div className="flex items-center gap-2">
                   <AdvancedFiltersPanel value={advFilter} onChange={setAdvFilter} />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      clearFilters();
-                      setAdvFilter(emptyAdvancedFilter);
-                    }}
-                    className="gap-1"
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => { clearFilters(); setAdvFilter(emptyAdvancedFilter); }} className="gap-1">
                     <X className="h-4 w-4" />
                     Clear All
                   </Button>
@@ -1514,49 +1438,36 @@ const InterviewTracking = () => {
                 </div>
                 <div>
                   <Label className="text-sm">Field Manager</Label>
-                  <Select
-                    value={filters.fieldManager}
-                    onValueChange={(v) => setFilters({ ...filters, fieldManager: v === "all" ? "" : v })}
-                  >
+                  <Select value={filters.fieldManager} onValueChange={(v) => setFilters({ ...filters, fieldManager: v === "all" ? "" : v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Field Managers</SelectItem>
                       <SelectItem value="not_assigned">Not Assigned</SelectItem>
-                      {canonicalFms.map((fm) => (
-                        <SelectItem key={fm.id} value={fm.id}>
-                          {fm.full_name}
-                        </SelectItem>
+                      {canonicalFms.map(fm => (
+                        <SelectItem key={fm.id} value={fm.id}>{fm.full_name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-sm">Status</Label>
-                  <Select
-                    value={filters.status}
-                    onValueChange={(v) => setFilters({ ...filters, status: v === "all" ? "" : v })}
-                  >
+                  <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v === "all" ? "" : v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Statuses</SelectItem>
-                      {statusFilterOptions.map((s) => (
-                        <SelectItem key={s} value={s!}>
-                          {s}
-                        </SelectItem>
+                      {statusFilterOptions.map(s => (
+                        <SelectItem key={s} value={s!}>{s}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label className="text-sm">Metadata</Label>
-                  <Select
-                    value={filters.metadataStatus}
-                    onValueChange={(v) => setFilters({ ...filters, metadataStatus: v === "all" ? "" : v })}
-                  >
+                  <Select value={filters.metadataStatus} onValueChange={(v) => setFilters({ ...filters, metadataStatus: v === "all" ? "" : v })}>
                     <SelectTrigger>
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
@@ -1570,19 +1481,14 @@ const InterviewTracking = () => {
                 {hasMultipleContractors && (
                   <div>
                     <Label className="text-sm">Contractor</Label>
-                    <Select
-                      value={filters.contractor}
-                      onValueChange={(v) => setFilters({ ...filters, contractor: v === "all" ? "" : v })}
-                    >
+                    <Select value={filters.contractor} onValueChange={(v) => setFilters({ ...filters, contractor: v === "all" ? "" : v })}>
                       <SelectTrigger>
                         <SelectValue placeholder="All" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Contractors</SelectItem>
-                        {filterOptions.contractors.map((c) => (
-                          <SelectItem key={c} value={c!}>
-                            {c}
-                          </SelectItem>
+                        {filterOptions.contractors.map(c => (
+                          <SelectItem key={c} value={c!}>{c}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1649,7 +1555,7 @@ const InterviewTracking = () => {
                                 <AlertTriangle className="h-2.5 w-2.5" />
                                 {interview.team_name || "Flagged"}
                               </Badge>
-                            ) : interview.entry_status === "data_entry_complete" ? (
+                            ) : interview.entry_status === 'data_entry_complete' ? (
                               <Badge className="h-5 text-[10px] bg-green-500 text-white">
                                 {interview.team_name || "Assigned"}
                               </Badge>
@@ -1680,14 +1586,10 @@ const InterviewTracking = () => {
                             </div>
                             <div>
                               <p className="text-muted-foreground text-xs">Last Modified</p>
-                              <p className="font-medium">
-                                {interview.last_modified
-                                  ? format(new Date(interview.last_modified), "MMM d, yyyy")
-                                  : "-"}
-                              </p>
+                              <p className="font-medium">{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</p>
                             </div>
                           </div>
-
+                          
                           {/* Artifacts Status */}
                           <div>
                             <p className="text-muted-foreground text-xs mb-1">Artifacts</p>
@@ -1713,22 +1615,20 @@ const InterviewTracking = () => {
                               </div>
                             )}
                           </div>
-
+                          
                           {/* Hidden file input for metadata upload */}
                           {!interview.has_metadata && (
                             <input
                               type="file"
                               accept=".zip"
                               className="hidden"
-                              ref={(el) => {
-                                fileInputRefs.current[interview.id] = el;
-                              }}
+                              ref={(el) => { fileInputRefs.current[interview.id] = el; }}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
                                   handleMetadataUpload(interview.id, interview.file_name, file);
                                 }
-                                e.target.value = "";
+                                e.target.value = '';
                               }}
                             />
                           )}
@@ -1743,7 +1643,7 @@ const InterviewTracking = () => {
                     </AccordionItem>
                   ))}
                 </Accordion>
-
+                
                 {/* Pagination */}
                 <div className="px-4 py-3">
                   <AuditPagination
@@ -1795,8 +1695,10 @@ const InterviewTracking = () => {
                   <TableBody>
                     {paginatedInterviews.map((interview, index) => (
                       <TableRow key={interview.id}>
-                        <TableCell className="font-medium">{(currentPage - 1) * itemsPerPage + index + 1}</TableCell>
-                        <TableCell
+                        <TableCell className="font-medium">
+                          {(currentPage - 1) * itemsPerPage + index + 1}
+                        </TableCell>
+                        <TableCell 
                           className={`font-medium font-mono text-sm ${interview.status === "Audit Failed" ? "cursor-pointer hover:text-primary underline md:no-underline md:cursor-default" : ""}`}
                           onClick={() => {
                             if (interview.status === "Audit Failed") {
@@ -1811,14 +1713,14 @@ const InterviewTracking = () => {
                         </TableCell>
                         <TableCell>{interview.field_manager || "-"}</TableCell>
                         <TableCell>{interview.total_names || "-"}</TableCell>
-                        <TableCell className="max-w-[150px] truncate">{interview.interviewee_name || "-"}</TableCell>
-                        <TableCell>
-                          {interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}
+                        <TableCell className="max-w-[150px] truncate">
+                          {interview.interviewee_name || "-"}
                         </TableCell>
+                        <TableCell>{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</TableCell>
+                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction, interview)}</TableCell>
                         <TableCell>
-                          {getStatusBadge(interview.status, interview.artifact_correction, interview)}
+                          {getTeamBadge(interview)}
                         </TableCell>
-                        <TableCell>{getTeamBadge(interview)}</TableCell>
                         <TableCell>
                           {interview.has_pdf && interview.has_metadata ? (
                             <Badge variant="outline" className="gap-1 text-success border-success">
@@ -1849,15 +1751,13 @@ const InterviewTracking = () => {
                               type="file"
                               accept=".zip"
                               className="hidden"
-                              ref={(el) => {
-                                fileInputRefs.current[interview.id] = el;
-                              }}
+                              ref={(el) => { fileInputRefs.current[interview.id] = el; }}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
                                   handleMetadataUpload(interview.id, interview.file_name, file);
                                 }
-                                e.target.value = "";
+                                e.target.value = '';
                               }}
                             />
                           )}
@@ -1977,9 +1877,7 @@ const InterviewTracking = () => {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isEditingFilename}>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                disabled={
-                  isEditingFilename || !newFilename.trim() || newFilename.trim() === editFilenameInterview.file_name
-                }
+                disabled={isEditingFilename || !newFilename.trim() || newFilename.trim() === editFilenameInterview.file_name}
                 onClick={async () => {
                   setIsEditingFilename(true);
                   try {
@@ -2009,27 +1907,24 @@ const InterviewTracking = () => {
       {reassignInterview && (
         <ReassignFMDialog
           open={showReassignDialog}
-          onOpenChange={(v) => {
-            setShowReassignDialog(v);
-            if (!v) setReassignInterview(null);
-          }}
+          onOpenChange={(v) => { setShowReassignDialog(v); if (!v) setReassignInterview(null); }}
           auditId={reassignInterview.id}
           fileName={reassignInterview.file_name}
-          currentFmId={(() => {
-            const overrideFmId = fmOverrideMap.get(reassignInterview.id);
-            const teamFmId = teamAssignments.find(
-              (t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code,
-            )?.field_manager_id;
-            return overrideFmId || teamFmId || null;
-          })()}
-          currentFmName={(() => {
-            const overrideFmId = fmOverrideMap.get(reassignInterview.id);
-            const teamFmId = teamAssignments.find(
-              (t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code,
-            )?.field_manager_id;
-            const fmId = overrideFmId || teamFmId;
-            return fmId ? canonicalFms.find((fm) => fm.id === fmId)?.full_name || null : null;
-          })()}
+          currentFmId={
+            (() => {
+              const overrideFmId = fmOverrideMap.get(reassignInterview.id);
+              const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
+              return overrideFmId || teamFmId || null;
+            })()
+          }
+          currentFmName={
+            (() => {
+              const overrideFmId = fmOverrideMap.get(reassignInterview.id);
+              const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
+              const fmId = overrideFmId || teamFmId;
+              return fmId ? canonicalFms.find(fm => fm.id === fmId)?.full_name || null : null;
+            })()
+          }
           contractorId={(reassignInterview as any).contractor_id || null}
         />
       )}
