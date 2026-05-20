@@ -18,7 +18,10 @@ import { PDFViewer } from "@/components/review/PDFViewer";
 import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 import { ReviewActions } from "@/components/review/ReviewActions";
-import { ReviewCommentsPanel } from "@/components/review/ReviewCommentsPanel";
+import { ReviewFeedbackHistory } from "@/components/review/ReviewFeedbackHistory";
+import { ReparseArtifactsButton } from "@/components/review/ReparseArtifactsButton";
+import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
+import { useBurnHistory } from "@/hooks/useBurnHistory";
 import { ReAuditHistory } from "@/components/review/ReAuditHistory";
 import { AuditChecklist, ChecklistProgress } from "@/components/review/AuditChecklist";
 import { ReviewTimer } from "@/components/review/ReviewTimer";
@@ -65,6 +68,7 @@ const ReviewInterview = () => {
   } = useAuth();
   const { data: aiSettings } = useAiSettings();
   const pdfAiEnabled = aiSettings?.pdf_analysis_enabled !== false;
+  const { data: burnHistory } = useBurnHistory();
   const [isAnalyzingPDF, setIsAnalyzingPDF] = useState(false);
   const [isAbandoning, setIsAbandoning] = useState(false);
   const [aiUnavailable, setAiUnavailable] = useState(false);
@@ -683,6 +687,16 @@ const ReviewInterview = () => {
               <p className="text-xs text-muted-foreground font-medium truncate">
                 {audit.file_name}
               </p>
+              {burnHistory?.get(audit.id) && (
+                <BurnHistoryIcon entry={burnHistory.get(audit.id)} />
+              )}
+              {isAuditor && (
+                <ReparseArtifactsButton
+                  auditId={auditId!}
+                  mobileZipUrl={audit.mobile_zip_url}
+                  hasPdf={!!audit.file_url}
+                />
+              )}
               {fieldAuditData?.found ?
                 <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] px-1.5 py-0 gap-1 flex-shrink-0">
                   <ShieldCheck className="h-3 w-3" />
@@ -800,7 +814,15 @@ const ReviewInterview = () => {
             }
           
           {/* Show review comments for failed interviews or re-audits */}
-          <ReviewCommentsPanel status={audit.status} reviewComment={audit.review_comment} actionPlan={audit.action_plan} reviewedAt={audit.reviewed_at} isReAudit={audit.is_re_audit} artifactCorrection={audit.artifact_correction} />
+          <ReviewFeedbackHistory
+            auditId={auditId!}
+            status={audit.status}
+            reviewComment={audit.review_comment}
+            actionPlan={audit.action_plan}
+            reviewedAt={audit.reviewed_at}
+            isReAudit={audit.is_re_audit}
+            artifactCorrection={audit.artifact_correction}
+          />
           
           {/* Comment / Resolved button - hide for passed and ready-for-review */}
           {audit.status !== "Audit Passed" && !(audit.status === "Awaiting Review" && metadata) &&
