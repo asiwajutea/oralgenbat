@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Lock, Unlock, Loader2, Plus, Trash2 } from "lucide-react";
+import { UploadScopePicker, ScopeKind } from "@/components/upload/UploadScopePicker";
+import { GlobalLockExemptions } from "@/components/upload/GlobalLockExemptions";
 
 type LockRow = {
   scope_type: "global" | "contractor" | "field_manager" | "interviewer";
@@ -166,6 +168,7 @@ const UploadControls = () => {
 
         <TabsContent value="locks" className="space-y-4">
           {isAdmin && (
+            <>
             <Card>
               <CardHeader><CardTitle>Global lock</CardTitle></CardHeader>
               <CardContent className="space-y-3">
@@ -181,6 +184,8 @@ const UploadControls = () => {
                 </div>
               </CardContent>
             </Card>
+            <GlobalLockExemptions />
+            </>
           )}
 
           <Card>
@@ -199,9 +204,13 @@ const UploadControls = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">Scope ID</Label>
-                  <Input value={newLockId} onChange={(e) => setNewLockId(e.target.value)}
-                         placeholder={newLockType === "field_manager" ? "FM user UUID" : newLockType === "contractor" ? "Contractor ID" : "Interviewer code"} />
+                  <Label className="text-xs">Scope</Label>
+                  <UploadScopePicker
+                    kind={newLockType as ScopeKind}
+                    value={newLockId}
+                    onChange={(id) => setNewLockId(id)}
+                    placeholder={newLockType === "field_manager" ? "Search FM name…" : newLockType === "contractor" ? "Search contractor…" : "Search interviewer code…"}
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">Reason</Label>
@@ -246,9 +255,13 @@ const UploadControls = () => {
                   </Select>
                 </div>
                 <div className="md:col-span-2">
-                  <Label className="text-xs">Scope ID</Label>
-                  <Input value={newQId} onChange={(e) => setNewQId(e.target.value)}
-                         placeholder={newQType === "field_manager" ? "FM user UUID" : "Interviewer code"} />
+                  <Label className="text-xs">Scope</Label>
+                  <UploadScopePicker
+                    kind={newQType as ScopeKind}
+                    value={newQId}
+                    onChange={(id) => setNewQId(id)}
+                    placeholder={newQType === "field_manager" ? "Search FM name…" : "Search interviewer code…"}
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">Metric</Label>
