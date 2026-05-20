@@ -1232,7 +1232,7 @@ const InterviewTracking = () => {
             </p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <UploadLockGuard>
+            {false && <UploadLockGuard>
             <BulkMetadataUploadDialog
               onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
               trigger={
@@ -1243,8 +1243,8 @@ const InterviewTracking = () => {
                 </Button>
               }
             />
-            </UploadLockGuard>
-            <UploadLockGuard>
+            </UploadLockGuard>}
+            {false && <UploadLockGuard>
             <BulkPdfUploadDialog
               onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
               onUploadProgress={(p) => {
@@ -1260,7 +1260,7 @@ const InterviewTracking = () => {
                 </Button>
               }
             />
-            </UploadLockGuard>
+            </UploadLockGuard>}
             <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2 text-xs sm:text-sm">
               <Filter className="h-4 w-4" />
               <span className="hidden sm:inline">Filters</span>
