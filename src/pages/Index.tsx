@@ -268,7 +268,7 @@ const Index = () => {
                 </p>
               </div>
             </div>
-            {canUpload && (
+            {false && canUpload && (
               <UploadLockGuard>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

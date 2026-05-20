@@ -1727,6 +1727,45 @@ export type Database = {
           },
         ]
       }
+      review_feedback_history: {
+        Row: {
+          action_plan: string | null
+          artifact_correction: string[] | null
+          audit_id: string
+          created_at: string
+          cycle_number: number
+          id: string
+          review_comment: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewed_by_id: string | null
+        }
+        Insert: {
+          action_plan?: string | null
+          artifact_correction?: string[] | null
+          audit_id: string
+          created_at?: string
+          cycle_number: number
+          id?: string
+          review_comment?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewed_by_id?: string | null
+        }
+        Update: {
+          action_plan?: string | null
+          artifact_correction?: string[] | null
+          audit_id?: string
+          created_at?: string
+          cycle_number?: number
+          id?: string
+          review_comment?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewed_by_id?: string | null
+        }
+        Relationships: []
+      }
       sms_notification_logs: {
         Row: {
           audit_id: string | null
@@ -1926,6 +1965,33 @@ export type Database = {
           mode?: string
           status?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      upload_lock_exemptions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          reason: string | null
+          scope_type: string
+          scope_value: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          scope_type: string
+          scope_value: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          scope_type?: string
+          scope_value?: string
         }
         Relationships: []
       }
@@ -2594,6 +2660,14 @@ export type Database = {
       is_penalty_superior: {
         Args: { _actor: string; _charged: string }
         Returns: boolean
+      }
+      is_upload_allowed: {
+        Args: { _user_id: string }
+        Returns: {
+          allowed: boolean
+          reason: string
+          scope: string
+        }[]
       }
       is_user_approved: { Args: { _user_id: string }; Returns: boolean }
       leave_conversation: {

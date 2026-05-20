@@ -1,99 +1,84 @@
-# Plan
+## 1. Sub-contractor & all roles can Reassign FM
 
-## 1. Team Assignments — Export History fixes
+**Bug**: `get_assignable_field_managers` RPC returns nothing for sub-contractors (and any user without `contractor_id`/`active_contractor_id` on their profile), so the dropdown errors with "Failed to load".
 
-**File:** `supabase/functions/export-team-pdfs/index.ts` (re-download branch around lines 47–87).
+**Fix**: New migration to replace the function so it:
+- For **sub_contractor**: returns FMs whose contractor_id matches any contractor the SC oversees (via `user_contractor_assignments`), falling back to the assigned FM list.
+- For **contractor**: returns FMs whose contractor_id matches the caller's contractor or any `user_contractor_assignments` row.
+- For **field_manager**: returns all FMs that share at least one contractor scope with the caller (so an FM can hand off to peers).
+- For **admin/super_admin**: unchanged (all FMs, optional `_for_contractor` scope).
+- For other approved roles (data_entry, auditor, qa_manager): returns the same scoped list as their contractor.
+- Always guarantees at least an empty array (never `RETURN;` with no rows when caller is authenticated).
 
-- Expand the audits SELECT to include `mobile_zip_url, is_re_audit, passed_with_failures`.
-- Look up matching `re_audit_submissions` (replaced_zip=true) for re-audited audits.
-- Build `pdfList` the same way as the fresh-export branch:
-  - `baseName = passed_with_failures ? "${file_name}_attention" : file_name`
-  - Include `metadataUrl` / `metadataFileName` for re-audited audits with replaced zips.
-- Also regenerate / re-attach the override-notes PDF if any overridden audits exist in the batch (reuse the existing block, factored into a helper).
+Also: in `ReassignFMDialog.tsx`, surface the real error message in the toast/retry text and keep the existing retry button.
 
-**File:** `src/pages/TeamAssignments.tsx` `handleExportTeamPDFs` (lines 318–386).
+## 2. Upload Controls — searchable pickers + global lock exemptions
 
-- Add a download progress UI for new batch downloads:
-  - State: `exportProgress = { current, total, fileName }` per team.
-  - Wrap the for-loop fetch in fetch-with-progress (use `Response.body` reader to count bytes; for simplicity, increment `current` per file completed and show `current/total` plus the filename).
-  - Replace the static `toast.info("Downloading N PDFs…")` with a sticky `toast.loading(...)` updated via `toast.message(id, …)` OR render a small inline progress bar next to the team row (preferred: a `Progress` bar component under the team card while `exportingTeamId === team.id`).
-- Reset progress in `finally`.
+### Migration
+- New table `upload_lock_exemptions(scope_type, scope_id)` storing per-user or per-role exemptions to the **global** lock.
+  - `scope_type` enum: `'user' | 'role'`.
+- New RPC `is_upload_allowed(_user_id uuid)` (or update existing checker) to consult exemptions before honoring the global lock.
 
-## 2. Penalty pages — bulk actions
+### `src/pages/UploadControls.tsx`
+- Replace plain `Input` for `scope_id` (locks + quotas) with a new shared `<ScopePicker>` (already partially present at `src/components/penalty/ScopePicker.tsx`) extended to support:
+  - **interviewer** → searchable list of interviewer codes from `interview_metadata`.
+  - **field_manager** → searchable list from `profiles` joined with `user_roles='field_manager'`.
+  - **contractor** → searchable list of contractor IDs/names.
+  - **user** → searchable profile list.
+- Add a new "Global lock exemptions" card (visible only when global lock is on or being configured). Two tabs/sub-sections:
+  - "Exempt specific users" — multi-select user search.
+  - "Exempt entire role" — multi-select role chips (interviewer, field_manager, contractor, sub_contractor, data_entry_clerk, auditor, qa_manager, admin, super_admin).
+- Wire enforcement: `src/components/upload/UploadLockGuard.tsx` and `useUploadLockStatus` consult the new exemption RPC.
 
-Affected files: `src/pages/PenaltyAdmin.tsx`, `src/pages/MyPenalties.tsx`.
+## 3. Centralize uploads — Upload Center is the only entry point
 
-Selected actions: **Mark Paid**, **Waive/Void**, **Mark Appealed**.
+Hide (do not delete) upload-launching UI in:
+- `src/pages/Index.tsx` — hide `<UploadDialog>`, `<BulkZipUploadDialog>`, `<CombinedUploadDialog>` trigger buttons.
+- `src/pages/InterviewTracking.tsx` — hide `<BulkMetadataUploadDialog>` and `<BulkPdfUploadDialog>` triggers (keep the dialog components mounted-but-hidden so any code path that already opens them programmatically still works).
+- Anywhere else a CTA opens these dialogs (search for `setUploadOpen|setBulkZipOpen|setCombinedOpen|setBulkPdfOpen|setBulkMetadataOpen`).
 
-- Add row checkboxes + header "select all" checkbox to the Charges table on both pages.
-- Selection state: `Set<string>` of charge ids.
-- Render a sticky bulk-action toolbar above the table when selection > 0:
-  - Admin (`PenaltyAdmin`): "Mark Paid" + "Waive / Void" buttons.
-  - Non-admin (`MyPenalties`): "Mark Appealed" button.
-- Confirmation dialogs (`AlertDialog`) before each bulk action.
-- Implementations:
-  - **Mark Paid** (admin): for each selected charge, call existing single-charge payment confirmation flow in a loop (or insert one `penalty_payments` row per charge with `status='confirmed', amount=charge.amount - paid_amount`, then update `penalty_charges.status='paid'`). Reuse current single-action code path.
-  - **Waive/Void** (admin): bulk update `penalty_charges` set `status='voided', removed_by=auth.uid(), removed_at=now()` for selected ids.
-  - **Mark Appealed** (non-admin): bulk update own `penalty_charges` set `appeal_status='pending', appeal_reason=<reason from prompt textarea>` (single textarea applied to all).
-- Refresh data + toast summarizing count succeeded / failed.
+Mechanism: wrap each trigger in `{false && ( ... )}` or a single `SHOW_LEGACY_UPLOAD_BUTTONS = false` flag so it's easy to re-enable. Add a small inline note linking to `/upload-center` where the trigger used to be (admin-visible only).
 
-No new tables, no DB migration. Uses existing columns (`status`, `appeal_status`, `appeal_reason`, `removed_at`, `removed_by`, `penalty_payments`).
+Leave **artifact replacement** uploads inside review/tracking dialogs (FailedInterviewModal, MobileZipUpload, BulkPdfUploadDialog used for replacement) untouched — only NEW interview uploads route through Upload Center.
 
-## 3. Inbox redesign — Gmail-style (mobile-first, 2-pane desktop)
+## 4. Interview Review page enhancements
 
-**Files:**
-- `src/pages/Inbox.tsx` — full rewrite of layout, keep all data hooks and handlers intact.
-- `src/components/InboxBell.tsx` — change unread cap.
-- `src/components/NotificationBell.tsx` — change unread cap to match.
+### 4a. Burn flame icon for auditor
+- In `src/pages/ReviewInterview.tsx` header, fetch burn status via existing `useBurnHistory` for the current `audit_id` (and/or its folder_name) and render `<BurnHistoryIcon>` next to the file name.
 
-### Layout
+### 4b. Review Feedback history with navigation
 
-```text
-Desktop (md+):  [ Sidebar (categories) | Main pane                              ]
-                |                       | header (search + new + actions)        |
-                |                       | thread list OR open thread (toggle)    |
-                |                       |                                        |
+**Schema**: new table `review_feedback_history`
+- Columns: `audit_id uuid`, `cycle_number int`, `review_comment text`, `action_plan text`, `artifact_correction text[]`, `reviewed_by uuid`, `reviewed_at timestamptz`, `created_at timestamptz default now()`.
+- RLS: same read scope as `audits` (admin/auditor/contractor/FM/owner). Insert via trigger only.
+- Trigger on `audits`: on UPDATE when `status` transitions to `'Audit Failed'` and `review_comment` is set, insert a snapshot row (cycle = `coalesce(re_audit_count,0)+1`). Backfill once with current failed audits.
 
-Mobile (<md):   Stack. Default = thread list (full width). Tap thread → full
-                thread view with back button. Categories accessible via
-                Sheet drawer triggered by a hamburger button in the header.
-```
+**UI** — extend `src/components/review/ReviewCommentsPanel.tsx`:
+- Fetch `review_feedback_history` rows for this audit, ordered DESC (most recent first).
+- If >1 entry, show prev/next arrows + "Feedback N of M" counter. Current (most recent) shown by default.
+- Each entry shows the same fields the panel already shows (reason, action plan, artifact correction badges, reviewed date).
 
-Two-pane on desktop: clicking a conversation hides the list and shows the open thread full-width in the right pane. A back button (or "Inbox" breadcrumb) returns to the list. This matches Gmail behavior more closely than the current 3-pane.
+### 4c. Activity history (inside Review Feedback container)
 
-### Visual style
+Inside the same `<Card>` as Review Feedback, add a collapsible "Activity since re-audit" sub-section that lists events between the most recent failure and now:
+- Source 1: `re_audit_submissions` rows for this audit (replaced PDF / replaced ZIP / re-submitted with no replacement → "Sent back for re-audit without changes").
+- Source 2: `user_activity_log` filtered by `entity_type='audit'` and `entity_id=auditId`, action_types like `pdf_replaced`, `metadata_replaced`, `artifact_resolved`, `field_audit_synced`, etc.
 
-- Gmail-like list rows: avatar circle (initials), bold sender/title, single-line preview muted, right-aligned relative timestamp; unread rows have stronger weight + subtle left border in `--primary` and a faint background.
-- Sticky search bar at top of list; "New chat" + category filter chip row beneath.
-- Use existing design tokens (`bg-card`, `text-foreground`, `text-muted-foreground`, `--primary`); no hardcoded colors.
-- Replace `<select>` mobile category control with `Sheet` + button list mirroring desktop sidebar; categories show unread badge.
+Render as a vertical timeline (icon + actor name + action label + relative time + absolute time tooltip), newest first. Hidden behind a "Show activity" toggle to keep the panel compact.
 
-### Functionality preserved
+### 4d. Manual "Reparse artifacts" button (auditor)
 
-All existing handlers stay: `handleSend`, `handleRename`, `handleDeleteConversation`, `handleLeaveConversation`, `handleDeleteMessage`, attachments, interview ref, internal link, mark-read effect, realtime channel, closed-conversations section, category unread totals.
+- New button in the review page header (auditor / admin only): "Reparse artifacts".
+- Click → confirmation dialog (warns this re-runs PDF + ZIP processing and overwrites the parsed metadata / photos).
+- Action: invoke existing `process-mobile-zip` and `analyze-pdf` edge functions for this audit (use current `audit.file_url` and `audit.mobile_zip_url`). Clear the in-memory cache, then `queryClient.invalidateQueries` for the review page.
+- Surface progress via toast ("Reparsing PDF…", "Reparsing mobile ZIP…", "Done").
 
-### Mobile-friendly composer
-
-- Composer becomes a sticky bottom bar in the open-thread view with attachment menu collapsed into an icon button (already an `AttachmentMenu`).
-- Use `h-[100dvh]` instead of `h-[calc(100vh-…)]` so iOS Safari address bar doesn't clip.
-
-### Unread badge
-
-- `InboxBell.tsx`: `{unread > 99 ? "99+" : unread}` (currently `> 9 ? "9+"`).
-- `NotificationBell.tsx`: same change in both places (lines 143 and 151).
+## Files touched (summary)
+- **Migrations**: `get_assignable_field_managers` rewrite; `upload_lock_exemptions` table + `is_upload_allowed` RPC; `review_feedback_history` table + trigger + backfill.
+- **Edited**: `src/components/tracking/ReassignFMDialog.tsx`, `src/pages/UploadControls.tsx`, `src/components/penalty/ScopePicker.tsx` (extend or new `src/components/upload/UploadScopePicker.tsx`), `src/components/upload/UploadLockGuard.tsx`, `src/hooks/useUploadLockStatus.ts`, `src/pages/Index.tsx`, `src/pages/InterviewTracking.tsx`, `src/components/review/ReviewCommentsPanel.tsx`, `src/pages/ReviewInterview.tsx`.
+- **New**: `src/components/review/ReviewFeedbackHistory.tsx`, `src/components/review/ReviewActivityTimeline.tsx`, `src/components/review/ReparseArtifactsButton.tsx`, `src/components/upload/UploadScopePicker.tsx`, `src/components/upload/GlobalLockExemptions.tsx`.
 
 ## Out of scope
-
-- No DB migrations, no edge-function deploys other than `export-team-pdfs`.
-- No change to chat schema, RPCs, or notification preferences UI.
-- No redesign of `MiniChatWindow` / `FloatingChatProvider`.
-
-## Files touched
-
-- `supabase/functions/export-team-pdfs/index.ts`
-- `src/pages/TeamAssignments.tsx`
-- `src/pages/PenaltyAdmin.tsx`
-- `src/pages/MyPenalties.tsx`
-- `src/pages/Inbox.tsx`
-- `src/components/InboxBell.tsx`
-- `src/components/NotificationBell.tsx`
+- No changes to the actual PDF/ZIP parsing logic in edge functions (the reparse button only re-invokes them).
+- No redesign of existing upload dialogs themselves.
+- No changes to penalty / inbox / team-assignments work from previous turn.
