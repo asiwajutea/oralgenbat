@@ -160,53 +160,6 @@ export const ReviewFeedbackHistory = ({
                 </div>
               )}
             </div>
-
-            {/* Activity since re-audit */}
-            <div className="border-t pt-3">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                onClick={() => setShowActivity(s => !s)}
-              >
-                <Activity className="h-4 w-4" />
-                {showActivity ? "Hide activity" : `Show activity${events.length ? ` (${events.length})` : ""}`}
-                <ChevronDown className={`h-4 w-4 transition-transform ${showActivity ? "" : "-rotate-90"}`} />
-              </Button>
-              {showActivity && (
-                <div className="mt-3 max-h-[260px] overflow-y-auto space-y-3">
-                  {events.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No activity recorded yet.</p>
-                  ) : (
-                    events.map(e => {
-                      const Icon = e.icon;
-                      return (
-                        <div key={e.id} className="flex gap-3 text-sm">
-                          <div className="mt-0.5"><Icon className="h-4 w-4 text-muted-foreground" /></div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium capitalize">{e.label}</span>
-                              {e.actor && (
-                                <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                                  <User className="h-3 w-3" /> {e.actor}
-                                </span>
-                              )}
-                              <span className="text-xs text-muted-foreground" title={format(new Date(e.at), "PPP p")}>
-                                {formatDistanceToNow(new Date(e.at), { addSuffix: true })}
-                              </span>
-                            </div>
-                            {e.detail && (
-                              <p className="text-xs text-muted-foreground whitespace-pre-wrap mt-0.5">{e.detail}</p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
           </CardContent>
         </CollapsibleContent>
       </Card>
