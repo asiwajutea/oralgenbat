@@ -19,6 +19,8 @@ import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 import { ReviewActions } from "@/components/review/ReviewActions";
 import { ReviewFeedbackHistory } from "@/components/review/ReviewFeedbackHistory";
+import { ReviewActivityTimeline } from "@/components/review/ReviewActivityTimeline";
+import { QuickReAuditDecisionCard } from "@/components/review/QuickReAuditDecisionCard";
 import { ReparseArtifactsButton } from "@/components/review/ReparseArtifactsButton";
 import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
 import { useBurnHistory } from "@/hooks/useBurnHistory";
@@ -739,6 +741,13 @@ const ReviewInterview = () => {
               {audit?.is_re_audit && audit?.status === 'Awaiting Review' && (
                 <ReAuditNoteBanner auditId={auditId!} />
               )}
+              {audit?.is_re_audit && (
+                <QuickReAuditDecisionCard
+                  auditId={auditId!}
+                  fileName={audit.file_name}
+                  onCompleted={(result) => setCompletionResult(result)}
+                />
+              )}
               <FraudFlagBanner
                 isFlagged={!!fraudFlag?.is_flagged}
                 collisions={fraudFlag?.collisions ?? []}
@@ -823,6 +832,9 @@ const ReviewInterview = () => {
             isReAudit={audit.is_re_audit}
             artifactCorrection={audit.artifact_correction}
           />
+
+          {/* Activity timeline - always rendered so reviewers see what changed */}
+          <ReviewActivityTimeline auditId={auditId!} defaultOpen={!!audit.is_re_audit} />
           
           {/* Comment / Resolved button - hide for passed and ready-for-review */}
           {audit.status !== "Audit Passed" && !(audit.status === "Awaiting Review" && metadata) &&

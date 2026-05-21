@@ -1,84 +1,81 @@
-## 1. Sub-contractor & all roles can Reassign FM
+## 1. Activity timeline (Interview Review page)
 
-**Bug**: `get_assignable_field_managers` RPC returns nothing for sub-contractors (and any user without `contractor_id`/`active_contractor_id` on their profile), so the dropdown errors with "Failed to load".
+**Problem**: Timeline only appears when the interview is failed; it doesn't show re-audit submissions (what artifact was replaced, "sent back without changes"); and most rows don't show the actor's name.
 
-**Fix**: New migration to replace the function so it:
-- For **sub_contractor**: returns FMs whose contractor_id matches any contractor the SC oversees (via `user_contractor_assignments`), falling back to the assigned FM list.
-- For **contractor**: returns FMs whose contractor_id matches the caller's contractor or any `user_contractor_assignments` row.
-- For **field_manager**: returns all FMs that share at least one contractor scope with the caller (so an FM can hand off to peers).
-- For **admin/super_admin**: unchanged (all FMs, optional `_for_contractor` scope).
-- For other approved roles (data_entry, auditor, qa_manager): returns the same scoped list as their contractor.
-- Always guarantees at least an empty array (never `RETURN;` with no rows when caller is authenticated).
+**Fix** — update `src/components/review/ReviewFeedbackHistory.tsx` (and rename the visible toggle to "Activity history" so it's clear it's not tied to failure):
 
-Also: in `ReassignFMDialog.tsx`, surface the real error message in the toast/retry text and keep the existing retry button.
+- **Always render** the activity section, regardless of audit status or whether `review_feedback_history` is empty. Today it returns `null` when there are no failures. Extract the "Activity history" section into its own card (`ReviewActivityTimeline.tsx`) mounted in `ReviewInterview.tsx` so it shows even when the interview is `Awaiting Review`, `Pending`, or `Audit Passed`.
+- **Add missing event sources** so re-audit replacements always show up even if no `user_activity_log` row exists:
+  - `re_audit_submissions` → "PDF replaced", "Metadata ZIP replaced", "Sent back for re-audit without changes" (already partly there, keep).
+  - `audits.mobile_zip_uploaded_at` change (initial metadata upload) — derived from activity log entry `metadata_uploaded` or fallback to that timestamp.
+  - `audits.file_url` change history via `user_activity_log` action types `pdf_replaced`, `pdf_uploaded`, `metadata_replaced`, `metadata_uploaded`, `artifact_resolved`, `fm_reassigned`, `interview_locked`, `interview_unlocked`, `sent_to_burn`, `field_audit_synced`.
+  - `audits` status transitions → "Audit Passed", "Audit Failed", "Passed with Override", "Sent for re-audit" — backfilled from `user_activity_log` (entity_type=`audit`).
+- **Resolve actor names for every row** by batch-fetching `profiles(id, full_name)` for the union of `user_id` values across `re_audit_submissions.submitted_by`, `user_activity_log.user_id`, and `audits.reviewed_by` / `locked_by` / `uploaded_by`. Pass the resolved name into every event (not just submissions). Show `actor` + role chip for each row.
+- **Event labels** become human-readable (e.g. `pdf_replaced` → "PDF replaced", `audit_failed` → "Marked as Failed"). De-dup near-simultaneous rows (same actor + same label within 5s).
+- **Sort** newest first, show absolute timestamp on hover, relative time inline.
 
-## 2. Upload Controls — searchable pickers + global lock exemptions
+No DB schema changes required — all sources already exist (`re_audit_submissions`, `user_activity_log`, `profiles`).
 
-### Migration
-- New table `upload_lock_exemptions(scope_type, scope_id)` storing per-user or per-role exemptions to the **global** lock.
-  - `scope_type` enum: `'user' | 'role'`.
-- New RPC `is_upload_allowed(_user_id uuid)` (or update existing checker) to consult exemptions before honoring the global lock.
+## 2. Upload Center — PDF-first, paired-preview UX
 
-### `src/pages/UploadControls.tsx`
-- Replace plain `Input` for `scope_id` (locks + quotas) with a new shared `<ScopePicker>` (already partially present at `src/components/penalty/ScopePicker.tsx`) extended to support:
-  - **interviewer** → searchable list of interviewer codes from `interview_metadata`.
-  - **field_manager** → searchable list from `profiles` joined with `user_roles='field_manager'`.
-  - **contractor** → searchable list of contractor IDs/names.
-  - **user** → searchable profile list.
-- Add a new "Global lock exemptions" card (visible only when global lock is on or being configured). Two tabs/sub-sections:
-  - "Exempt specific users" — multi-select user search.
-  - "Exempt entire role" — multi-select role chips (interviewer, field_manager, contractor, sub_contractor, data_entry_clerk, auditor, qa_manager, admin, super_admin).
-- Wire enforcement: `src/components/upload/UploadLockGuard.tsx` and `useUploadLockStatus` consult the new exemption RPC.
+**Problem**: Upload Center accepts PDFs + ZIPs in any order, so ZIPs sometimes try to attach before their PDF audit row exists. `/interviews` page already has a nicer paired preview (BulkZipUploadDialog / CombinedUploadDialog).
 
-## 3. Centralize uploads — Upload Center is the only entry point
+**Fix** — update `src/pages/UploadCenter.tsx` (new-interview path only; re-audit replacement flow stays as is):
 
-Hide (do not delete) upload-launching UI in:
-- `src/pages/Index.tsx` — hide `<UploadDialog>`, `<BulkZipUploadDialog>`, `<CombinedUploadDialog>` trigger buttons.
-- `src/pages/InterviewTracking.tsx` — hide `<BulkMetadataUploadDialog>` and `<BulkPdfUploadDialog>` triggers (keep the dialog components mounted-but-hidden so any code path that already opens them programmatically still works).
-- Anywhere else a CTA opens these dialogs (search for `setUploadOpen|setBulkZipOpen|setCombinedOpen|setBulkPdfOpen|setBulkMetadataOpen`).
+- **Two-phase processing per batch**:
+  1. Split selected files into `pdfs` and `zips` by extension/MIME.
+  2. Group by base name (`NGXX_XXXX_XXXXXXXX_XXXX`) into a `PairPreview[]`: `{ baseName, pdf?: File, zip?: File, existingAudit?: { id, has_pdf, has_metadata } }`.
+  3. Query `audits` once (`.in("file_name", baseNames)`) + `interview_metadata` to compute pairing/duplicate state for each row.
+- **Preview table** before upload (mirrors the table in `BulkZipUploadDialog` / `CombinedUploadDialog`) with columns: File name · PDF status (✅ included / 🟡 already uploaded / ❌ missing) · Metadata status · Action (Upload / Skip / Replace) · Reason. Rows where ZIP has no matching PDF (neither in batch nor existing) are flagged "Will skip — no paired PDF" and excluded from the upload run.
+- **Upload order**: process all PDFs first (sequentially or limited concurrency), wait for each audit row to be created, then process ZIPs against the now-existing audits. Existing helper `uploadInterviewFile` already inserts the audit row on PDF success; we just need to enforce ordering at the page level.
+- Re-use `FloatingUploadProgress` for per-file progress, but add an "Upload summary" panel after completion (uploaded / skipped / failed counts, like `/interviews`).
 
-Mechanism: wrap each trigger in `{false && ( ... )}` or a single `SHOW_LEGACY_UPLOAD_BUTTONS = false` flag so it's easy to re-enable. Add a small inline note linking to `/upload-center` where the trigger used to be (admin-visible only).
+No new components are strictly required, but extract the pairing logic to `src/lib/pairInterviewFiles.ts` so it can be reused.
 
-Leave **artifact replacement** uploads inside review/tracking dialogs (FailedInterviewModal, MobileZipUpload, BulkPdfUploadDialog used for replacement) untouched — only NEW interview uploads route through Upload Center.
+## 3. One-click Fail / Pass for re-audits
 
-## 4. Interview Review page enhancements
+**Goal**: Save auditor time on re-audits by letting them re-fail or re-pass an audit without walking through all 14 checklist items, while preserving full audit history and visibility for the FM.
 
-### 4a. Burn flame icon for auditor
-- In `src/pages/ReviewInterview.tsx` header, fetch burn status via existing `useBurnHistory` for the current `audit_id` (and/or its folder_name) and render `<BurnHistoryIcon>` next to the file name.
+**Scope**: Only when `audits.is_re_audit = true` and there is at least one prior cycle in `review_feedback_history` (or a non-null `review_comment` on the current row).
 
-### 4b. Review Feedback history with navigation
+### UI — `src/pages/ReviewInterview.tsx`
 
-**Schema**: new table `review_feedback_history`
-- Columns: `audit_id uuid`, `cycle_number int`, `review_comment text`, `action_plan text`, `artifact_correction text[]`, `reviewed_by uuid`, `reviewed_at timestamptz`, `created_at timestamptz default now()`.
-- RLS: same read scope as `audits` (admin/auditor/contractor/FM/owner). Insert via trigger only.
-- Trigger on `audits`: on UPDATE when `status` transitions to `'Audit Failed'` and `review_comment` is set, insert a snapshot row (cycle = `coalesce(re_audit_count,0)+1`). Backfill once with current failed audits.
+Add a new card above the checklist titled **"Quick re-audit decision"** with:
 
-**UI** — extend `src/components/review/ReviewCommentsPanel.tsx`:
-- Fetch `review_feedback_history` rows for this audit, ordered DESC (most recent first).
-- If >1 entry, show prev/next arrows + "Feedback N of M" counter. Current (most recent) shown by default.
-- Each entry shows the same fields the panel already shows (reason, action plan, artifact correction badges, reviewed date).
+- **"Previous checklist answers"** — collapsible table fetched from `audit_checklist_progress` (most recent reviewer's `items` JSONB) showing Q#, question, prior answer (Pass/Fail), and prior failure comment. Default collapsed; expanded view is read-only.
+- **Three actions**:
+  1. **Fail — same reasons as last cycle** (one click). Pre-populates the failure payload from the most recent `review_feedback_history` row (`review_comment`, `action_plan`, `artifact_correction`). Opens a confirmation dialog showing the prefilled text; auditor confirms.
+  2. **Fail — new reasons** (one click). Opens a lightweight dialog with the same fields used in the normal fail flow (failure comment, artifact_correction checkboxes, optional action plan) — no checklist walk required.
+  3. **Pass — all previous issues fixed** (one click). Confirmation dialog; on confirm marks the audit as `Audit Passed`.
+- Banner above the actions: "If a new checklist item has failed, run the full checklist instead" with a link/button to fall back to the existing checklist flow.
 
-### 4c. Activity history (inside Review Feedback container)
+### Backend behavior (no schema changes)
 
-Inside the same `<Card>` as Review Feedback, add a collapsible "Activity since re-audit" sub-section that lists events between the most recent failure and now:
-- Source 1: `re_audit_submissions` rows for this audit (replaced PDF / replaced ZIP / re-submitted with no replacement → "Sent back for re-audit without changes").
-- Source 2: `user_activity_log` filtered by `entity_type='audit'` and `entity_id=auditId`, action_types like `pdf_replaced`, `metadata_replaced`, `artifact_resolved`, `field_audit_synced`, etc.
+Re-use existing RPCs/columns where possible:
 
-Render as a vertical timeline (icon + actor name + action label + relative time + absolute time tooltip), newest first. Hidden behind a "Show activity" toggle to keep the panel compact.
+- **Fail path** (both variants) calls a new RPC `re_audit_quick_fail(_audit_id, _review_comment, _action_plan, _artifact_correction)` which:
+  - Sets `audits.status = 'Audit Failed'`, `review_comment`, `action_plan`, `artifact_correction`, `reviewed_by = current user`, `reviewed_at = now()`, `re_audit_count` unchanged (the FM's re-submission already incremented it), `is_re_audit = true`.
+  - Inserts into `review_feedback_history` via the existing trigger (already fires on status → Audit Failed with comment set).
+  - Writes a `user_activity_log` row with `action_type='audit_quick_failed'` and `metadata.reused_previous_feedback = bool`.
+  - Copies the latest `audit_checklist_progress.items` into a new row for this reviewer (so the checklist tab still reflects the recorded answers) — items are marked source: `"carried_over"` in metadata.
+- **Pass path** calls `re_audit_quick_pass(_audit_id)`:
+  - Sets `audits.status = 'Audit Passed'`, clears `review_comment`/`action_plan`/`artifact_correction`, sets `reviewed_by`/`reviewed_at`.
+  - Writes `user_activity_log` row `audit_quick_passed`.
+  - Inserts a `pass` snapshot into `audit_checklist_progress` (all items marked Pass, `metadata.source='quick_pass'`).
 
-### 4d. Manual "Reparse artifacts" button (auditor)
+Both RPCs are `SECURITY DEFINER`, role-gated to `auditor`/`admin`/`super_admin`, and require `is_re_audit = true` and an existing prior cycle.
 
-- New button in the review page header (auditor / admin only): "Reparse artifacts".
-- Click → confirmation dialog (warns this re-runs PDF + ZIP processing and overwrites the parsed metadata / photos).
-- Action: invoke existing `process-mobile-zip` and `analyze-pdf` edge functions for this audit (use current `audit.file_url` and `audit.mobile_zip_url`). Clear the in-memory cache, then `queryClient.invalidateQueries` for the review page.
-- Surface progress via toast ("Reparsing PDF…", "Reparsing mobile ZIP…", "Done").
+### Visibility for FM and others
 
-## Files touched (summary)
-- **Migrations**: `get_assignable_field_managers` rewrite; `upload_lock_exemptions` table + `is_upload_allowed` RPC; `review_feedback_history` table + trigger + backfill.
-- **Edited**: `src/components/tracking/ReassignFMDialog.tsx`, `src/pages/UploadControls.tsx`, `src/components/penalty/ScopePicker.tsx` (extend or new `src/components/upload/UploadScopePicker.tsx`), `src/components/upload/UploadLockGuard.tsx`, `src/hooks/useUploadLockStatus.ts`, `src/pages/Index.tsx`, `src/pages/InterviewTracking.tsx`, `src/components/review/ReviewCommentsPanel.tsx`, `src/pages/ReviewInterview.tsx`.
-- **New**: `src/components/review/ReviewFeedbackHistory.tsx`, `src/components/review/ReviewActivityTimeline.tsx`, `src/components/review/ReparseArtifactsButton.tsx`, `src/components/upload/UploadScopePicker.tsx`, `src/components/upload/GlobalLockExemptions.tsx`.
+- Failed re-audits show up in `/interviews` and FM dashboards exactly as today (status `Audit Failed`, latest `review_comment`/`action_plan`/`artifact_correction` visible). The new `review_feedback_history` row makes the previous cycles still navigable in the Review Feedback panel.
+- The activity timeline (section 1 above) will surface the `audit_quick_failed` / `audit_quick_passed` events with the auditor's name, so FMs see the new decision.
+
+## Files touched
+
+- **Edited**: `src/components/review/ReviewFeedbackHistory.tsx`, `src/pages/ReviewInterview.tsx`, `src/pages/UploadCenter.tsx`.
+- **New**: `src/components/review/ReviewActivityTimeline.tsx`, `src/components/review/QuickReAuditDecisionCard.tsx`, `src/components/review/PreviousChecklistTable.tsx`, `src/lib/pairInterviewFiles.ts`.
+- **Migration**: two new SECURITY DEFINER RPCs `re_audit_quick_fail` and `re_audit_quick_pass`. No table changes.
 
 ## Out of scope
-- No changes to the actual PDF/ZIP parsing logic in edge functions (the reparse button only re-invokes them).
-- No redesign of existing upload dialogs themselves.
-- No changes to penalty / inbox / team-assignments work from previous turn.
+
+- No changes to the normal checklist flow, no changes to penalty / inbox / team-assignments work, no changes to PDF/ZIP edge function parsing logic.

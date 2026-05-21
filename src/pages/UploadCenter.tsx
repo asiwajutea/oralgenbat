@@ -24,6 +24,9 @@ interface Row {
   progress: number;
   outcome?: UploadOutcome;
   existingStatus?: string | null; // status of matching audit (for badge labelling)
+  existingHasMetadata?: boolean | null;
+  hasPairedPdfInBatch?: boolean;
+  willSkipReason?: string | null;
   lookupDone?: boolean;
 }
 
@@ -86,15 +89,52 @@ const UploadCenter = () => {
     if (baseNames.length === 0) return;
     const { data } = await supabase
       .from("audits")
-      .select("file_name, status")
+      .select("file_name, status, mobile_zip_url")
       .in("file_name", baseNames);
-    const statusByName = new Map<string, string>();
-    (data || []).forEach((a: any) => statusByName.set(a.file_name, a.status));
-    setRows(prev => prev.map(r => {
-      if (!newRows.find(n => n.id === r.id)) return r;
-      const base = r.file.name.replace(/\.(pdf|zip)$/i, "");
-      return { ...r, existingStatus: statusByName.get(base) ?? null, lookupDone: true };
-    }));
+    const infoByName = new Map<string, { status: string; hasMetadata: boolean }>();
+    (data || []).forEach((a: any) =>
+      infoByName.set(a.file_name, { status: a.status, hasMetadata: !!a.mobile_zip_url }),
+    );
+    setRows(prev => {
+      // Build a set of PDF base names across the WHOLE current queue (including pre-existing rows)
+      const pdfBaseNamesInBatch = new Set(
+        prev
+          .filter(r => detectKind(r.file) === "pdf")
+          .map(r => r.file.name.replace(/\.(pdf|zip)$/i, "")),
+      );
+      return prev.map(r => {
+        if (!newRows.find(n => n.id === r.id) && r.lookupDone) {
+          // re-evaluate pairing for existing rows since the batch composition may have changed
+          const base = r.file.name.replace(/\.(pdf|zip)$/i, "");
+          const kind = detectKind(r.file);
+          const info = infoByName.get(base) ?? null;
+          const existingStatus = r.existingStatus ?? info?.status ?? null;
+          const existingHasMetadata = r.existingHasMetadata ?? info?.hasMetadata ?? null;
+          const hasPairedPdfInBatch = kind === "metadata_zip" ? pdfBaseNamesInBatch.has(base) : true;
+          let willSkipReason: string | null = null;
+          if (mode === "new" && kind === "metadata_zip" && !hasPairedPdfInBatch && !existingStatus) {
+            willSkipReason = "No paired PDF — upload the PDF first";
+          }
+          return { ...r, hasPairedPdfInBatch, willSkipReason };
+        }
+        const base = r.file.name.replace(/\.(pdf|zip)$/i, "");
+        const kind = detectKind(r.file);
+        const info = infoByName.get(base) ?? null;
+        const hasPairedPdfInBatch = kind === "metadata_zip" ? pdfBaseNamesInBatch.has(base) : true;
+        let willSkipReason: string | null = null;
+        if (mode === "new" && kind === "metadata_zip" && !hasPairedPdfInBatch && !info) {
+          willSkipReason = "No paired PDF — upload the PDF first";
+        }
+        return {
+          ...r,
+          existingStatus: info?.status ?? null,
+          existingHasMetadata: info?.hasMetadata ?? null,
+          hasPairedPdfInBatch,
+          willSkipReason,
+          lookupDone: true,
+        };
+      });
+    });
   };
 
   const remove = (id: string) => setRows(prev => prev.filter(r => r.id !== id || r.status !== "pending"));
@@ -108,11 +148,21 @@ const UploadCenter = () => {
     setSummary(null);
     setSummaryText(null);
 
-    // Snapshot the queue (ids) at start time; removals during run will filter naturally.
-    const queueIds = rows.filter(r => r.status !== "done").map(r => r.id);
+    // Snapshot the queue at start time. PDFs upload first so ZIPs find their paired audit row.
+    const eligible = rows.filter(r => r.status !== "done");
+    const pdfIds = eligible.filter(r => detectKind(r.file) === "pdf").map(r => r.id);
+    const zipIds = eligible.filter(r => detectKind(r.file) !== "pdf").map(r => r.id);
+    const queueIds = [...pdfIds, ...zipIds];
+    const pdfIdSet = new Set(pdfIds);
     let cursor = 0;
     let done = 0;
     const CONCURRENCY = 5;
+    let pdfsDoneSignal: Promise<void> | null = null;
+    let resolvePdfsDone: (() => void) | null = null;
+    if (pdfIds.length > 0) {
+      pdfsDoneSignal = new Promise<void>(resolve => { resolvePdfsDone = resolve; });
+    }
+    let pdfsCompleted = 0;
     const claimed = new Set<string>();
     const outcomes = new Map<string, UploadOutcome>();
 
@@ -130,9 +180,28 @@ const UploadCenter = () => {
         if (!id) return;
         if (claimed.has(id)) continue;
         claimed.add(id);
+        // Block ZIPs until all PDFs in this batch have finished uploading
+        if (!pdfIdSet.has(id) && pdfsDoneSignal) {
+          await pdfsDoneSignal;
+        }
         // Resolve row from a ref snapshot (avoids React StrictMode double-invocation of state updaters).
         const target = rowsRef.current.find(x => x.id === id);
         if (!target || target.status !== "pending") continue;
+
+        // Auto-skip orphan ZIPs in new mode
+        if (mode === "new" && target.willSkipReason) {
+          const outcome: UploadOutcome = { status: "failed", message: target.willSkipReason };
+          outcomes.set(id, outcome);
+          setRows(prev => prev.map(x => x.id === id ? { ...x, status: "failed", progress: 100, outcome } : x));
+          done++;
+          setCompleted(done);
+          if (pdfIdSet.has(id)) {
+            pdfsCompleted++;
+            if (pdfsCompleted === pdfIds.length && resolvePdfsDone) resolvePdfsDone();
+          }
+          continue;
+        }
+
         setRows(prev => prev.map(x => x.id === id && x.status === "pending" ? { ...x, status: "uploading", progress: 0 } : x));
 
         const outcome = await uploadInterviewFile({
@@ -152,10 +221,16 @@ const UploadCenter = () => {
         } : x));
         done++;
         setCompleted(done);
+        if (pdfIdSet.has(id)) {
+          pdfsCompleted++;
+          if (pdfsCompleted === pdfIds.length && resolvePdfsDone) resolvePdfsDone();
+        }
       }
     };
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queueIds.length) }, () => worker()));
+    // Safety: ensure any awaiting ZIP workers unblock even if pdf set was empty
+    if (resolvePdfsDone) resolvePdfsDone();
     setRunning(false);
     // Compute summary from the local outcomes map (avoids React commit timing issues)
     const rowById = new Map(rowsRef.current.map(r => [r.id, r]));
@@ -292,7 +367,15 @@ const UploadCenter = () => {
                       const isFailed = r.existingStatus === "Failed";
                       const modeLabel =
                         mode === "new"
-                          ? { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
+                          ? (r.willSkipReason
+                              ? { text: "Will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+                              : kind === "metadata_zip" && r.existingHasMetadata
+                                ? { text: "Duplicate metadata", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+                                : kind === "metadata_zip" && r.existingStatus
+                                  ? { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
+                                  : kind === "metadata_zip" && r.hasPairedPdfInBatch
+                                    ? { text: "Pair with PDF in batch", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
+                                    : { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" })
                           : !r.lookupDone
                             ? { text: "Checking…", cls: "bg-muted text-muted-foreground" }
                             : isFailed
@@ -314,6 +397,11 @@ const UploadCenter = () => {
                             {r.outcome?.message && (
                               <div className={`text-[11px] sm:text-xs ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
                                 {r.outcome.message}
+                              </div>
+                            )}
+                            {r.status === "pending" && r.willSkipReason && (
+                              <div className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
+                                {r.willSkipReason}
                               </div>
                             )}
                           </div>
