@@ -25,9 +25,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle, X } from "lucide-react";
+import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -38,12 +39,12 @@ interface Props {
 
 export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Props) => {
   const qc = useQueryClient();
+  const [isOpen, setIsOpen] = useState(false);
   const [showSameFail, setShowSameFail] = useState(false);
   const [showNewFail, setShowNewFail] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [isVisible, setIsVisible] = useState(true);
 
   // New-fail form state
   const [comment, setComment] = useState("");
@@ -119,6 +120,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
       toast.success("Re-audit marked as failed.");
       setShowSameFail(false);
       setShowNewFail(false);
+      setIsOpen(false);
       qc.invalidateQueries({ queryKey: ["audit", auditId] });
       qc.invalidateQueries({ queryKey: ["review-feedback-history", auditId] });
       qc.invalidateQueries({ queryKey: ["review-activity-log", auditId] });
@@ -138,6 +140,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
       if (error) throw error;
       toast.success("Re-audit marked as passed.");
       setShowPass(false);
+      setIsOpen(false);
       qc.invalidateQueries({ queryKey: ["audit", auditId] });
       qc.invalidateQueries({ queryKey: ["review-activity-log", auditId] });
       qc.invalidateQueries({ queryKey: ["status-counts"] });
@@ -151,109 +154,112 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
 
   const items: any[] = Array.isArray(prevChecklist?.items) ? (prevChecklist!.items as any[]) : [];
 
-  if (!isVisible) return null;
-
   return (
-    <>
-      <Card className="border-primary/40 bg-primary/5 relative">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute right-2 top-2 h-6 w-6 text-muted-foreground hover:bg-transparent hover:text-foreground"
-          onClick={() => setIsVisible(false)}
-        >
-          <X className="h-4 w-4" />
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="gap-2">
+          <Zap className="h-4 w-4 text-primary" />
+          Quick Re-Audit Decision
         </Button>
-        <CardHeader className="py-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Zap className="h-4 w-4 text-primary" />
-            Quick re-audit decision
-          </CardTitle>
-          <CardDescription>
-            Save time on re-audits. Review the previous checklist below, then quick-pass or quick-fail. If a new
-            checklist item has failed, run the full checklist instead.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="destructive" onClick={() => setShowSameFail(true)} disabled={!lastFeedback}>
-              <XCircle className="h-4 w-4 mr-1.5" />
-              Fail — same reasons as last cycle
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowNewFail(true)}>
-              <XCircle className="h-4 w-4 mr-1.5" />
-              Fail — new reasons
-            </Button>
-            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setShowPass(true)}>
-              <CheckCircle className="h-4 w-4 mr-1.5" />
-              Pass — issues fixed
-            </Button>
-          </div>
+      </DialogTrigger>
 
-          <Collapsible open={showChecklist} onOpenChange={setShowChecklist}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2 -ml-2">
-                <ChevronDown className={`h-4 w-4 transition-transform ${showChecklist ? "" : "-rotate-90"}`} />
-                Previous checklist answers {items.length > 0 && <Badge variant="outline">{items.length} items</Badge>}
+      <DialogContent className="max-w-2xl p-0 border-none bg-transparent shadow-none">
+        <Card className="border-primary/40 bg-background w-full">
+          <CardHeader className="py-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Zap className="h-4 w-4 text-primary" />
+              Quick re-audit decision
+            </CardTitle>
+            <CardDescription>
+              Save time on re-audits. Review the previous checklist below, then quick-pass or quick-fail. If a new
+              checklist item has failed, run the full checklist instead.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="destructive" onClick={() => setShowSameFail(true)} disabled={!lastFeedback}>
+                <XCircle className="h-4 w-4 mr-1.5" />
+                Fail — same reasons as last cycle
               </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              {items.length === 0 ? (
-                <p className="text-xs text-muted-foreground mt-2">
-                  No previous checklist progress saved for this interview.
-                </p>
-              ) : (
-                <div className="mt-2 rounded-md border max-h-[300px] overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        <TableHead>Question</TableHead>
-                        <TableHead className="w-24">Answer</TableHead>
-                        <TableHead>Comment</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((it: any, i: number) => {
-                        const pass = it.passed === true || it.answer === "pass" || it.status === "pass";
-                        const fail = it.passed === false || it.answer === "fail" || it.status === "fail";
-                        return (
-                          <TableRow key={i}>
-                            <TableCell className="text-xs">Q{i}</TableCell>
-                            <TableCell className="text-xs">
-                              {it.question || it.label || it.text || `Item ${i}`}
-                            </TableCell>
-                            <TableCell>
-                              {pass ? (
-                                <Badge className="bg-emerald-600 text-white">Pass</Badge>
-                              ) : fail ? (
-                                <Badge variant="destructive">Fail</Badge>
-                              ) : (
-                                <Badge variant="outline">—</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground whitespace-pre-wrap">
-                              {it.comment || it.failureComment || it.note || ""}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
+              <Button size="sm" variant="outline" onClick={() => setShowNewFail(true)}>
+                <XCircle className="h-4 w-4 mr-1.5" />
+                Fail — new reasons
+              </Button>
+              <Button
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => setShowPass(true)}
+              >
+                <CheckCircle className="h-4 w-4 mr-1.5" />
+                Pass — issues fixed
+              </Button>
+            </div>
 
-          <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-500" />
-            <p>
-              These quick actions still go through the standard audit pipeline, so the FM and the activity timeline will
-              reflect the result, who decided, and when.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+            <Collapsible open={showChecklist} onOpenChange={setShowChecklist}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-2 -ml-2">
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showChecklist ? "" : "-rotate-90"}`} />
+                  Previous checklist answers {items.length > 0 && <Badge variant="outline">{items.length} items</Badge>}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {items.length === 0 ? (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    No previous checklist progress saved for this interview.
+                  </p>
+                ) : (
+                  <div className="mt-2 rounded-md border max-h-[300px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">#</TableHead>
+                          <TableHead>Question</TableHead>
+                          <TableHead className="w-24">Answer</TableHead>
+                          <TableHead>Comment</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((it: any, i: number) => {
+                          const pass = it.passed === true || it.answer === "pass" || it.status === "pass";
+                          const fail = it.passed === false || it.answer === "fail" || it.status === "fail";
+                          return (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs">Q{i}</TableCell>
+                              <TableCell className="text-xs">
+                                {it.question || it.label || it.text || `Item ${i}`}
+                              </TableCell>
+                              <TableCell>
+                                {pass ? (
+                                  <Badge className="bg-emerald-600 text-white">Pass</Badge>
+                                ) : fail ? (
+                                  <Badge variant="destructive">Fail</Badge>
+                                ) : (
+                                  <Badge variant="outline">—</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground whitespace-pre-wrap">
+                                {it.comment || it.failureComment || it.note || ""}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+
+            <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-500" />
+              <p>
+                These quick actions still go through the standard audit pipeline, so the FM and the activity timeline
+                will reflect the result, who decided, and when.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </DialogContent>
 
       {/* Confirm: fail with same reasons */}
       <AlertDialog open={showSameFail} onOpenChange={setShowSameFail}>
@@ -396,6 +402,6 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </Dialog>
   );
 };
