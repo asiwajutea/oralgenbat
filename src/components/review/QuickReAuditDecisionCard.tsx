@@ -27,16 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  CheckCircle,
-  XCircle,
-  Zap,
-  ChevronDown,
-  Loader2,
-  FileText,
-  Smartphone,
-  AlertTriangle,
-} from "lucide-react";
+import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -52,6 +43,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   const [showPass, setShowPass] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
 
   // New-fail form state
   const [comment, setComment] = useState("");
@@ -91,7 +83,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   });
 
   const toggleArtifact = (a: string, checked: boolean) => {
-    setArtifacts(prev => (checked ? [...prev, a] : prev.filter(x => x !== a)));
+    setArtifacts((prev) => (checked ? [...prev, a] : prev.filter((x) => x !== a)));
   };
 
   const runFail = async (reuse: boolean) => {
@@ -159,27 +151,32 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
 
   const items: any[] = Array.isArray(prevChecklist?.items) ? (prevChecklist!.items as any[]) : [];
 
+  if (!isVisible) return null;
+
   return (
     <>
-      <Card className="border-primary/40 bg-primary/5">
+      <Card className="border-primary/40 bg-primary/5 relative">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2 h-6 w-6 text-muted-foreground hover:bg-transparent hover:text-foreground"
+          onClick={() => setIsVisible(false)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
         <CardHeader className="py-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Zap className="h-4 w-4 text-primary" />
             Quick re-audit decision
           </CardTitle>
           <CardDescription>
-            Save time on re-audits. Review the previous checklist below, then quick-pass or quick-fail.
-            If a new checklist item has failed, run the full checklist instead.
+            Save time on re-audits. Review the previous checklist below, then quick-pass or quick-fail. If a new
+            checklist item has failed, run the full checklist instead.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => setShowSameFail(true)}
-              disabled={!lastFeedback}
-            >
+            <Button size="sm" variant="destructive" onClick={() => setShowSameFail(true)} disabled={!lastFeedback}>
               <XCircle className="h-4 w-4 mr-1.5" />
               Fail — same reasons as last cycle
             </Button>
@@ -187,11 +184,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
               <XCircle className="h-4 w-4 mr-1.5" />
               Fail — new reasons
             </Button>
-            <Button
-              size="sm"
-              className="bg-green-600 hover:bg-green-700 text-white"
-              onClick={() => setShowPass(true)}
-            >
+            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => setShowPass(true)}>
               <CheckCircle className="h-4 w-4 mr-1.5" />
               Pass — issues fixed
             </Button>
@@ -200,9 +193,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
           <Collapsible open={showChecklist} onOpenChange={setShowChecklist}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2 -ml-2">
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform ${showChecklist ? "" : "-rotate-90"}`}
-                />
+                <ChevronDown className={`h-4 w-4 transition-transform ${showChecklist ? "" : "-rotate-90"}`} />
                 Previous checklist answers {items.length > 0 && <Badge variant="outline">{items.length} items</Badge>}
               </Button>
             </CollapsibleTrigger>
@@ -229,7 +220,9 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
                         return (
                           <TableRow key={i}>
                             <TableCell className="text-xs">Q{i}</TableCell>
-                            <TableCell className="text-xs">{it.question || it.label || it.text || `Item ${i}`}</TableCell>
+                            <TableCell className="text-xs">
+                              {it.question || it.label || it.text || `Item ${i}`}
+                            </TableCell>
                             <TableCell>
                               {pass ? (
                                 <Badge className="bg-emerald-600 text-white">Pass</Badge>
@@ -255,8 +248,8 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
           <div className="flex items-start gap-2 text-xs text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
             <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-500" />
             <p>
-              These quick actions still go through the standard audit pipeline, so the FM and the
-              activity timeline will reflect the result, who decided, and when.
+              These quick actions still go through the standard audit pipeline, so the FM and the activity timeline will
+              reflect the result, who decided, and when.
             </p>
           </div>
         </CardContent>
@@ -303,7 +296,11 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
               disabled={submitting || !lastFeedback}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {submitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <XCircle className="h-4 w-4 mr-1.5" />}
+              {submitting ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <XCircle className="h-4 w-4 mr-1.5" />
+              )}
               Confirm fail
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -315,9 +312,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Fail re-audit with new feedback</DialogTitle>
-            <DialogDescription>
-              Provide the new reason and pick which artifacts need correction.
-            </DialogDescription>
+            <DialogDescription>Provide the new reason and pick which artifacts need correction.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -325,7 +320,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
               <Textarea
                 rows={4}
                 value={comment}
-                onChange={e => setComment(e.target.value)}
+                onChange={(e) => setComment(e.target.value)}
                 placeholder="Explain why this re-audit still fails…"
               />
             </div>
@@ -334,7 +329,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
               <Textarea
                 rows={3}
                 value={actionPlan}
-                onChange={e => setActionPlan(e.target.value)}
+                onChange={(e) => setActionPlan(e.target.value)}
                 placeholder="What should the FM do next?"
               />
             </div>
@@ -344,14 +339,14 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={artifacts.includes("scanned_pdf")}
-                    onCheckedChange={c => toggleArtifact("scanned_pdf", !!c)}
+                    onCheckedChange={(c) => toggleArtifact("scanned_pdf", !!c)}
                   />
                   <FileText className="h-4 w-4" /> Scanned PDF
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={artifacts.includes("mobile_metadata")}
-                    onCheckedChange={c => toggleArtifact("mobile_metadata", !!c)}
+                    onCheckedChange={(c) => toggleArtifact("mobile_metadata", !!c)}
                   />
                   <Smartphone className="h-4 w-4" /> Mobile Metadata
                 </label>
@@ -363,7 +358,11 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
               Cancel
             </Button>
             <Button variant="destructive" onClick={() => runFail(false)} disabled={submitting}>
-              {submitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <XCircle className="h-4 w-4 mr-1.5" />}
+              {submitting ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <XCircle className="h-4 w-4 mr-1.5" />
+              )}
               Submit fail
             </Button>
           </DialogFooter>
@@ -376,8 +375,8 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
           <AlertDialogHeader>
             <AlertDialogTitle>Pass re-audit?</AlertDialogTitle>
             <AlertDialogDescription>
-              Confirm that all previous issues for <span className="font-mono">{fileName}</span> have
-              been fixed. The interview will be marked as Audit Passed.
+              Confirm that all previous issues for <span className="font-mono">{fileName}</span> have been fixed. The
+              interview will be marked as Audit Passed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -387,7 +386,11 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
               disabled={submitting}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
-              {submitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1.5" />}
+              {submitting ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <CheckCircle className="h-4 w-4 mr-1.5" />
+              )}
               Confirm pass
             </AlertDialogAction>
           </AlertDialogFooter>
