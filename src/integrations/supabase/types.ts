@@ -2718,6 +2718,17 @@ export type Database = {
         Args: { _event_id: string }
         Returns: undefined
       }
+      re_audit_quick_fail: {
+        Args: {
+          _action_plan: string
+          _artifact_correction: string[]
+          _audit_id: string
+          _reused_previous?: boolean
+          _review_comment: string
+        }
+        Returns: undefined
+      }
+      re_audit_quick_pass: { Args: { _audit_id: string }; Returns: undefined }
       remove_penalty_charge: {
         Args: { _charge_id: string; _reason: string }
         Returns: undefined
