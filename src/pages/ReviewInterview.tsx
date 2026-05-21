@@ -81,7 +81,6 @@ const formatReviewDuration = (seconds: number | null): string => {
   if (minutes > 0) return `${minutes}m ${secs}s`;
   return `${secs}s`;
 };
-
 const ReviewInterview = () => {
   const { auditId } = useParams<{
     auditId: string;
@@ -160,6 +159,7 @@ const ReviewInterview = () => {
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
+        // When sentinel is NOT visible, the sticky content is "stuck"
         setIsSticky(!entry.isIntersecting);
       },
       {
@@ -170,7 +170,6 @@ const ReviewInterview = () => {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, []);
-
   const { data: audit, isLoading: auditLoading } = useQuery({
     queryKey: ["audit", auditId],
     queryFn: async () => {
@@ -180,7 +179,6 @@ const ReviewInterview = () => {
     },
     enabled: !!auditId,
   });
-
   const { data: metadata, isLoading: metadataLoading } = useQuery({
     queryKey: ["interview-metadata", auditId],
     queryFn: async () => {
@@ -194,7 +192,6 @@ const ReviewInterview = () => {
     },
     enabled: !!auditId,
   });
-
   const { data: photos, isLoading: photosLoading } = useQuery({
     queryKey: ["interview-photos", auditId],
     queryFn: async () => {
@@ -210,12 +207,13 @@ const ReviewInterview = () => {
     },
     enabled: !!auditId,
   });
-
+  // Query for next available interview (with metadata, not locked by others)
   const { data: nextAudit } = useQuery({
     queryKey: ["next-unreviewed-audit", auditId, user?.id],
     queryFn: async () => {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+      // Get audits that have metadata uploaded and are not locked by others
       const { data, error } = await supabase
         .from("audits")
         .select(
@@ -233,6 +231,8 @@ const ReviewInterview = () => {
 
       if (error) throw error;
 
+      // Filter in JS to find audits not locked by others
+      // Allow: not locked, lock expired, or locked by current user
       const available = data?.find((audit) => {
         const isNotLocked = !audit.locked_at;
         const isLockExpired = audit.locked_at && audit.locked_at < oneHourAgo;
@@ -243,15 +243,18 @@ const ReviewInterview = () => {
       return available ? { id: available.id, file_name: available.file_name } : null;
     },
     enabled: !!auditId && !!user?.id,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: 0, // Always get fresh data
+    refetchOnMount: "always", // Refetch when component mounts
   });
 
+  // Fetch checklist progress - only load if reviewer_id matches current user
+  // For re-audits awaiting review, clear old progress to start fresh
   const { data: checklistProgress, isLoading: checklistLoading } = useQuery({
     queryKey: ["checklist-progress", auditId, user?.id, audit?.is_re_audit, audit?.status],
     queryFn: async () => {
       if (!user?.id) return null;
 
+      // For re-audits awaiting review, delete old progress and start fresh
       if (audit?.is_re_audit && audit?.status === "Awaiting Review") {
         await supabase.from("audit_checklist_progress").delete().eq("audit_id", auditId);
         return null;
@@ -261,12 +264,13 @@ const ReviewInterview = () => {
         .from("audit_checklist_progress")
         .select("*")
         .eq("audit_id", auditId)
-        .eq("reviewer_id", user.id)
+        .eq("reviewer_id", user.id) // Only load progress for current user
         .maybeSingle();
 
       if (error) throw error;
       if (!data) return null;
 
+      // Transform database response to match ChecklistProgress type
       return {
         ...data,
         items: data.items as unknown as ChecklistProgress["items"],
@@ -275,6 +279,7 @@ const ReviewInterview = () => {
     enabled: !!auditId && isAuditor && !!user?.id,
   });
 
+  // Field audit lookup from AVTool
   const {
     data: fieldAuditData,
     refetch: refetchFieldAudit,
@@ -301,6 +306,7 @@ const ReviewInterview = () => {
     retry: 1,
   });
 
+  // Auto fraud detection: same agent + same day + within 30 min
   const { data: fraudFlag, isLoading: fraudFlagLoading } = useQuery({
     queryKey: ["fraud-flag", auditId],
     queryFn: async () => {
@@ -322,6 +328,7 @@ const ReviewInterview = () => {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Awaiting review count query (for completion page)
   const { data: awaitingCount } = useQuery({
     queryKey: ["awaiting-review-count"],
     queryFn: async () => {
@@ -335,6 +342,7 @@ const ReviewInterview = () => {
     enabled: completionResult !== null,
   });
 
+  // Initialize state from saved progress
   useEffect(() => {
     if (checklistProgress?.is_completed) {
       setChecklistCompleted(true);
@@ -343,6 +351,7 @@ const ReviewInterview = () => {
     }
   }, [checklistProgress]);
 
+  // Reset checklist state for re-audits awaiting review
   useEffect(() => {
     if (audit?.is_re_audit && audit?.status === "Awaiting Review") {
       setChecklistCompleted(false);
@@ -350,13 +359,16 @@ const ReviewInterview = () => {
       setChecklistComments("");
     }
   }, [audit?.is_re_audit, audit?.status]);
-
   const isLoading = auditLoading || metadataLoading || photosLoading || lockLoading || (isAuditor && checklistLoading);
   const isReviewed = audit?.status === "Audit Passed" || audit?.status === "Audit Failed";
 
+  // Acquire lock and start timer for auditors on unreviewed interviews when data loads
+  // Only start if metadata is available
   useEffect(() => {
     const initLock = async () => {
+      // Don't acquire if abandoned
       if (hasAbandoned) return;
+      // Only acquire lock and start timer if metadata is uploaded
       if (audit && isAuditor && !isReviewed && !lockedByOther && metadata) {
         const acquired = await acquireLock();
         if (acquired) {
@@ -367,6 +379,7 @@ const ReviewInterview = () => {
     initLock();
   }, [audit, isAuditor, isReviewed, lockedByOther, acquireLock, hasAbandoned, metadata]);
 
+  // Start countdown when completion result is set and next audit is available
   useEffect(() => {
     if (completionResult && nextAudit?.id && !countdownRef.current) {
       setCountdown(5);
@@ -388,6 +401,7 @@ const ReviewInterview = () => {
     };
   }, [completionResult, nextAudit?.id]);
 
+  // Auto-navigate when countdown reaches 0
   useEffect(() => {
     if (completionResult && nextAudit?.id && countdown === 0) {
       cancelCountdown();
@@ -407,14 +421,13 @@ const ReviewInterview = () => {
     setIsAbandoning(true);
     try {
       await releaseLock();
-      setAbandoned(true);
+      setAbandoned(true); // Mark as abandoned to prevent re-locking
       toast.success("Review abandoned. Interview is now available to other auditors.");
       navigate("/");
     } finally {
       setIsAbandoning(false);
     }
   };
-
   const handleAnalyzePDF = async () => {
     if (!auditId) return;
     setIsAnalyzingPDF(true);
@@ -423,6 +436,7 @@ const ReviewInterview = () => {
         body: { auditId },
       });
 
+      // Any invoke error -> fall back to manual scoring
       if (error) {
         console.error("PDF analysis invoke error:", error);
         setAiUnavailable(true);
@@ -430,12 +444,14 @@ const ReviewInterview = () => {
         return;
       }
 
+      // Graceful degradation flag from edge function
       if (data?.ai_unavailable) {
         setAiUnavailable(true);
         toast.info(data.message || "AI analysis unavailable. Please use manual scoring below.");
         return;
       }
 
+      // Edge function reported an error -> also fall back to manual
       if (data?.error) {
         console.error("PDF analysis returned error:", data.error);
         setAiUnavailable(true);
@@ -458,15 +474,18 @@ const ReviewInterview = () => {
     }
   };
 
+  // Delete PDF mutation
   const deletePdfMutation = useMutation({
     mutationFn: async () => {
       if (!audit?.file_url || !auditId) throw new Error("No PDF to delete");
 
+      // Remove from storage
       const pdfPath = audit.file_url.split("/audit-pdfs/")[1];
       if (pdfPath) {
         await supabase.storage.from("audit-pdfs").remove([decodeURIComponent(pdfPath)]);
       }
 
+      // Clear file_url in database
       const { error } = await supabase.from("audits").update({ file_url: "" }).eq("id", auditId);
       if (error) throw error;
     },
@@ -482,7 +501,6 @@ const ReviewInterview = () => {
 
   const canDeletePdf =
     userRole === "admin" || userRole === "super_admin" || userRole === "field_manager" || userRole === "contractor";
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -490,7 +508,6 @@ const ReviewInterview = () => {
       </div>
     );
   }
-
   if (!audit) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -502,11 +519,14 @@ const ReviewInterview = () => {
     );
   }
 
+  // Check if this is a re-audit that the current user is not authorized to view
+  // Only the original reviewer or admin/super_admin can access re-audits
   const isAdmin = userRole === "admin" || userRole === "super_admin";
   const isReAuditRestricted =
     audit.is_re_audit && audit.status === "Awaiting Review" && !isAdmin && userRole === "auditor";
 
   if (isReAuditRestricted) {
+    // Fetch profile to check if current user is the original reviewer
     const isOriginalReviewer = audit.reviewed_by === user?.user_metadata?.full_name;
 
     if (!isOriginalReviewer) {
@@ -525,6 +545,7 @@ const ReviewInterview = () => {
     }
   }
 
+  // Show blocked message if locked by another user
   if (lockedByOther && !isReviewed) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -541,6 +562,7 @@ const ReviewInterview = () => {
     );
   }
 
+  // Show message if user abandoned this review
   if (hasAbandoned && !isReviewed) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -567,6 +589,7 @@ const ReviewInterview = () => {
     );
   }
 
+  // Show completion page after pass/fail
   if (completionResult) {
     const isPassed = completionResult === "passed";
     const hasNextInterview = !!nextAudit?.id;
@@ -682,6 +705,7 @@ const ReviewInterview = () => {
             <div className="flex items-center justify-between gap-2">
               <ReviewNavigation nextAuditId={nextAudit?.id} />
               <div className="flex items-center gap-2 sm:gap-3">
+                {/* Lock countdown timer */}
                 {isAuditor && !isReviewed && isLocked && !lockedByOther && remainingSeconds > 0}
                 {isAuditor && !isReviewed && (
                   <ReviewTimer
@@ -758,6 +782,13 @@ const ReviewInterview = () => {
             {isAuditor && !isReviewed && metadata && (
               <div className="p-3 sm:p-4 space-y-3" ref={checklistRef}>
                 {audit?.is_re_audit && audit?.status === "Awaiting Review" && <ReAuditNoteBanner auditId={auditId!} />}
+                {audit?.is_re_audit && (
+                  <QuickReAuditDecisionCard
+                    auditId={auditId!}
+                    fileName={audit.file_name}
+                    onCompleted={(result) => setCompletionResult(result)}
+                  />
+                )}
                 <FraudFlagBanner
                   isFlagged={!!fraudFlag?.is_flagged}
                   collisions={fraudFlag?.collisions ?? []}
@@ -789,7 +820,7 @@ const ReviewInterview = () => {
               </div>
             )}
 
-            {/* Review Actions with integrated Quick Re-Audit logic next to abandon */}
+            {/* Review Actions */}
             <ReviewActions
               auditId={auditId!}
               currentStatus={audit.status}
@@ -809,7 +840,6 @@ const ReviewInterview = () => {
               }
               onScrollToChecklist={() => checklistRef.current?.scrollIntoView({ behavior: "smooth" })}
               onReviewCompleted={(result) => setCompletionResult(result)}
-              isReAudit={audit?.is_re_audit}
             />
           </div>
 
@@ -1038,5 +1068,4 @@ const ReviewInterview = () => {
     </>
   );
 };
-
 export default ReviewInterview;
