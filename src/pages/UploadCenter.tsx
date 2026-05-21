@@ -110,7 +110,7 @@ const UploadCenter = () => {
           const info = infoByName.get(base) ?? null;
           const existingStatus = r.existingStatus ?? info?.status ?? null;
           const existingHasMetadata = r.existingHasMetadata ?? info?.hasMetadata ?? null;
-          const hasPairedPdfInBatch = kind === "zip" ? pdfBaseNamesInBatch.has(base) : true;
+          const hasPairedPdfInBatch = kind === "metadata_zip" ? pdfBaseNamesInBatch.has(base) : true;
           let willSkipReason: string | null = null;
           if (mode === "new" && kind === "metadata_zip" && !hasPairedPdfInBatch && !existingStatus) {
             willSkipReason = "No paired PDF — upload the PDF first";
@@ -120,7 +120,7 @@ const UploadCenter = () => {
         const base = r.file.name.replace(/\.(pdf|zip)$/i, "");
         const kind = detectKind(r.file);
         const info = infoByName.get(base) ?? null;
-        const hasPairedPdfInBatch = kind === "zip" ? pdfBaseNamesInBatch.has(base) : true;
+        const hasPairedPdfInBatch = kind === "metadata_zip" ? pdfBaseNamesInBatch.has(base) : true;
         let willSkipReason: string | null = null;
         if (mode === "new" && kind === "metadata_zip" && !hasPairedPdfInBatch && !info) {
           willSkipReason = "No paired PDF — upload the PDF first";
