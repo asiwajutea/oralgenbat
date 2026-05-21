@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, FileText, Smartphone, Activity, FilePlus, FileArchive, RefreshCcw, User } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, FileText, Smartphone } from "lucide-react";
+import { format } from "date-fns";
 
 interface Props {
   auditId: string;
@@ -37,7 +37,6 @@ export const ReviewFeedbackHistory = ({
 }: Props) => {
   const [open, setOpen] = useState(true);
   const [idx, setIdx] = useState(0);
-  const [showActivity, setShowActivity] = useState(false);
 
   const { data: history = [] } = useQuery({
     queryKey: ["review-feedback-history", auditId],
@@ -48,34 +47,6 @@ export const ReviewFeedbackHistory = ({
         .eq("audit_id", auditId)
         .order("cycle_number", { ascending: false });
       if (error) throw error;
-      return data || [];
-    },
-    enabled: !!auditId,
-  });
-
-  const { data: submissions = [] } = useQuery({
-    queryKey: ["re-audit-submissions-activity", auditId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("re_audit_submissions")
-        .select("id, submitted_at, submitted_by_role, replaced_pdf, replaced_zip, submission_comment, submitter:profiles!submitted_by(full_name)")
-        .eq("audit_id", auditId)
-        .order("submitted_at", { ascending: false });
-      return data || [];
-    },
-    enabled: !!auditId,
-  });
-
-  const { data: activity = [] } = useQuery({
-    queryKey: ["audit-activity-log", auditId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("user_activity_log")
-        .select("id, action_type, description, entity_label, created_at, user_id, metadata, user_role")
-        .eq("entity_type", "audit")
-        .eq("entity_id", auditId)
-        .order("created_at", { ascending: false })
-        .limit(50);
       return data || [];
     },
     enabled: !!auditId,
@@ -101,28 +72,6 @@ export const ReviewFeedbackHistory = ({
 
   const current = entries[Math.min(idx, entries.length - 1)];
   const isLatest = idx === 0;
-
-  // Activity events: union of re_audit_submissions + user_activity_log
-  const events: Array<{ id: string; at: string; icon: any; label: string; detail?: string; actor?: string }> = [];
-  for (const s of submissions) {
-    const actor = (s.submitter as any)?.full_name || s.submitted_by_role || "User";
-    if (s.replaced_pdf) events.push({ id: `${s.id}-pdf`, at: s.submitted_at, icon: FilePlus, label: "PDF replaced", actor, detail: s.submission_comment || undefined });
-    if (s.replaced_zip) events.push({ id: `${s.id}-zip`, at: s.submitted_at, icon: FileArchive, label: "Metadata ZIP replaced", actor, detail: s.submission_comment || undefined });
-    if (!s.replaced_pdf && !s.replaced_zip) events.push({ id: `${s.id}-nc`, at: s.submitted_at, icon: RefreshCcw, label: "Sent back for re-audit without changes", actor, detail: s.submission_comment || undefined });
-  }
-  for (const a of activity as any[]) {
-    // de-dup with submission rows by skipping the corresponding audit_failed/passed entries when very close in time
-    const at = a.created_at as string;
-    events.push({
-      id: `act-${a.id}`,
-      at,
-      icon: Activity,
-      label: (a.action_type as string).replace(/_/g, " "),
-      detail: a.description || undefined,
-      actor: undefined,
-    });
-  }
-  events.sort((x, y) => new Date(y.at).getTime() - new Date(x.at).getTime());
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
