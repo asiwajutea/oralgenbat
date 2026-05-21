@@ -19,6 +19,7 @@ import { ReviewNavigation } from "@/components/review/ReviewNavigation";
 import { MobileZipUpload } from "@/components/review/MobileZipUpload";
 import { ReviewActions } from "@/components/review/ReviewActions";
 import { ReviewFeedbackHistory } from "@/components/review/ReviewFeedbackHistory";
+import { ReviewActivityTimeline } from "@/components/review/ReviewActivityTimeline";
 import { ReparseArtifactsButton } from "@/components/review/ReparseArtifactsButton";
 import { BurnHistoryIcon } from "@/components/BurnHistoryIcon";
 import { useBurnHistory } from "@/hooks/useBurnHistory";
@@ -823,6 +824,9 @@ const ReviewInterview = () => {
             isReAudit={audit.is_re_audit}
             artifactCorrection={audit.artifact_correction}
           />
+
+          {/* Activity timeline - always rendered so reviewers see what changed */}
+          <ReviewActivityTimeline auditId={auditId!} defaultOpen={!!audit.is_re_audit} />
           
           {/* Comment / Resolved button - hide for passed and ready-for-review */}
           {audit.status !== "Audit Passed" && !(audit.status === "Awaiting Review" && metadata) &&
