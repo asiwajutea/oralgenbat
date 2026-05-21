@@ -367,7 +367,15 @@ const UploadCenter = () => {
                       const isFailed = r.existingStatus === "Failed";
                       const modeLabel =
                         mode === "new"
-                          ? { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
+                          ? (r.willSkipReason
+                              ? { text: "Will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+                              : kind === "metadata_zip" && r.existingHasMetadata
+                                ? { text: "Duplicate metadata", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+                                : kind === "metadata_zip" && r.existingStatus
+                                  ? { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
+                                  : kind === "metadata_zip" && r.hasPairedPdfInBatch
+                                    ? { text: "Pair with PDF in batch", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
+                                    : { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" })
                           : !r.lookupDone
                             ? { text: "Checking…", cls: "bg-muted text-muted-foreground" }
                             : isFailed
@@ -389,6 +397,11 @@ const UploadCenter = () => {
                             {r.outcome?.message && (
                               <div className={`text-[11px] sm:text-xs ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
                                 {r.outcome.message}
+                              </div>
+                            )}
+                            {r.status === "pending" && r.willSkipReason && (
+                              <div className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
+                                {r.willSkipReason}
                               </div>
                             )}
                           </div>
