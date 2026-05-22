@@ -172,9 +172,6 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   };
 
   const items: any[] = Array.isArray(prevChecklist?.items) ? (prevChecklist!.items as any[]) : [];
-  const itemsHasAnswers = items.some(
-    (it: any) => it?.answer === "yes" || it?.answer === "no" || it?.passed === true || it?.passed === false,
-  );
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
