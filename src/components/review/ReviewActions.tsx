@@ -304,6 +304,7 @@ export const ReviewActions = ({
   const [showPassOverrideDialog, setShowPassOverrideDialog] = useState(false);
   const [passOverrideReason, setPassOverrideReason] = useState("");
   const [passOverrideActionPlan, setPassOverrideActionPlan] = useState("");
+  const [passOverrideWarn, setPassOverrideWarn] = useState(false);
 
   return (
     <>
