@@ -221,8 +221,39 @@ const Inbox = () => {
     return list;
   }, [conversations, activeCategory, search]);
 
-  const openConvs = useMemo(() => filteredConvs.filter((c: any) => !c.closed), [filteredConvs]);
-  const closedConvs = useMemo(() => filteredConvs.filter((c: any) => c.closed), [filteredConvs]);
+  // Mark conversations whose latest activity is a Pass-with-Override warning so
+  // the inbox shows a red triangle and floats them to the top.
+  const { data: warningConvIds = new Set<string>() } = useQuery({
+    queryKey: ["override-warning-convs", user?.id, conversations.length],
+    enabled: !!user?.id && conversations.length > 0,
+    queryFn: async () => {
+      const ids = (conversations as any[]).map((c) => c.id);
+      if (!ids.length) return new Set<string>();
+      const { data } = await supabase
+        .from("chat_messages")
+        .select("conversation_id, metadata")
+        .in("conversation_id", ids)
+        .contains("metadata", { kind: "pass_override", warn: true } as any);
+      return new Set((data || []).map((m: any) => m.conversation_id));
+    },
+    staleTime: 60_000,
+  });
+
+  const filteredConvsSorted = useMemo(() => {
+    const list = [...filteredConvs];
+    list.sort((a, b) => {
+      const aw = warningConvIds.has(a.id) ? 1 : 0;
+      const bw = warningConvIds.has(b.id) ? 1 : 0;
+      if (aw !== bw) return bw - aw;
+      const at = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const bt = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return bt - at;
+    });
+    return list;
+  }, [filteredConvs, warningConvIds]);
+
+  const openConvs = useMemo(() => filteredConvsSorted.filter((c: any) => !c.closed), [filteredConvsSorted]);
+  const closedConvs = useMemo(() => filteredConvsSorted.filter((c: any) => c.closed), [filteredConvsSorted]);
 
   // Participants per visible conversation
   const visibleConvIds = useMemo(() => filteredConvs.map((c) => c.id), [filteredConvs]);
