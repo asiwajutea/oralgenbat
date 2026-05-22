@@ -242,11 +242,19 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
                       </TableHeader>
                       <TableBody>
                         {items.map((it: any, i: number) => {
-                          const pass = it.passed === true || it.answer === "pass" || it.status === "pass";
-                          const fail = it.passed === false || it.answer === "fail" || it.status === "fail";
+                          const pass =
+                            it.passed === true ||
+                            it.answer === "yes" ||
+                            it.answer === "pass" ||
+                            it.status === "pass";
+                          const fail =
+                            it.passed === false ||
+                            it.answer === "no" ||
+                            it.answer === "fail" ||
+                            it.status === "fail";
                           return (
                             <TableRow key={i}>
-                              <TableCell className="text-xs">Q{i}</TableCell>
+                              <TableCell className="text-xs">Q{typeof it.id === "number" ? it.id : i}</TableCell>
                               <TableCell className="text-xs">
                                 {it.question || it.label || it.text || `Item ${i}`}
                               </TableCell>
