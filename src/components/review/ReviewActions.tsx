@@ -16,8 +16,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone, ClipboardList } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone, ClipboardList, AlertTriangle } from "lucide-react";
 import { ReAuditDialog } from "./ReAuditDialog";
 
 const CHECKLIST_FEEDBACK_STATEMENTS: Record<number, string> = {
