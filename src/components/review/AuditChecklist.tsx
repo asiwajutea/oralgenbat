@@ -140,6 +140,8 @@ interface AuditChecklistProps {
   isAbandoning?: boolean;
   autoFlagged?: boolean;
   fraudCollisionCount?: number;
+  /** Optional inline action rendered next to the Abandon button (e.g. Quick re-audit decision). */
+  headerActionSlot?: React.ReactNode;
 }
 
 export const AuditChecklist = ({ 
@@ -153,6 +155,7 @@ export const AuditChecklist = ({
   isAbandoning = false,
   autoFlagged = false,
   fraudCollisionCount = 0,
+  headerActionSlot,
 }: AuditChecklistProps) => {
   const { user } = useAuth();
   const [items, setItems] = useState<ChecklistItem[]>(() => {
@@ -556,6 +559,7 @@ export const AuditChecklist = ({
                 )}
               </CardTitle>
               <div className="flex items-center gap-2">
+                {headerActionSlot}
                 {onAbandonReview && (
                   <Button
                     onClick={onAbandonReview}
@@ -654,6 +658,7 @@ export const AuditChecklist = ({
               )}
             </CardTitle>
             <div className="flex items-center gap-2">
+              {headerActionSlot}
               {onAbandonReview && (
                 <Button
                   onClick={onAbandonReview}

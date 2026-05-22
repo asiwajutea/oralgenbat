@@ -166,7 +166,7 @@ const ChatPolicies = () => {
       ? blockedIds
       : pickerOpen === "team_excepted"
         ? policy.team_chats_excepted_user_ids
-        : (typeof pickerOpen === "object" && pickerOpen?.kind === "except"
+        : (pickerOpen && typeof pickerOpen === "object" && pickerOpen.kind === "except"
             ? (blocks.find((b) => b.blocked_user_id === pickerOpen.blockedId)?.except_user_ids || [])
             : []);
 
@@ -175,7 +175,7 @@ const ChatPolicies = () => {
       await toggleBlocked(id);
     } else if (pickerOpen === "team_excepted") {
       await toggleTeamExcept(id);
-    } else if (typeof pickerOpen === "object" && pickerOpen?.kind === "except") {
+    } else if (pickerOpen && typeof pickerOpen === "object" && pickerOpen.kind === "except") {
       await toggleExcept(pickerOpen.blockedId, id);
     }
   };
@@ -183,7 +183,8 @@ const ChatPolicies = () => {
   const pickerTitle =
     pickerOpen === "blocked" ? "Select blocked users"
     : pickerOpen === "team_excepted" ? "Select excepted users"
-    : typeof pickerOpen === "object" ? `Allow these users to message ${userName(pickerOpen.blockedId)}`
+    : (pickerOpen && typeof pickerOpen === "object" && pickerOpen.kind === "except")
+      ? `Allow these users to message ${userName(pickerOpen.blockedId)}`
     : "";
 
   if (loading) {

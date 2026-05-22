@@ -16,8 +16,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
-import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone, ClipboardList } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Upload, FileText, Smartphone, ClipboardList, AlertTriangle } from "lucide-react";
 import { ReAuditDialog } from "./ReAuditDialog";
 
 const CHECKLIST_FEEDBACK_STATEMENTS: Record<number, string> = {
@@ -304,6 +305,7 @@ export const ReviewActions = ({
   const [showPassOverrideDialog, setShowPassOverrideDialog] = useState(false);
   const [passOverrideReason, setPassOverrideReason] = useState("");
   const [passOverrideActionPlan, setPassOverrideActionPlan] = useState("");
+  const [passOverrideWarn, setPassOverrideWarn] = useState(false);
 
   return (
     <>
@@ -566,6 +568,25 @@ export const ReviewActions = ({
                 className="min-h-[80px]"
               />
             </div>
+
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-900/20 p-3">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="pass-override-warn" className="text-sm font-medium cursor-pointer">
+                    Warn the team about this agent's practice
+                  </Label>
+                  <Switch
+                    id="pass-override-warn"
+                    checked={passOverrideWarn}
+                    onCheckedChange={setPassOverrideWarn}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  When on, the field manager, contractor, and sub-contractor will receive a high-priority inbox warning that keeps reminding them until they open it.
+                </p>
+              </div>
+            </div>
           </div>
 
           <AlertDialogFooter>
@@ -595,6 +616,7 @@ export const ReviewActions = ({
                       passed_with_failures: true,
                       pass_override_reason: passOverrideReason.trim(),
                       pass_override_action_plan: passOverrideActionPlan.trim() || null,
+                      pass_override_warn: passOverrideWarn,
                     } as any)
                     .eq("id", auditId);
                   if (error) throw error;
@@ -602,6 +624,16 @@ export const ReviewActions = ({
                   try {
                     await supabase.functions.invoke('cleanup-interview-audio', { body: { auditId } });
                   } catch {}
+                  try {
+                    await supabase.rpc('notify_pass_override' as any, {
+                      _audit_id: auditId,
+                      _warn: passOverrideWarn,
+                      _reason: passOverrideReason.trim(),
+                      _action_plan: passOverrideActionPlan.trim() || null,
+                    });
+                  } catch (e) {
+                    console.warn('notify_pass_override failed', e);
+                  }
                   toast({ title: "Interview Passed (with override)", description: "The interview has been passed with noted checklist failures." });
                   setShowPassOverrideDialog(false);
                   queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
