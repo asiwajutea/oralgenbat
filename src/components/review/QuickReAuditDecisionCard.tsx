@@ -199,7 +199,7 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="destructive" onClick={() => setShowSameFail(true)} disabled={!lastFeedback}>
+              <Button size="sm" variant="destructive" onClick={openSameFail} disabled={!lastFeedback}>
                 <XCircle className="h-4 w-4 mr-1.5" />
                 Fail — same reasons as last cycle
               </Button>
