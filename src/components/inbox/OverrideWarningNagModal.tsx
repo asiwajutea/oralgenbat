@@ -52,7 +52,11 @@ export const OverrideWarningNagModal = () => {
       const mine = msgs.filter((m: any) => myConvs.has(m.conversation_id));
       // Drop already-acked audits
       const auditIds = Array.from(
-        new Set(mine.map((m: any) => m.metadata?.audit_id).filter(Boolean)),
+        new Set(
+          mine
+            .map((m: any) => (m.metadata as any)?.audit_id)
+            .filter((v: any): v is string => typeof v === "string"),
+        ),
       ) as string[];
       if (!auditIds.length) return mine.slice(0, 5);
       const { data: acks } = await supabase
@@ -65,7 +69,7 @@ export const OverrideWarningNagModal = () => {
       const seen = new Set<string>();
       const out: any[] = [];
       for (const m of mine) {
-        const aid = m.metadata?.audit_id as string | undefined;
+        const aid = (m.metadata as any)?.audit_id as string | undefined;
         if (!aid || acked.has(aid) || seen.has(aid)) continue;
         seen.add(aid);
         out.push(m);
