@@ -1,81 +1,90 @@
-## 1. Activity timeline (Interview Review page)
+# Fixes & enhancements
 
-**Problem**: Timeline only appears when the interview is failed; it doesn't show re-audit submissions (what artifact was replaced, "sent back without changes"); and most rows don't show the actor's name.
+## 1. Quick Re-Audit Decision — relocate and improve
 
-**Fix** — update `src/components/review/ReviewFeedbackHistory.tsx` (and rename the visible toggle to "Activity history" so it's clear it's not tied to failure):
+**File**: `src/components/review/AuditChecklist.tsx`, `src/pages/ReviewInterview.tsx`, `src/components/review/QuickReAuditDecisionCard.tsx`.
 
-- **Always render** the activity section, regardless of audit status or whether `review_feedback_history` is empty. Today it returns `null` when there are no failures. Extract the "Activity history" section into its own card (`ReviewActivityTimeline.tsx`) mounted in `ReviewInterview.tsx` so it shows even when the interview is `Awaiting Review`, `Pending`, or `Audit Passed`.
-- **Add missing event sources** so re-audit replacements always show up even if no `user_activity_log` row exists:
-  - `re_audit_submissions` → "PDF replaced", "Metadata ZIP replaced", "Sent back for re-audit without changes" (already partly there, keep).
-  - `audits.mobile_zip_uploaded_at` change (initial metadata upload) — derived from activity log entry `metadata_uploaded` or fallback to that timestamp.
-  - `audits.file_url` change history via `user_activity_log` action types `pdf_replaced`, `pdf_uploaded`, `metadata_replaced`, `metadata_uploaded`, `artifact_resolved`, `fm_reassigned`, `interview_locked`, `interview_unlocked`, `sent_to_burn`, `field_audit_synced`.
-  - `audits` status transitions → "Audit Passed", "Audit Failed", "Passed with Override", "Sent for re-audit" — backfilled from `user_activity_log` (entity_type=`audit`).
-- **Resolve actor names for every row** by batch-fetching `profiles(id, full_name)` for the union of `user_id` values across `re_audit_submissions.submitted_by`, `user_activity_log.user_id`, and `audits.reviewed_by` / `locked_by` / `uploaded_by`. Pass the resolved name into every event (not just submissions). Show `actor` + role chip for each row.
-- **Event labels** become human-readable (e.g. `pdf_replaced` → "PDF replaced", `audit_failed` → "Marked as Failed"). De-dup near-simultaneous rows (same actor + same label within 5s).
-- **Sort** newest first, show absolute timestamp on hover, relative time inline.
+- **Relocate trigger**: Remove the standalone `QuickReAuditDecisionCard` card placed above the checklist. Pass a new optional prop `quickDecisionSlot?: ReactNode` into `AuditChecklist`. Render it inline next to the existing "Abandon" button (both sticky and non-sticky branches at lines 559 & 657). On `ReviewInterview.tsx` line 786, build the slot once (only when `audit.is_re_audit`) and pass it in instead of rendering the card separately.
+- **Editable "same reason" failure**: Replace the read-only `<p>` summary in the "Fail — same reasons" `AlertDialog` (lines 264–314) with editable `<Textarea>` fields prefilled from `lastFeedback.review_comment` / `action_plan` and an editable artifact checkbox group prefilled from `lastFeedback.artifact_correction`. Auditor can refine the reason before confirming. Submission still flags `_reused_previous: true` if the auditor did not change anything substantive; otherwise mark `false`.
+- **Show previous checklist properly**: The current "Previous checklist answers" collapsible only reads `audit_checklist_progress`. Many re-audits never had a saved progress row, so it shows empty. Fall back to the most recent `review_feedback_history.failed_checklist_items` (the JSONB the trigger snapshots on each failure) when `audit_checklist_progress` is empty, and render those rows in the same table. Expand the collapsible by default whenever items exist.
 
-No DB schema changes required — all sources already exist (`re_audit_submissions`, `user_activity_log`, `profiles`).
+## 2. Pass-with-Override — inbox notification + Warn toggle
 
-## 2. Upload Center — PDF-first, paired-preview UX
+**Files**: `src/components/review/ReviewActions.tsx`, `supabase/migrations/<new>.sql`, `src/pages/Inbox.tsx`, `src/components/InboxBell.tsx`, optional `src/components/announcements/AnnouncementProvider.tsx` (or new `OverrideWarningNagModal.tsx`).
 
-**Problem**: Upload Center accepts PDFs + ZIPs in any order, so ZIPs sometimes try to attach before their PDF audit row exists. `/interviews` page already has a nicer paired preview (BulkZipUploadDialog / CombinedUploadDialog).
+- **New "Warn" toggle** in the Pass-with-Override dialog: a `Switch` labeled "Warn the team about this agent's practice". When on, the failure context becomes a high-priority warning.
+- **Migration**:
+  - Extend `audits` with `pass_override_warn boolean default false`.
+  - New table `override_warning_acks(id, audit_id, user_id, acked_at)` — tracks who has opened the inbox message so the nag modal can stop.
+  - New SECURITY DEFINER RPC `notify_pass_override(_audit_id uuid, _warn boolean, _reason text)`:
+    - Resolves interviewer → assigned FM (`team_assignments`), FM → contractor admin (`fm_contractor_assignments`), contractor → sub-contractor (`fm_sub_contractor_assignments`).
+    - For each recipient (FM, contractor, sub-contractor): finds-or-creates a `direct` (or new `category = 'override_notice'`) conversation pinned to the audit and inserts a `messages` row with body = override reason and `metadata = { kind: 'pass_override', audit_id, warn: bool, file_name }`. If `warn`, set `metadata.priority = 'high'` and pin the conversation (`conversations.is_pinned = true`).
+  - Add `'override_notice'` to whatever check constraint or enum the inbox category uses; if `is_pinned` doesn't exist on `conversations`, add it.
+- **Wire it up**: After the successful update in `ReviewActions.tsx` line 599, call `supabase.rpc('notify_pass_override', …)` with the warn flag.
+- **Inbox UI** (`Inbox.tsx`):
+  - Add the `override_notice` entry to `CATEGORY_META` with `AlertTriangle` icon.
+  - In the conversation list, when `latest message.metadata.kind === 'pass_override' && metadata.warn`, prefix the row with a red `AlertTriangle` icon and sort it to the top.
+- **Nag modal**: New `src/components/inbox/OverrideWarningNagModal.tsx` mounted in `Layout.tsx`. On every route change / app load, query `messages` where `metadata.kind = 'pass_override'` and `metadata.warn = true`, joined against `override_warning_acks` filtered by current user — show a modal listing each un-acked warning ("Auditor X marked NGXX as Pass with Override – reason: …, open inbox"). The user must click "Open in inbox" which records an `override_warning_acks` row. Re-appears on next session until acked. Recipients = FM, contractor, sub-contractor only (use `has_role`).
 
-**Fix** — update `src/pages/UploadCenter.tsx` (new-interview path only; re-audit replacement flow stays as is):
+## 3. Upload-lock exemption fix
 
-- **Two-phase processing per batch**:
-  1. Split selected files into `pdfs` and `zips` by extension/MIME.
-  2. Group by base name (`NGXX_XXXX_XXXXXXXX_XXXX`) into a `PairPreview[]`: `{ baseName, pdf?: File, zip?: File, existingAudit?: { id, has_pdf, has_metadata } }`.
-  3. Query `audits` once (`.in("file_name", baseNames)`) + `interview_metadata` to compute pairing/duplicate state for each row.
-- **Preview table** before upload (mirrors the table in `BulkZipUploadDialog` / `CombinedUploadDialog`) with columns: File name · PDF status (✅ included / 🟡 already uploaded / ❌ missing) · Metadata status · Action (Upload / Skip / Replace) · Reason. Rows where ZIP has no matching PDF (neither in batch nor existing) are flagged "Will skip — no paired PDF" and excluded from the upload run.
-- **Upload order**: process all PDFs first (sequentially or limited concurrency), wait for each audit row to be created, then process ZIPs against the now-existing audits. Existing helper `uploadInterviewFile` already inserts the audit row on PDF success; we just need to enforce ordering at the page level.
-- Re-use `FloatingUploadProgress` for per-file progress, but add an "Upload summary" panel after completion (uploaded / skipped / failed counts, like `/interviews`).
+**File**: `supabase/migrations/<new>.sql`.
 
-No new components are strictly required, but extract the pairing logic to `src/lib/pairInterviewFiles.ts` so it can be reused.
+`assert_upload_allowed` (current migration `20260504104215`) never consults `upload_lock_exemptions`, so exempt users still get blocked once they actually upload. Replace the global/contractor/FM/interviewer lock loop so it skips a lock when:
 
-## 3. One-click Fail / Pass for re-audits
+```
+EXISTS (
+  SELECT 1 FROM upload_lock_exemptions e
+  WHERE e.scope_type = v_lock.scope_type
+    AND COALESCE(e.scope_id, '') = COALESCE(v_lock.scope_id, '')
+    AND (
+      (e.exempt_user_id IS NOT NULL AND e.exempt_user_id = auth.uid())
+      OR (e.exempt_role IS NOT NULL AND has_role(auth.uid(), e.exempt_role))
+    )
+)
+```
 
-**Goal**: Save auditor time on re-audits by letting them re-fail or re-pass an audit without walking through all 14 checklist items, while preserving full audit history and visibility for the FM.
+(Match the actual column names in `upload_lock_exemptions` — adjust if schema differs.) The frontend hook `useUploadLockStatus` already calls `is_upload_allowed`, so no client change.
 
-**Scope**: Only when `audits.is_re_audit = true` and there is at least one prior cycle in `review_feedback_history` (or a non-null `review_comment` on the current row).
+## 4. PDF compression dropping pages
 
-### UI — `src/pages/ReviewInterview.tsx`
+**File**: `src/utils/compressPdf.ts`, `src/lib/uploadInterviewFile.ts`.
 
-Add a new card above the checklist titled **"Quick re-audit decision"** with:
+- Wrap each `page.render` in try/catch. If any page render fails, abort the whole quality loop for that pass and continue to the next quality level; if all quality levels fail or any pass produced fewer pages than `numPages`, **return the original file unchanged** instead of a truncated one.
+- After producing the compressed `Blob`, re-open it with `pdfjs-dist` and assert `newDoc.numPages === numPages`. If mismatch, fall back to the original.
+- In `uploadInterviewFile.ts` (line 117-119), surface a `toast.warning` when compression falls back so the operator knows the original was uploaded.
 
-- **"Previous checklist answers"** — collapsible table fetched from `audit_checklist_progress` (most recent reviewer's `items` JSONB) showing Q#, question, prior answer (Pass/Fail), and prior failure comment. Default collapsed; expanded view is read-only.
-- **Three actions**:
-  1. **Fail — same reasons as last cycle** (one click). Pre-populates the failure payload from the most recent `review_feedback_history` row (`review_comment`, `action_plan`, `artifact_correction`). Opens a confirmation dialog showing the prefilled text; auditor confirms.
-  2. **Fail — new reasons** (one click). Opens a lightweight dialog with the same fields used in the normal fail flow (failure comment, artifact_correction checkboxes, optional action plan) — no checklist walk required.
-  3. **Pass — all previous issues fixed** (one click). Confirmation dialog; on confirm marks the audit as `Audit Passed`.
-- Banner above the actions: "If a new checklist item has failed, run the full checklist instead" with a link/button to fall back to the existing checklist flow.
+## 5. Team Approval — surface interviewers known only from audits
 
-### Backend behavior (no schema changes)
+**File**: `src/pages/TeamApprovals.tsx` (the `unassignedInterviewers` query, lines 163-206).
 
-Re-use existing RPCs/columns where possible:
+Right now the query reads codes only from `interview_metadata`. Codes 684 and 687 have audits but no extracted metadata yet, so they never appear. Union with codes derived from `audits.file_name` (`split_part(file_name, '_', 3)` for contractor `split_part(file_name, '_', 2)`):
 
-- **Fail path** (both variants) calls a new RPC `re_audit_quick_fail(_audit_id, _review_comment, _action_plan, _artifact_correction)` which:
-  - Sets `audits.status = 'Audit Failed'`, `review_comment`, `action_plan`, `artifact_correction`, `reviewed_by = current user`, `reviewed_at = now()`, `re_audit_count` unchanged (the FM's re-submission already incremented it), `is_re_audit = true`.
-  - Inserts into `review_feedback_history` via the existing trigger (already fires on status → Audit Failed with comment set).
-  - Writes a `user_activity_log` row with `action_type='audit_quick_failed'` and `metadata.reused_previous_feedback = bool`.
-  - Copies the latest `audit_checklist_progress.items` into a new row for this reviewer (so the checklist tab still reflects the recorded answers) — items are marked source: `"carried_over"` in metadata.
-- **Pass path** calls `re_audit_quick_pass(_audit_id)`:
-  - Sets `audits.status = 'Audit Passed'`, clears `review_comment`/`action_plan`/`artifact_correction`, sets `reviewed_by`/`reviewed_at`.
-  - Writes `user_activity_log` row `audit_quick_passed`.
-  - Inserts a `pass` snapshot into `audit_checklist_progress` (all items marked Pass, `metadata.source='quick_pass'`).
+1. Fetch distinct `(file_name)` from `audits` (already scoped by contractor where applicable).
+2. Parse `NGXX_<contractor>_<interviewer>_…` into `{ contractor_id, code }`.
+3. Merge with the metadata-derived list (dedupe by code).
+4. Subtract approved `team_assignments` codes as before.
+5. For codes without a name, show "Unknown — derived from upload".
 
-Both RPCs are `SECURITY DEFINER`, role-gated to `auditor`/`admin`/`super_admin`, and require `is_re_audit = true` and an existing prior cycle.
+## 6. Chat Policies crash for super admin
 
-### Visibility for FM and others
+**File**: `src/pages/ChatPolicies.tsx` line 186.
 
-- Failed re-audits show up in `/interviews` and FM dashboards exactly as today (status `Audit Failed`, latest `review_comment`/`action_plan`/`artifact_correction` visible). The new `review_feedback_history` row makes the previous cycles still navigable in the Review Feedback panel.
-- The activity timeline (section 1 above) will surface the `audit_quick_failed` / `audit_quick_passed` events with the auditor's name, so FMs see the new decision.
+`typeof null === "object"`, so when `pickerOpen` is `null` the title computation tries to read `pickerOpen.blockedId` and throws "Cannot read properties of null (reading 'blockedId')". Replace:
 
-## Files touched
+```ts
+: typeof pickerOpen === "object" ? `Allow these users …`
+```
 
-- **Edited**: `src/components/review/ReviewFeedbackHistory.tsx`, `src/pages/ReviewInterview.tsx`, `src/pages/UploadCenter.tsx`.
-- **New**: `src/components/review/ReviewActivityTimeline.tsx`, `src/components/review/QuickReAuditDecisionCard.tsx`, `src/components/review/PreviousChecklistTable.tsx`, `src/lib/pairInterviewFiles.ts`.
-- **Migration**: two new SECURITY DEFINER RPCs `re_audit_quick_fail` and `re_audit_quick_pass`. No table changes.
+with an explicit non-null guard:
+
+```ts
+: (pickerOpen && typeof pickerOpen === "object" && pickerOpen.kind === "except")
+    ? `Allow these users to message ${userName(pickerOpen.blockedId)}`
+```
+
+(Also tighten `currentSelection` on lines 164-171 with the same guard for safety.)
 
 ## Out of scope
 
-- No changes to the normal checklist flow, no changes to penalty / inbox / team-assignments work, no changes to PDF/ZIP edge function parsing logic.
+- No changes to penalty/inbox layout/team-assignments work, the full checklist flow, or PDF/ZIP edge function parsing.
