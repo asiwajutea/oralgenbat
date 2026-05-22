@@ -516,6 +516,9 @@ const Inbox = () => {
                           </Avatar>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
+                              {warningConvIds.has(c.id) && (
+                                <AlertTriangle className="h-3.5 w-3.5 text-destructive flex-shrink-0" />
+                              )}
                               <span className={cn("truncate text-sm", unread ? "font-bold text-foreground" : "font-medium text-foreground/90")}>
                                 {c.title || subtitle || "(untitled)"}
                               </span>
