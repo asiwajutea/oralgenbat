@@ -401,6 +401,7 @@ export type Database = {
           original_status: Database["public"]["Enums"]["audit_status"] | null
           pass_override_action_plan: string | null
           pass_override_reason: string | null
+          pass_override_warn: boolean
           passed_with_failures: boolean | null
           re_audit_count: number | null
           review_comment: string | null
@@ -429,6 +430,7 @@ export type Database = {
           original_status?: Database["public"]["Enums"]["audit_status"] | null
           pass_override_action_plan?: string | null
           pass_override_reason?: string | null
+          pass_override_warn?: boolean
           passed_with_failures?: boolean | null
           re_audit_count?: number | null
           review_comment?: string | null
@@ -457,6 +459,7 @@ export type Database = {
           original_status?: Database["public"]["Enums"]["audit_status"] | null
           pass_override_action_plan?: string | null
           pass_override_reason?: string | null
+          pass_override_warn?: boolean
           passed_with_failures?: boolean | null
           re_audit_count?: number | null
           review_comment?: string | null
@@ -1285,6 +1288,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      override_warning_acks: {
+        Row: {
+          acked_at: string
+          audit_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          acked_at?: string
+          audit_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          acked_at?: string
+          audit_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       payment_records: {
         Row: {
@@ -2712,6 +2736,15 @@ export type Database = {
           }
       mark_conversation_read: {
         Args: { _conversation_id: string }
+        Returns: undefined
+      }
+      notify_pass_override: {
+        Args: {
+          _action_plan?: string
+          _audit_id: string
+          _reason: string
+          _warn: boolean
+        }
         Returns: undefined
       }
       process_chat_event_inline: {
