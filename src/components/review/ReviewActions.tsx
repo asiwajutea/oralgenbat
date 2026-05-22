@@ -616,6 +616,7 @@ export const ReviewActions = ({
                       passed_with_failures: true,
                       pass_override_reason: passOverrideReason.trim(),
                       pass_override_action_plan: passOverrideActionPlan.trim() || null,
+                      pass_override_warn: passOverrideWarn,
                     } as any)
                     .eq("id", auditId);
                   if (error) throw error;
@@ -623,6 +624,16 @@ export const ReviewActions = ({
                   try {
                     await supabase.functions.invoke('cleanup-interview-audio', { body: { auditId } });
                   } catch {}
+                  try {
+                    await supabase.rpc('notify_pass_override' as any, {
+                      _audit_id: auditId,
+                      _warn: passOverrideWarn,
+                      _reason: passOverrideReason.trim(),
+                      _action_plan: passOverrideActionPlan.trim() || null,
+                    });
+                  } catch (e) {
+                    console.warn('notify_pass_override failed', e);
+                  }
                   toast({ title: "Interview Passed (with override)", description: "The interview has been passed with noted checklist failures." });
                   setShowPassOverrideDialog(false);
                   queryClient.invalidateQueries({ queryKey: ["audit", auditId] });
