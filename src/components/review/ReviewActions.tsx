@@ -568,6 +568,25 @@ export const ReviewActions = ({
                 className="min-h-[80px]"
               />
             </div>
+
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-900/20 p-3">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="pass-override-warn" className="text-sm font-medium cursor-pointer">
+                    Warn the team about this agent's practice
+                  </Label>
+                  <Switch
+                    id="pass-override-warn"
+                    checked={passOverrideWarn}
+                    onCheckedChange={setPassOverrideWarn}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  When on, the field manager, contractor, and sub-contractor will receive a high-priority inbox warning that keeps reminding them until they open it.
+                </p>
+              </div>
+            </div>
           </div>
 
           <AlertDialogFooter>
