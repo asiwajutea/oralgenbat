@@ -559,6 +559,7 @@ export const AuditChecklist = ({
                 )}
               </CardTitle>
               <div className="flex items-center gap-2">
+                {headerActionSlot}
                 {onAbandonReview && (
                   <Button
                     onClick={onAbandonReview}
@@ -657,6 +658,7 @@ export const AuditChecklist = ({
               )}
             </CardTitle>
             <div className="flex items-center gap-2">
+              {headerActionSlot}
               {onAbandonReview && (
                 <Button
                   onClick={onAbandonReview}
