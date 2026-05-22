@@ -43,13 +43,18 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   const [showSameFail, setShowSameFail] = useState(false);
   const [showNewFail, setShowNewFail] = useState(false);
   const [showPass, setShowPass] = useState(false);
-  const [showChecklist, setShowChecklist] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   // New-fail form state
   const [comment, setComment] = useState("");
   const [actionPlan, setActionPlan] = useState("");
   const [artifacts, setArtifacts] = useState<string[]>([]);
+
+  // Same-reason editable state (prefilled from last cycle)
+  const [sameComment, setSameComment] = useState("");
+  const [sameActionPlan, setSameActionPlan] = useState("");
+  const [sameArtifacts, setSameArtifacts] = useState<string[]>([]);
 
   // Previous feedback (most recent cycle)
   const { data: lastFeedback } = useQuery({
@@ -86,33 +91,47 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   const toggleArtifact = (a: string, checked: boolean) => {
     setArtifacts((prev) => (checked ? [...prev, a] : prev.filter((x) => x !== a)));
   };
+  const toggleSameArtifact = (a: string, checked: boolean) => {
+    setSameArtifacts((prev) => (checked ? [...prev, a] : prev.filter((x) => x !== a)));
+  };
+
+  // Prefill same-reason fields whenever the dialog opens or last feedback changes
+  const openSameFail = () => {
+    setSameComment(lastFeedback?.review_comment || "");
+    setSameActionPlan(lastFeedback?.action_plan || "");
+    setSameArtifacts(lastFeedback?.artifact_correction || []);
+    setShowSameFail(true);
+  };
 
   const runFail = async (reuse: boolean) => {
-    const payload = reuse
-      ? {
-          _audit_id: auditId,
-          _review_comment: lastFeedback?.review_comment || "",
-          _action_plan: lastFeedback?.action_plan || "",
-          _artifact_correction: lastFeedback?.artifact_correction || [],
-          _reused_previous: true,
-        }
-      : {
-          _audit_id: auditId,
-          _review_comment: comment,
-          _action_plan: actionPlan,
-          _artifact_correction: artifacts,
-          _reused_previous: false,
-        };
-    if (!reuse) {
-      if (!comment.trim() || comment.trim().length < 10) {
-        toast.error("Please provide a failure reason (at least 10 characters).");
-        return;
-      }
-      if (artifacts.length === 0) {
-        toast.error("Select at least one artifact that needs correction.");
-        return;
-      }
+    const effComment = reuse ? sameComment : comment;
+    const effActionPlan = reuse ? sameActionPlan : actionPlan;
+    const effArtifacts = reuse ? sameArtifacts : artifacts;
+
+    if (!effComment.trim() || effComment.trim().length < 10) {
+      toast.error("Please provide a failure reason (at least 10 characters).");
+      return;
     }
+    if (effArtifacts.length === 0) {
+      toast.error("Select at least one artifact that needs correction.");
+      return;
+    }
+
+    // Decide if the auditor actually kept the previous feedback verbatim
+    const unchanged =
+      reuse &&
+      effComment.trim() === (lastFeedback?.review_comment || "").trim() &&
+      effActionPlan.trim() === (lastFeedback?.action_plan || "").trim() &&
+      JSON.stringify([...effArtifacts].sort()) ===
+        JSON.stringify([...(lastFeedback?.artifact_correction || [])].sort());
+
+    const payload = {
+      _audit_id: auditId,
+      _review_comment: effComment,
+      _action_plan: effActionPlan,
+      _artifact_correction: effArtifacts,
+      _reused_previous: unchanged,
+    };
     setSubmitting(true);
     try {
       const { error } = await supabase.rpc("re_audit_quick_fail" as any, payload);
@@ -153,6 +172,9 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   };
 
   const items: any[] = Array.isArray(prevChecklist?.items) ? (prevChecklist!.items as any[]) : [];
+  const itemsHasAnswers = items.some(
+    (it: any) => it?.answer === "yes" || it?.answer === "no" || it?.passed === true || it?.passed === false,
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
