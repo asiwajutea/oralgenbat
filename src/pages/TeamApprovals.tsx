@@ -175,18 +175,40 @@ const TeamApprovals = () => {
       
       if (interviewersError) throw interviewersError;
 
-      const uniqueInterviewers = Array.from(
-        new Map(
-          allInterviewers?.map(i => [
-            i.interviewer_code,
-            {
-              code: i.interviewer_code,
-              name: i.interviewer_name,
-              contractor_id: i.contractor_id
-            }
-          ])
-        ).values()
-      );
+      const interviewerMap = new Map<string, { code: string; name: string | null; contractor_id: string | null }>();
+      for (const i of allInterviewers || []) {
+        if (!i.interviewer_code) continue;
+        if (!interviewerMap.has(i.interviewer_code)) {
+          interviewerMap.set(i.interviewer_code, {
+            code: i.interviewer_code,
+            name: i.interviewer_name,
+            contractor_id: i.contractor_id,
+          });
+        }
+      }
+
+      // Also union with codes derived from audits.file_name (NGXX_<contractor>_<interviewer>_…),
+      // so interviewers whose metadata has not been extracted yet still show up here.
+      const { data: auditRows } = await supabase
+        .from("audits")
+        .select("file_name");
+      for (const row of auditRows || []) {
+        const parts = (row.file_name || "").split("_");
+        if (parts.length < 4) continue;
+        const contractor_id = parts[1];
+        const code = parts[2];
+        if (!code) continue;
+        if (!isSuperAdmin && isContractor && effectiveContractorId && contractor_id !== effectiveContractorId) continue;
+        if (!interviewerMap.has(code)) {
+          interviewerMap.set(code, {
+            code,
+            name: "Unknown — derived from upload",
+            contractor_id,
+          });
+        }
+      }
+
+      const uniqueInterviewers = Array.from(interviewerMap.values());
 
       let assignmentsQuery = supabase
         .from("team_assignments")
