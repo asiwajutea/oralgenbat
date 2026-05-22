@@ -179,9 +179,10 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
-          <Zap className="h-4 w-4 text-primary" />
-          Quick Re-Audit Decision
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Zap className="h-3.5 w-3.5 text-primary" />
+          <span className="hidden sm:inline">Quick decision</span>
+          <span className="sm:hidden">Quick</span>
         </Button>
       </DialogTrigger>
 
