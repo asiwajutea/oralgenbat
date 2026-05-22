@@ -291,57 +291,55 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
         </Card>
       </DialogContent>
 
-      {/* Confirm: fail with same reasons */}
-      <AlertDialog open={showSameFail} onOpenChange={setShowSameFail}>
-        <AlertDialogContent className="max-w-lg">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Fail re-audit with the previous feedback?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 pt-2">
-                <div>
-                  <Label className="text-xs">Reason for failure</Label>
-                  <p className="text-sm whitespace-pre-wrap rounded-md border bg-muted/40 p-2 mt-1">
-                    {lastFeedback?.review_comment || "—"}
-                  </p>
-                </div>
-                {lastFeedback?.action_plan && (
-                  <div>
-                    <Label className="text-xs">Action plan</Label>
-                    <p className="text-sm whitespace-pre-wrap rounded-md border bg-muted/40 p-2 mt-1">
-                      {lastFeedback.action_plan}
-                    </p>
-                  </div>
-                )}
-                {lastFeedback?.artifact_correction && lastFeedback.artifact_correction.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {lastFeedback.artifact_correction.map((a: string) => (
-                      <Badge key={a} variant="outline" className="gap-1">
-                        {a === "scanned_pdf" ? <FileText className="h-3 w-3" /> : <Smartphone className="h-3 w-3" />}
-                        {a === "scanned_pdf" ? "Scanned PDF" : a === "mobile_metadata" ? "Mobile Metadata" : a}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+      {/* Fail with same reasons — editable so the auditor can refine wording */}
+      <Dialog open={showSameFail} onOpenChange={setShowSameFail}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Fail re-audit using the previous feedback</DialogTitle>
+            <DialogDescription>
+              Pre-filled from the last cycle — edit the wording if you want to explain more.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Reason for failure *</Label>
+              <Textarea rows={4} value={sameComment} onChange={(e) => setSameComment(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Action plan (optional)</Label>
+              <Textarea rows={3} value={sameActionPlan} onChange={(e) => setSameActionPlan(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Artifact correction *</Label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={sameArtifacts.includes("scanned_pdf")}
+                    onCheckedChange={(c) => toggleSameArtifact("scanned_pdf", !!c)}
+                  />
+                  <FileText className="h-4 w-4" /> Scanned PDF
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={sameArtifacts.includes("mobile_metadata")}
+                    onCheckedChange={(c) => toggleSameArtifact("mobile_metadata", !!c)}
+                  />
+                  <Smartphone className="h-4 w-4" /> Mobile Metadata
+                </label>
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => runFail(true)}
-              disabled={submitting || !lastFeedback}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <XCircle className="h-4 w-4 mr-1.5" />
-              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSameFail(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => runFail(true)} disabled={submitting || !lastFeedback}>
+              {submitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <XCircle className="h-4 w-4 mr-1.5" />}
               Confirm fail
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New-reasons fail dialog */}
       <Dialog open={showNewFail} onOpenChange={setShowNewFail}>
