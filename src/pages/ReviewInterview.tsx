@@ -782,13 +782,6 @@ const ReviewInterview = () => {
             {isAuditor && !isReviewed && metadata && (
               <div className="p-3 sm:p-4 space-y-3" ref={checklistRef}>
                 {audit?.is_re_audit && audit?.status === "Awaiting Review" && <ReAuditNoteBanner auditId={auditId!} />}
-                {audit?.is_re_audit && (
-                  <QuickReAuditDecisionCard
-                    auditId={auditId!}
-                    fileName={audit.file_name}
-                    onCompleted={(result) => setCompletionResult(result)}
-                  />
-                )}
                 <FraudFlagBanner
                   isFlagged={!!fraudFlag?.is_flagged}
                   collisions={fraudFlag?.collisions ?? []}
@@ -809,6 +802,15 @@ const ReviewInterview = () => {
                   isCompleted={checklistCompleted}
                   onAbandonReview={handleAbandonReview}
                   isAbandoning={isAbandoning}
+                  headerActionSlot={
+                    audit?.is_re_audit ? (
+                      <QuickReAuditDecisionCard
+                        auditId={auditId!}
+                        fileName={audit.file_name}
+                        onCompleted={(result) => setCompletionResult(result)}
+                      />
+                    ) : undefined
+                  }
                 />
               </div>
             )}
