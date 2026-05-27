@@ -150,98 +150,171 @@ const UploadCenter = () => {
 
   const remove = (id: string) => setRows(prev => prev.filter(r => r.id !== id || r.status !== "pending"));
 
+  // Group rows by base name so a PDF + its matching ZIP show as a single "paired" entry.
+  type Group = {
+    baseName: string;
+    pdf?: Row;
+    zip?: Row;
+    /** computed per-mode label */
+    label: { text: string; cls: string };
+    /** true if BOTH files in the group will be skipped before upload */
+    willSkip: boolean;
+    skipReason?: string;
+    /** which files contribute to the "to upload" count */
+    uploadCount: number;
+  };
+  const groups: Group[] = (() => {
+    const map = new Map<string, Group>();
+    for (const r of rows) {
+      const base = r.file.name.replace(/\.(pdf|zip)$/i, "");
+      const kind = detectKind(r.file);
+      let g = map.get(base);
+      if (!g) {
+        g = { baseName: base, label: { text: "", cls: "" }, willSkip: false, uploadCount: 0 };
+        map.set(base, g);
+      }
+      if (kind === "pdf") g.pdf = r;
+      else if (kind === "metadata_zip") g.zip = r;
+    }
+    // Decide label per group
+    for (const g of map.values()) {
+      const sample = g.pdf ?? g.zip!;
+      const existingStatus = sample.existingStatus ?? null;
+      const existingHasMetadata = sample.existingHasMetadata ?? null;
+      if (mode === "new") {
+        if (g.pdf && g.zip) {
+          if (existingStatus) {
+            g.label = { text: "Already uploaded — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "An audit with this file name already exists.";
+          } else {
+            g.label = { text: "Paired (PDF + Metadata)", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+            g.uploadCount = 2;
+          }
+        } else if (g.pdf && !g.zip) {
+          if (existingStatus) {
+            g.label = { text: "Already uploaded — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "An audit with this file name already exists.";
+          } else {
+            g.label = { text: "PDF only", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" };
+            g.uploadCount = 1;
+          }
+        } else if (!g.pdf && g.zip) {
+          if (!existingStatus) {
+            g.label = { text: "Will skip — no matching PDF", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "No paired PDF in this batch or in the system.";
+          } else if (existingHasMetadata) {
+            g.label = { text: "Duplicate metadata — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "Metadata is already attached to this interview.";
+          } else {
+            g.label = { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+            g.uploadCount = 1;
+          }
+        }
+      } else {
+        // re-audit mode: each file is independent (replace)
+        const isFailed = existingStatus === "Failed";
+        g.label = !sample.lookupDone
+          ? { text: "Checking…", cls: "bg-muted text-muted-foreground" }
+          : isFailed
+            ? { text: "Re-audit replacement", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+            : { text: "Replace files", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" };
+        g.uploadCount = (g.pdf ? 1 : 0) + (g.zip ? 1 : 0);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.baseName.localeCompare(b.baseName));
+  })();
+
+  const preflightStats = (() => {
+    let paired = 0, pdfOnly = 0, zipPaired = 0, skip = 0;
+    for (const g of groups) {
+      if (g.willSkip) { skip++; continue; }
+      if (mode === "new") {
+        if (g.pdf && g.zip) paired++;
+        else if (g.pdf) pdfOnly++;
+        else if (g.zip) zipPaired++;
+      } else {
+        // re-audit
+        if (g.pdf && g.zip) paired++;
+        else if (g.pdf) pdfOnly++;
+        else zipPaired++;
+      }
+    }
+    return { paired, pdfOnly, zipPaired, skip, total: groups.length };
+  })();
+
   const start = async () => {
     if (!user) return;
     if (rows.length === 0) return toast.error("Pick at least one file");
     if (mode === "new" && lock.locked) return toast.error(`Uploads locked: ${lock.reason}`);
+    // Open the preflight summary first
+    setShowPreflight(true);
+  };
+
+  const runUpload = async () => {
+    if (!user) return;
+    setShowPreflight(false);
     setRunning(true);
     setCompleted(0);
     setSummary(null);
     setSummaryText(null);
 
-    // Snapshot the queue at start time. PDFs upload first so ZIPs find their paired audit row.
-    const eligible = rows.filter(r => r.status !== "done");
-    const pdfIds = eligible.filter(r => detectKind(r.file) === "pdf").map(r => r.id);
-    const zipIds = eligible.filter(r => detectKind(r.file) !== "pdf").map(r => r.id);
-    const queueIds = [...pdfIds, ...zipIds];
-    const pdfIdSet = new Set(pdfIds);
-    let cursor = 0;
-    let done = 0;
-    const CONCURRENCY = 5;
-    let pdfsDoneSignal: Promise<void> | null = null;
-    let resolvePdfsDone: (() => void) | null = null;
-    if (pdfIds.length > 0) {
-      pdfsDoneSignal = new Promise<void>(resolve => { resolvePdfsDone = resolve; });
-    }
-    let pdfsCompleted = 0;
-    const claimed = new Set<string>();
     const outcomes = new Map<string, UploadOutcome>();
+    let done = 0;
+    const totalFiles = rows.filter(r => r.status !== "done").length;
 
-    const getNextId = (): string | null => {
-      while (cursor < queueIds.length) {
-        const id = queueIds[cursor++];
-        return id;
-      }
-      return null;
+    const markSkip = (row: Row, reason: string) => {
+      const outcome: UploadOutcome = { status: "failed", message: reason };
+      outcomes.set(row.id, outcome);
+      setRows(prev => prev.map(x => x.id === row.id ? { ...x, status: "failed", progress: 100, outcome } : x));
+      done++;
+      setCompleted(done);
     };
 
-    const worker = async () => {
-      while (true) {
-        const id = getNextId();
-        if (!id) return;
-        if (claimed.has(id)) continue;
-        claimed.add(id);
-        // Block ZIPs until all PDFs in this batch have finished uploading
-        if (!pdfIdSet.has(id) && pdfsDoneSignal) {
-          await pdfsDoneSignal;
-        }
-        // Resolve row from a ref snapshot (avoids React StrictMode double-invocation of state updaters).
-        const target = rowsRef.current.find(x => x.id === id);
-        if (!target || target.status !== "pending") continue;
-
-        // Auto-skip orphan ZIPs in new mode
-        if (mode === "new" && target.willSkipReason) {
-          const outcome: UploadOutcome = { status: "failed", message: target.willSkipReason };
-          outcomes.set(id, outcome);
-          setRows(prev => prev.map(x => x.id === id ? { ...x, status: "failed", progress: 100, outcome } : x));
-          done++;
-          setCompleted(done);
-          if (pdfIdSet.has(id)) {
-            pdfsCompleted++;
-            if (pdfsCompleted === pdfIds.length && resolvePdfsDone) resolvePdfsDone();
-          }
-          continue;
-        }
-
-        setRows(prev => prev.map(x => x.id === id && x.status === "pending" ? { ...x, status: "uploading", progress: 0 } : x));
-
-        const outcome = await uploadInterviewFile({
-          file: target.file,
-          mode,
-          userId: user.id,
-          onProgress: (pct) => {
-            setRows(prev => prev.map(x => x.id === id ? { ...x, progress: pct } : x));
-          },
-        });
-        outcomes.set(id, outcome);
-        setRows(prev => prev.map(x => x.id === id ? {
-          ...x,
-          status: outcome.status === "success" ? "done" : "failed",
-          progress: 100,
-          outcome,
-        } : x));
-        done++;
-        setCompleted(done);
-        if (pdfIdSet.has(id)) {
-          pdfsCompleted++;
-          if (pdfsCompleted === pdfIds.length && resolvePdfsDone) resolvePdfsDone();
-        }
-      }
+    const runOne = async (row: Row): Promise<UploadOutcome> => {
+      setRows(prev => prev.map(x => x.id === row.id && x.status === "pending" ? { ...x, status: "uploading", progress: 0 } : x));
+      const outcome = await uploadInterviewFile({
+        file: row.file,
+        mode,
+        userId: user.id,
+        onProgress: (pct) => setRows(prev => prev.map(x => x.id === row.id ? { ...x, progress: pct } : x)),
+      });
+      outcomes.set(row.id, outcome);
+      setRows(prev => prev.map(x => x.id === row.id ? {
+        ...x,
+        status: outcome.status === "success" ? "done" : "failed",
+        progress: 100,
+        outcome,
+      } : x));
+      done++;
+      setCompleted(done);
+      return outcome;
     };
 
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queueIds.length) }, () => worker()));
-    // Safety: ensure any awaiting ZIP workers unblock even if pdf set was empty
-    if (resolvePdfsDone) resolvePdfsDone();
+    // Process groups sequentially. Within each group: PDF first, then ZIP.
+    for (const g of groups) {
+      if (g.willSkip) {
+        if (g.pdf) markSkip(g.pdf, g.skipReason || "Skipped");
+        if (g.zip) markSkip(g.zip, g.skipReason || "Skipped");
+        continue;
+      }
+      let pdfOk = true;
+      if (g.pdf) {
+        const out = await runOne(g.pdf);
+        pdfOk = out.status === "success";
+      }
+      if (g.zip) {
+        if (g.pdf && !pdfOk) {
+          markSkip(g.zip, "Skipped — paired PDF failed to upload");
+        } else {
+          await runOne(g.zip);
+        }
+      }
+    }
+
     setRunning(false);
     // Compute summary from the local outcomes map (avoids React commit timing issues)
     const rowById = new Map(rowsRef.current.map(r => [r.id, r]));
@@ -275,6 +348,7 @@ const UploadCenter = () => {
     setSummaryText(text);
     if (failed > 0 && ok === 0) toast.error(text);
     else toast.success(text);
+    void totalFiles;
   };
 
   const totalProgress = rows.length === 0 ? 0 : Math.round((completed / rows.length) * 100);
