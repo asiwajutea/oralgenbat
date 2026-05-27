@@ -28,8 +28,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle, MapPin } from "lucide-react";
 import { toast } from "sonner";
+import { parseChecklistFeedback } from "@/lib/parseFailureReasons";
 
 interface Props {
   auditId: string;
@@ -76,14 +77,43 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   const { data: prevChecklist } = useQuery({
     queryKey: ["quick-reaudit-prev-checklist", auditId],
     queryFn: async () => {
-      const { data } = await supabase
+      // 1. Try the live checklist progress row
+      const { data: progress } = await supabase
         .from("audit_checklist_progress")
         .select("items, failure_comments, has_failures, reviewer_id, updated_at")
         .eq("audit_id", auditId)
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      return data;
+      if (progress && Array.isArray((progress as any).items) && (progress as any).items.length > 0) {
+        return { items: (progress as any).items as any[] };
+      }
+      // 2. Fall back to the JSONB snapshot the trigger writes on each failure
+      const { data: snap } = await supabase
+        .from("review_feedback_history")
+        .select("failed_checklist_items, review_comment, cycle_number")
+        .eq("audit_id", auditId)
+        .order("cycle_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (snap && Array.isArray((snap as any).failed_checklist_items) && (snap as any).failed_checklist_items.length > 0) {
+        return { items: (snap as any).failed_checklist_items as any[] };
+      }
+      // 3. Last resort: derive items from the parsed failure-reason text
+      if (snap?.review_comment) {
+        const parsed = parseChecklistFeedback(snap.review_comment);
+        if (parsed.length > 0) {
+          return {
+            items: parsed.map((p) => ({
+              id: p.questionId,
+              answer: "no",
+              comment: p.additionalComment || "",
+              question: `Question ${p.questionId} (failed)`,
+            })),
+          };
+        }
+      }
+      return null;
     },
     enabled: !!auditId,
   });
