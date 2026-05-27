@@ -446,61 +446,52 @@ const UploadCenter = () => {
                     </div>
                   )}
                   <ul className="divide-y rounded-md border max-h-[55vh] sm:max-h-[420px] overflow-y-auto">
-                    {rows.map(r => {
-                      const kind = detectKind(r.file);
-                      const removable = r.status === "pending";
-                      const isFailed = r.existingStatus === "Failed";
-                      const modeLabel =
-                        mode === "new"
-                          ? (r.willSkipReason
-                              ? { text: "Will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
-                              : kind === "metadata_zip" && r.existingHasMetadata
-                                ? { text: "Duplicate metadata", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
-                                : kind === "metadata_zip" && r.existingStatus
-                                  ? { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
-                                  : kind === "metadata_zip" && r.hasPairedPdfInBatch
-                                    ? { text: "Pair with PDF in batch", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
-                                    : { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" })
-                          : !r.lookupDone
-                            ? { text: "Checking…", cls: "bg-muted text-muted-foreground" }
-                            : isFailed
-                              ? { text: "Re-audit", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
-                              : kind === "pdf"
-                                ? { text: "Replace PDF", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
-                                : { text: "Replace metadata", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" };
+                    {groups.map(g => {
+                      const childRows = [g.pdf, g.zip].filter(Boolean) as Row[];
+                      const anyUploading = childRows.some(r => r.status === "uploading");
+                      const avgProgress = childRows.length
+                        ? Math.round(childRows.reduce((s, r) => s + (r.progress || 0), 0) / childRows.length)
+                        : 0;
+                      const allDone = childRows.every(r => r.status === "done");
+                      const anyFailed = childRows.some(r => r.status === "failed");
+                      const removable = childRows.every(r => r.status === "pending");
                       return (
-                        <li key={r.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 text-sm">
-                          {kind === "pdf" ? <FileText className="h-4 w-4 shrink-0 text-rose-500" /> : <Archive className="h-4 w-4 shrink-0 text-blue-500" />}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                              <span className="truncate text-xs sm:text-sm">{r.file.name}</span>
-                              <Badge variant="secondary" className={`${modeLabel.cls} text-[10px] px-1.5 py-0`}>{modeLabel.text}</Badge>
+                        <li key={g.baseName} className="p-2 sm:p-3 text-sm space-y-1.5">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="flex items-center gap-1 shrink-0">
+                              {g.pdf && <FileText className="h-4 w-4 text-rose-500" />}
+                              {g.zip && <Archive className="h-4 w-4 text-blue-500" />}
                             </div>
-                            {r.status === "uploading" && (
-                              <Progress value={r.progress} className="h-1 mt-1" />
-                            )}
-                            {r.outcome?.message && (
-                              <div className={`text-[11px] sm:text-xs ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
-                                {r.outcome.message}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                <span className="truncate font-mono text-xs sm:text-sm">{g.baseName}</span>
+                                <Badge variant="secondary" className={`${g.label.cls} text-[10px] px-1.5 py-0`}>{g.label.text}</Badge>
                               </div>
-                            )}
-                            {r.status === "pending" && r.willSkipReason && (
-                              <div className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
-                                {r.willSkipReason}
+                              <div className="text-[11px] text-muted-foreground mt-0.5">
+                                {childRows.map(r => detectKind(r.file) === "pdf" ? "PDF" : "ZIP").join(" + ")}
+                                {g.skipReason && <span className="text-amber-700 dark:text-amber-400"> · {g.skipReason}</span>}
                               </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {r.status === "uploading" && (
-                              <span className="text-[11px] sm:text-xs tabular-nums text-muted-foreground w-10 text-right">{r.progress}%</span>
-                            )}
-                            {r.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                            {r.status === "failed" && <AlertTriangle className="h-4 w-4 text-red-500" />}
-                            {removable && (
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(r.id)} aria-label="Remove">
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
+                              {anyUploading && <Progress value={avgProgress} className="h-1 mt-1" />}
+                              {childRows.map(r => r.outcome?.message && (
+                                <div key={r.id} className={`text-[11px] ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
+                                  {detectKind(r.file) === "pdf" ? "PDF" : "ZIP"}: {r.outcome.message}
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {anyUploading && (
+                                <span className="text-[11px] tabular-nums text-muted-foreground w-10 text-right">{avgProgress}%</span>
+                              )}
+                              {!anyUploading && allDone && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                              {!anyUploading && !allDone && anyFailed && <AlertTriangle className="h-4 w-4 text-red-500" />}
+                              {removable && (
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                                  childRows.forEach(r => remove(r.id));
+                                }} aria-label="Remove">
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </li>
                       );
