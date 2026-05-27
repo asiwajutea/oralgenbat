@@ -10,6 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -63,6 +73,7 @@ const UploadCenter = () => {
   const rowsRef = useRef<Row[]>([]);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
   const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [showPreflight, setShowPreflight] = useState(false);
 
   // If "new" uploads are locked, default the mode to re-audit
   useEffect(() => {
@@ -139,98 +150,171 @@ const UploadCenter = () => {
 
   const remove = (id: string) => setRows(prev => prev.filter(r => r.id !== id || r.status !== "pending"));
 
+  // Group rows by base name so a PDF + its matching ZIP show as a single "paired" entry.
+  type Group = {
+    baseName: string;
+    pdf?: Row;
+    zip?: Row;
+    /** computed per-mode label */
+    label: { text: string; cls: string };
+    /** true if BOTH files in the group will be skipped before upload */
+    willSkip: boolean;
+    skipReason?: string;
+    /** which files contribute to the "to upload" count */
+    uploadCount: number;
+  };
+  const groups: Group[] = (() => {
+    const map = new Map<string, Group>();
+    for (const r of rows) {
+      const base = r.file.name.replace(/\.(pdf|zip)$/i, "");
+      const kind = detectKind(r.file);
+      let g = map.get(base);
+      if (!g) {
+        g = { baseName: base, label: { text: "", cls: "" }, willSkip: false, uploadCount: 0 };
+        map.set(base, g);
+      }
+      if (kind === "pdf") g.pdf = r;
+      else if (kind === "metadata_zip") g.zip = r;
+    }
+    // Decide label per group
+    for (const g of map.values()) {
+      const sample = g.pdf ?? g.zip!;
+      const existingStatus = sample.existingStatus ?? null;
+      const existingHasMetadata = sample.existingHasMetadata ?? null;
+      if (mode === "new") {
+        if (g.pdf && g.zip) {
+          if (existingStatus) {
+            g.label = { text: "Already uploaded — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "An audit with this file name already exists.";
+          } else {
+            g.label = { text: "Paired (PDF + Metadata)", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+            g.uploadCount = 2;
+          }
+        } else if (g.pdf && !g.zip) {
+          if (existingStatus) {
+            g.label = { text: "Already uploaded — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "An audit with this file name already exists.";
+          } else {
+            g.label = { text: "PDF only", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" };
+            g.uploadCount = 1;
+          }
+        } else if (!g.pdf && g.zip) {
+          if (!existingStatus) {
+            g.label = { text: "Will skip — no matching PDF", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "No paired PDF in this batch or in the system.";
+          } else if (existingHasMetadata) {
+            g.label = { text: "Duplicate metadata — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+            g.willSkip = true;
+            g.skipReason = "Metadata is already attached to this interview.";
+          } else {
+            g.label = { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+            g.uploadCount = 1;
+          }
+        }
+      } else {
+        // re-audit mode: each file is independent (replace)
+        const isFailed = existingStatus === "Failed";
+        g.label = !sample.lookupDone
+          ? { text: "Checking…", cls: "bg-muted text-muted-foreground" }
+          : isFailed
+            ? { text: "Re-audit replacement", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
+            : { text: "Replace files", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" };
+        g.uploadCount = (g.pdf ? 1 : 0) + (g.zip ? 1 : 0);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.baseName.localeCompare(b.baseName));
+  })();
+
+  const preflightStats = (() => {
+    let paired = 0, pdfOnly = 0, zipPaired = 0, skip = 0;
+    for (const g of groups) {
+      if (g.willSkip) { skip++; continue; }
+      if (mode === "new") {
+        if (g.pdf && g.zip) paired++;
+        else if (g.pdf) pdfOnly++;
+        else if (g.zip) zipPaired++;
+      } else {
+        // re-audit
+        if (g.pdf && g.zip) paired++;
+        else if (g.pdf) pdfOnly++;
+        else zipPaired++;
+      }
+    }
+    return { paired, pdfOnly, zipPaired, skip, total: groups.length };
+  })();
+
   const start = async () => {
     if (!user) return;
     if (rows.length === 0) return toast.error("Pick at least one file");
     if (mode === "new" && lock.locked) return toast.error(`Uploads locked: ${lock.reason}`);
+    // Open the preflight summary first
+    setShowPreflight(true);
+  };
+
+  const runUpload = async () => {
+    if (!user) return;
+    setShowPreflight(false);
     setRunning(true);
     setCompleted(0);
     setSummary(null);
     setSummaryText(null);
 
-    // Snapshot the queue at start time. PDFs upload first so ZIPs find their paired audit row.
-    const eligible = rows.filter(r => r.status !== "done");
-    const pdfIds = eligible.filter(r => detectKind(r.file) === "pdf").map(r => r.id);
-    const zipIds = eligible.filter(r => detectKind(r.file) !== "pdf").map(r => r.id);
-    const queueIds = [...pdfIds, ...zipIds];
-    const pdfIdSet = new Set(pdfIds);
-    let cursor = 0;
-    let done = 0;
-    const CONCURRENCY = 5;
-    let pdfsDoneSignal: Promise<void> | null = null;
-    let resolvePdfsDone: (() => void) | null = null;
-    if (pdfIds.length > 0) {
-      pdfsDoneSignal = new Promise<void>(resolve => { resolvePdfsDone = resolve; });
-    }
-    let pdfsCompleted = 0;
-    const claimed = new Set<string>();
     const outcomes = new Map<string, UploadOutcome>();
+    let done = 0;
+    const totalFiles = rows.filter(r => r.status !== "done").length;
 
-    const getNextId = (): string | null => {
-      while (cursor < queueIds.length) {
-        const id = queueIds[cursor++];
-        return id;
-      }
-      return null;
+    const markSkip = (row: Row, reason: string) => {
+      const outcome: UploadOutcome = { status: "failed", message: reason };
+      outcomes.set(row.id, outcome);
+      setRows(prev => prev.map(x => x.id === row.id ? { ...x, status: "failed", progress: 100, outcome } : x));
+      done++;
+      setCompleted(done);
     };
 
-    const worker = async () => {
-      while (true) {
-        const id = getNextId();
-        if (!id) return;
-        if (claimed.has(id)) continue;
-        claimed.add(id);
-        // Block ZIPs until all PDFs in this batch have finished uploading
-        if (!pdfIdSet.has(id) && pdfsDoneSignal) {
-          await pdfsDoneSignal;
-        }
-        // Resolve row from a ref snapshot (avoids React StrictMode double-invocation of state updaters).
-        const target = rowsRef.current.find(x => x.id === id);
-        if (!target || target.status !== "pending") continue;
-
-        // Auto-skip orphan ZIPs in new mode
-        if (mode === "new" && target.willSkipReason) {
-          const outcome: UploadOutcome = { status: "failed", message: target.willSkipReason };
-          outcomes.set(id, outcome);
-          setRows(prev => prev.map(x => x.id === id ? { ...x, status: "failed", progress: 100, outcome } : x));
-          done++;
-          setCompleted(done);
-          if (pdfIdSet.has(id)) {
-            pdfsCompleted++;
-            if (pdfsCompleted === pdfIds.length && resolvePdfsDone) resolvePdfsDone();
-          }
-          continue;
-        }
-
-        setRows(prev => prev.map(x => x.id === id && x.status === "pending" ? { ...x, status: "uploading", progress: 0 } : x));
-
-        const outcome = await uploadInterviewFile({
-          file: target.file,
-          mode,
-          userId: user.id,
-          onProgress: (pct) => {
-            setRows(prev => prev.map(x => x.id === id ? { ...x, progress: pct } : x));
-          },
-        });
-        outcomes.set(id, outcome);
-        setRows(prev => prev.map(x => x.id === id ? {
-          ...x,
-          status: outcome.status === "success" ? "done" : "failed",
-          progress: 100,
-          outcome,
-        } : x));
-        done++;
-        setCompleted(done);
-        if (pdfIdSet.has(id)) {
-          pdfsCompleted++;
-          if (pdfsCompleted === pdfIds.length && resolvePdfsDone) resolvePdfsDone();
-        }
-      }
+    const runOne = async (row: Row): Promise<UploadOutcome> => {
+      setRows(prev => prev.map(x => x.id === row.id && x.status === "pending" ? { ...x, status: "uploading", progress: 0 } : x));
+      const outcome = await uploadInterviewFile({
+        file: row.file,
+        mode,
+        userId: user.id,
+        onProgress: (pct) => setRows(prev => prev.map(x => x.id === row.id ? { ...x, progress: pct } : x)),
+      });
+      outcomes.set(row.id, outcome);
+      setRows(prev => prev.map(x => x.id === row.id ? {
+        ...x,
+        status: outcome.status === "success" ? "done" : "failed",
+        progress: 100,
+        outcome,
+      } : x));
+      done++;
+      setCompleted(done);
+      return outcome;
     };
 
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queueIds.length) }, () => worker()));
-    // Safety: ensure any awaiting ZIP workers unblock even if pdf set was empty
-    if (resolvePdfsDone) resolvePdfsDone();
+    // Process groups sequentially. Within each group: PDF first, then ZIP.
+    for (const g of groups) {
+      if (g.willSkip) {
+        if (g.pdf) markSkip(g.pdf, g.skipReason || "Skipped");
+        if (g.zip) markSkip(g.zip, g.skipReason || "Skipped");
+        continue;
+      }
+      let pdfOk = true;
+      if (g.pdf) {
+        const out = await runOne(g.pdf);
+        pdfOk = out.status === "success";
+      }
+      if (g.zip) {
+        if (g.pdf && !pdfOk) {
+          markSkip(g.zip, "Skipped — paired PDF failed to upload");
+        } else {
+          await runOne(g.zip);
+        }
+      }
+    }
+
     setRunning(false);
     // Compute summary from the local outcomes map (avoids React commit timing issues)
     const rowById = new Map(rowsRef.current.map(r => [r.id, r]));
@@ -264,6 +348,7 @@ const UploadCenter = () => {
     setSummaryText(text);
     if (failed > 0 && ok === 0) toast.error(text);
     else toast.success(text);
+    void totalFiles;
   };
 
   const totalProgress = rows.length === 0 ? 0 : Math.round((completed / rows.length) * 100);
@@ -361,61 +446,52 @@ const UploadCenter = () => {
                     </div>
                   )}
                   <ul className="divide-y rounded-md border max-h-[55vh] sm:max-h-[420px] overflow-y-auto">
-                    {rows.map(r => {
-                      const kind = detectKind(r.file);
-                      const removable = r.status === "pending";
-                      const isFailed = r.existingStatus === "Failed";
-                      const modeLabel =
-                        mode === "new"
-                          ? (r.willSkipReason
-                              ? { text: "Will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
-                              : kind === "metadata_zip" && r.existingHasMetadata
-                                ? { text: "Duplicate metadata", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
-                                : kind === "metadata_zip" && r.existingStatus
-                                  ? { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
-                                  : kind === "metadata_zip" && r.hasPairedPdfInBatch
-                                    ? { text: "Pair with PDF in batch", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
-                                    : { text: "New interview", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" })
-                          : !r.lookupDone
-                            ? { text: "Checking…", cls: "bg-muted text-muted-foreground" }
-                            : isFailed
-                              ? { text: "Re-audit", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" }
-                              : kind === "pdf"
-                                ? { text: "Replace PDF", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" }
-                                : { text: "Replace metadata", cls: "bg-blue-500/15 text-blue-700 dark:text-blue-400" };
+                    {groups.map(g => {
+                      const childRows = [g.pdf, g.zip].filter(Boolean) as Row[];
+                      const anyUploading = childRows.some(r => r.status === "uploading");
+                      const avgProgress = childRows.length
+                        ? Math.round(childRows.reduce((s, r) => s + (r.progress || 0), 0) / childRows.length)
+                        : 0;
+                      const allDone = childRows.every(r => r.status === "done");
+                      const anyFailed = childRows.some(r => r.status === "failed");
+                      const removable = childRows.every(r => r.status === "pending");
                       return (
-                        <li key={r.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 text-sm">
-                          {kind === "pdf" ? <FileText className="h-4 w-4 shrink-0 text-rose-500" /> : <Archive className="h-4 w-4 shrink-0 text-blue-500" />}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                              <span className="truncate text-xs sm:text-sm">{r.file.name}</span>
-                              <Badge variant="secondary" className={`${modeLabel.cls} text-[10px] px-1.5 py-0`}>{modeLabel.text}</Badge>
+                        <li key={g.baseName} className="p-2 sm:p-3 text-sm space-y-1.5">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="flex items-center gap-1 shrink-0">
+                              {g.pdf && <FileText className="h-4 w-4 text-rose-500" />}
+                              {g.zip && <Archive className="h-4 w-4 text-blue-500" />}
                             </div>
-                            {r.status === "uploading" && (
-                              <Progress value={r.progress} className="h-1 mt-1" />
-                            )}
-                            {r.outcome?.message && (
-                              <div className={`text-[11px] sm:text-xs ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
-                                {r.outcome.message}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                <span className="truncate font-mono text-xs sm:text-sm">{g.baseName}</span>
+                                <Badge variant="secondary" className={`${g.label.cls} text-[10px] px-1.5 py-0`}>{g.label.text}</Badge>
                               </div>
-                            )}
-                            {r.status === "pending" && r.willSkipReason && (
-                              <div className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
-                                {r.willSkipReason}
+                              <div className="text-[11px] text-muted-foreground mt-0.5">
+                                {childRows.map(r => detectKind(r.file) === "pdf" ? "PDF" : "ZIP").join(" + ")}
+                                {g.skipReason && <span className="text-amber-700 dark:text-amber-400"> · {g.skipReason}</span>}
                               </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {r.status === "uploading" && (
-                              <span className="text-[11px] sm:text-xs tabular-nums text-muted-foreground w-10 text-right">{r.progress}%</span>
-                            )}
-                            {r.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                            {r.status === "failed" && <AlertTriangle className="h-4 w-4 text-red-500" />}
-                            {removable && (
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove(r.id)} aria-label="Remove">
-                                <X className="h-4 w-4" />
-                              </Button>
-                            )}
+                              {anyUploading && <Progress value={avgProgress} className="h-1 mt-1" />}
+                              {childRows.map(r => r.outcome?.message && (
+                                <div key={r.id} className={`text-[11px] ${r.outcome.status === "success" ? "text-emerald-600" : "text-red-600"}`}>
+                                  {detectKind(r.file) === "pdf" ? "PDF" : "ZIP"}: {r.outcome.message}
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {anyUploading && (
+                                <span className="text-[11px] tabular-nums text-muted-foreground w-10 text-right">{avgProgress}%</span>
+                              )}
+                              {!anyUploading && allDone && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                              {!anyUploading && !allDone && anyFailed && <AlertTriangle className="h-4 w-4 text-red-500" />}
+                              {removable && (
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                                  childRows.forEach(r => remove(r.id));
+                                }} aria-label="Remove">
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </li>
                       );
@@ -435,6 +511,54 @@ const UploadCenter = () => {
           <UploadHistoryTable />
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={showPreflight} onOpenChange={setShowPreflight}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ready to upload</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <div>Review what will happen when you start the upload:</div>
+                <ul className="space-y-1 text-foreground">
+                  {mode === "new" && preflightStats.paired > 0 && (
+                    <li>• <span className="font-medium">{preflightStats.paired}</span> paired (PDF + Metadata, uploaded together)</li>
+                  )}
+                  {mode === "new" && preflightStats.pdfOnly > 0 && (
+                    <li>• <span className="font-medium">{preflightStats.pdfOnly}</span> PDF only</li>
+                  )}
+                  {mode === "new" && preflightStats.zipPaired > 0 && (
+                    <li>• <span className="font-medium">{preflightStats.zipPaired}</span> metadata paired with existing PDF</li>
+                  )}
+                  {mode === "re_audit" && (
+                    <li>• <span className="font-medium">{preflightStats.total - preflightStats.skip}</span> interview(s) to replace</li>
+                  )}
+                  {preflightStats.skip > 0 && (
+                    <li className="text-amber-700 dark:text-amber-400">
+                      • <span className="font-medium">{preflightStats.skip}</span> will be skipped
+                    </li>
+                  )}
+                </ul>
+                {preflightStats.skip > 0 && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">Show skipped items</summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {groups.filter(g => g.willSkip).map(g => (
+                        <li key={g.baseName} className="font-mono">{g.baseName} — {g.skipReason}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runUpload} disabled={preflightStats.total - preflightStats.skip === 0}>
+              Confirm &amp; upload
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -28,8 +28,30 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle } from "lucide-react";
+import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle, MapPin } from "lucide-react";
 import { toast } from "sonner";
+
+// Lightweight local parser for "- Q1:\n  Comment: …" style review comments
+function parseChecklistFromComment(reviewComment: string): Array<{ questionId: number; additionalComment?: string }> {
+  const failures: Array<{ questionId: number; additionalComment?: string }> = [];
+  const lines = reviewComment.split("\n");
+  let current: number | null = null;
+  for (const line of lines) {
+    const m = line.match(/^-\s*Q(\d+):/);
+    if (m) {
+      if (current !== null) failures.push({ questionId: current });
+      current = parseInt(m[1]);
+    } else if (current !== null) {
+      const c = line.match(/^\s*Comment:\s*(.+)/i);
+      if (c && c[1].trim()) {
+        failures.push({ questionId: current, additionalComment: c[1].trim() });
+        current = null;
+      }
+    }
+  }
+  if (current !== null) failures.push({ questionId: current });
+  return failures;
+}
 
 interface Props {
   auditId: string;
@@ -76,14 +98,39 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
   const { data: prevChecklist } = useQuery({
     queryKey: ["quick-reaudit-prev-checklist", auditId],
     queryFn: async () => {
-      const { data } = await supabase
+      // 1. Try the live checklist progress row
+      const { data: progress } = await supabase
         .from("audit_checklist_progress")
         .select("items, failure_comments, has_failures, reviewer_id, updated_at")
         .eq("audit_id", auditId)
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      return data;
+      if (progress && Array.isArray((progress as any).items) && (progress as any).items.length > 0) {
+        return { items: (progress as any).items as any[] };
+      }
+      // 2. Fall back to the latest failure snapshot's review_comment and parse the "Q#:" markers out
+      const { data: snap } = await supabase
+        .from("review_feedback_history")
+        .select("review_comment, cycle_number")
+        .eq("audit_id", auditId)
+        .order("cycle_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (snap?.review_comment) {
+        const parsed = parseChecklistFromComment(snap.review_comment);
+        if (parsed.length > 0) {
+          return {
+            items: parsed.map((p) => ({
+              id: p.questionId,
+              answer: "no",
+              comment: p.additionalComment || "",
+              question: `Question Q${p.questionId} (failed in previous cycle)`,
+            })),
+          };
+        }
+      }
+      return null;
     },
     enabled: !!auditId,
   });
@@ -324,6 +371,13 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
                   />
                   <Smartphone className="h-4 w-4" /> Mobile Metadata
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={sameArtifacts.includes("field_audit")}
+                    onCheckedChange={(c) => toggleSameArtifact("field_audit", !!c)}
+                  />
+                  <MapPin className="h-4 w-4" /> Field Audit
+                </label>
               </div>
             </div>
           </div>
@@ -381,6 +435,13 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
                     onCheckedChange={(c) => toggleArtifact("mobile_metadata", !!c)}
                   />
                   <Smartphone className="h-4 w-4" /> Mobile Metadata
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={artifacts.includes("field_audit")}
+                    onCheckedChange={(c) => toggleArtifact("field_audit", !!c)}
+                  />
+                  <MapPin className="h-4 w-4" /> Field Audit
                 </label>
               </div>
             </div>

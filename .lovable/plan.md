@@ -1,90 +1,71 @@
-# Fixes & enhancements
+# Plan
 
-## 1. Quick Re-Audit Decision — relocate and improve
+## 1. Upload Center — pair PDF + metadata, preflight summary (IMPORTANT)
 
-**File**: `src/components/review/AuditChecklist.tsx`, `src/pages/ReviewInterview.tsx`, `src/components/review/QuickReAuditDecisionCard.tsx`.
+**File**: `src/pages/UploadCenter.tsx` (and reuse logic already in `BulkPdfUploadDialog`/`BulkMetadataUploadDialog` / `CombinedUploadDialog`).
 
-- **Relocate trigger**: Remove the standalone `QuickReAuditDecisionCard` card placed above the checklist. Pass a new optional prop `quickDecisionSlot?: ReactNode` into `AuditChecklist`. Render it inline next to the existing "Abandon" button (both sticky and non-sticky branches at lines 559 & 657). On `ReviewInterview.tsx` line 786, build the slot once (only when `audit.is_re_audit`) and pass it in instead of rendering the card separately.
-- **Editable "same reason" failure**: Replace the read-only `<p>` summary in the "Fail — same reasons" `AlertDialog` (lines 264–314) with editable `<Textarea>` fields prefilled from `lastFeedback.review_comment` / `action_plan` and an editable artifact checkbox group prefilled from `lastFeedback.artifact_correction`. Auditor can refine the reason before confirming. Submission still flags `_reused_previous: true` if the auditor did not change anything substantive; otherwise mark `false`.
-- **Show previous checklist properly**: The current "Previous checklist answers" collapsible only reads `audit_checklist_progress`. Many re-audits never had a saved progress row, so it shows empty. Fall back to the most recent `review_feedback_history.failed_checklist_items` (the JSONB the trigger snapshots on each failure) when `audit_checklist_progress` is empty, and render those rows in the same table. Expand the collapsible by default whenever items exist.
+Currently each file is rendered as its own row and uploaded independently. Change the **new-interview** flow (re-audit flow stays per-file because users replace one artifact at a time) so files are grouped by base name into one logical row.
 
-## 2. Pass-with-Override — inbox notification + Warn toggle
+### Group model
 
-**Files**: `src/components/review/ReviewActions.tsx`, `supabase/migrations/<new>.sql`, `src/pages/Inbox.tsx`, `src/components/InboxBell.tsx`, optional `src/components/announcements/AnnouncementProvider.tsx` (or new `OverrideWarningNagModal.tsx`).
+Introduce `interface Group { baseName; pdf?: File; zip?: File; ... }` derived from `rows` whenever the file picker changes:
 
-- **New "Warn" toggle** in the Pass-with-Override dialog: a `Switch` labeled "Warn the team about this agent's practice". When on, the failure context becomes a high-priority warning.
-- **Migration**:
-  - Extend `audits` with `pass_override_warn boolean default false`.
-  - New table `override_warning_acks(id, audit_id, user_id, acked_at)` — tracks who has opened the inbox message so the nag modal can stop.
-  - New SECURITY DEFINER RPC `notify_pass_override(_audit_id uuid, _warn boolean, _reason text)`:
-    - Resolves interviewer → assigned FM (`team_assignments`), FM → contractor admin (`fm_contractor_assignments`), contractor → sub-contractor (`fm_sub_contractor_assignments`).
-    - For each recipient (FM, contractor, sub-contractor): finds-or-creates a `direct` (or new `category = 'override_notice'`) conversation pinned to the audit and inserts a `messages` row with body = override reason and `metadata = { kind: 'pass_override', audit_id, warn: bool, file_name }`. If `warn`, set `metadata.priority = 'high'` and pin the conversation (`conversations.is_pinned = true`).
-  - Add `'override_notice'` to whatever check constraint or enum the inbox category uses; if `is_pinned` doesn't exist on `conversations`, add it.
-- **Wire it up**: After the successful update in `ReviewActions.tsx` line 599, call `supabase.rpc('notify_pass_override', …)` with the warn flag.
-- **Inbox UI** (`Inbox.tsx`):
-  - Add the `override_notice` entry to `CATEGORY_META` with `AlertTriangle` icon.
-  - In the conversation list, when `latest message.metadata.kind === 'pass_override' && metadata.warn`, prefix the row with a red `AlertTriangle` icon and sort it to the top.
-- **Nag modal**: New `src/components/inbox/OverrideWarningNagModal.tsx` mounted in `Layout.tsx`. On every route change / app load, query `messages` where `metadata.kind = 'pass_override'` and `metadata.warn = true`, joined against `override_warning_acks` filtered by current user — show a modal listing each un-acked warning ("Auditor X marked NGXX as Pass with Override – reason: …, open inbox"). The user must click "Open in inbox" which records an `override_warning_acks` row. Re-appears on next session until acked. Recipients = FM, contractor, sub-contractor only (use `has_role`).
+- **Both PDF + ZIP present**: render one row labeled `NGXX_…  ·  Paired (PDF + Metadata)`. A single progress bar covers the whole pair. On run, upload PDF first, await success, then upload ZIP. If PDF fails, mark ZIP as `Skipped (PDF failed)`.
+- **PDF only**: label `PDF only` (blue badge).
+- **ZIP only**: do the existing `audits` lookup by `baseName`. If a matching PDF is found, label `Pair with existing PDF` and proceed. If not found, mark `Will skip — no PDF for this metadata` and exclude from the upload count.
+- **Already uploaded** (audits row exists with same `file_name` in `new` mode, or duplicate metadata when ZIP & `mobile_zip_url` set): mark `Will skip — already uploaded` before upload starts.
 
-## 3. Upload-lock exemption fix
+This is the same logic CombinedUploadDialog already uses when ZIP+metadata are picked together — extract it into a shared helper `src/lib/groupUploadFiles.ts` and call it from `UploadCenter` and the dashboard/interviews upload dialogs so behaviour is uniform.
 
-**File**: `supabase/migrations/<new>.sql`.
+### Preflight summary modal
 
-`assert_upload_allowed` (current migration `20260504104215`) never consults `upload_lock_exemptions`, so exempt users still get blocked once they actually upload. Replace the global/contractor/FM/interviewer lock loop so it skips a lock when:
+When the user clicks **Start upload**, intercept and open an `AlertDialog` "Ready to upload" listing:
+
+- `X paired (PDF + metadata)`
+- `Y PDF only`
+- `Z metadata paired with existing PDF`
+- `S will be skipped` with reasons (collapsible per file)
+
+Buttons: **Cancel** / **Confirm & upload**. Only on confirm does the existing `start()` loop run, now driven by the grouped queue (sequential within a group, PDF first, then ZIP).
+
+### Status label cleanup
+
+Update the per-row badge logic in the file list to derive from the group (one row per group), not per file. Pending rows still removable via X.
+
+## 2. Quick Re-Audit (IMPORTANT)
+
+**File**: `src/components/review/QuickReAuditDecisionCard.tsx`.
+
+- **Add Field Audit to artifact options** in both the same-reason and new-reason dialogs:
+  ```tsx
+  <Checkbox checked={artifacts.includes("field_audit")} … />
+  <MapPin className="h-4 w-4" /> Field Audit
+  ```
+  Same checkbox added to `sameArtifacts`. The `re_audit_quick_fail` RPC already stores `_artifact_correction` as `text[]`, so no migration is needed — just allow the third value.
+- **Previous checklist not showing**: the query `prevChecklist` reads `audit_checklist_progress`, but on quick re-audits the auditor never opens the full checklist so no progress row exists. Add a fallback chain identical to the one already wired into the standalone "Previous checklist" panel:
+  1. Try `audit_checklist_progress` (most recent row).
+  2. Fall back to `review_feedback_history.failed_checklist_items` (JSONB the trigger snapshots) for the latest cycle.
+  3. As a final fallback, build items from `lastFeedback.review_comment` parsed by `parseChecklistFeedback()` so the auditor at least sees which question IDs failed.
+  Render the union in the same `<Table>`. Keep the collapsible expanded by default when any items are found.
+
+## 3. PDF report download — restore failure reason + action plan
+
+The Tracking page PDF (`src/pages/InterviewTracking.tsx` lines 800-850) currently writes only `Status / FM / Names` and `Interviewee / Date / PDF / Meta`. Failure reason and action plan were dropped.
+
+**InterviewTracking.tsx**: in the per-interview loop, when `interview.status === "Audit Failed"` (or `"Audit Passed - Pass with Failures"`), append:
 
 ```
-EXISTS (
-  SELECT 1 FROM upload_lock_exemptions e
-  WHERE e.scope_type = v_lock.scope_type
-    AND COALESCE(e.scope_id, '') = COALESCE(v_lock.scope_id, '')
-    AND (
-      (e.exempt_user_id IS NOT NULL AND e.exempt_user_id = auth.uid())
-      OR (e.exempt_role IS NOT NULL AND has_role(auth.uid(), e.exempt_role))
-    )
-)
+Failure Reason: <review_comment>
+Action Plan:    <action_plan>
 ```
 
-(Match the actual column names in `upload_lock_exemptions` — adjust if schema differs.) The frontend hook `useUploadLockStatus` already calls `is_upload_allowed`, so no client change.
+Wrap with `doc.splitTextToSize(... , maxLineWidth)` and advance `y` accordingly with page-break handling matching the existing pattern.
 
-## 4. PDF compression dropping pages
+**AdminReviewHistory.tsx**: review the PDF builder (lines 597-790). The Feedback/Action Plan blocks exist but are only emitted when `parseChecklistFeedback` returns items. Fix by **always** writing `Failure Reason: <review_comment>` and `Action Plan: <action_plan>` whenever status is failed or override, regardless of whether the checklist parser finds question IDs.
 
-**File**: `src/utils/compressPdf.ts`, `src/lib/uploadInterviewFile.ts`.
-
-- Wrap each `page.render` in try/catch. If any page render fails, abort the whole quality loop for that pass and continue to the next quality level; if all quality levels fail or any pass produced fewer pages than `numPages`, **return the original file unchanged** instead of a truncated one.
-- After producing the compressed `Blob`, re-open it with `pdfjs-dist` and assert `newDoc.numPages === numPages`. If mismatch, fall back to the original.
-- In `uploadInterviewFile.ts` (line 117-119), surface a `toast.warning` when compression falls back so the operator knows the original was uploaded.
-
-## 5. Team Approval — surface interviewers known only from audits
-
-**File**: `src/pages/TeamApprovals.tsx` (the `unassignedInterviewers` query, lines 163-206).
-
-Right now the query reads codes only from `interview_metadata`. Codes 684 and 687 have audits but no extracted metadata yet, so they never appear. Union with codes derived from `audits.file_name` (`split_part(file_name, '_', 3)` for contractor `split_part(file_name, '_', 2)`):
-
-1. Fetch distinct `(file_name)` from `audits` (already scoped by contractor where applicable).
-2. Parse `NGXX_<contractor>_<interviewer>_…` into `{ contractor_id, code }`.
-3. Merge with the metadata-derived list (dedupe by code).
-4. Subtract approved `team_assignments` codes as before.
-5. For codes without a name, show "Unknown — derived from upload".
-
-## 6. Chat Policies crash for super admin
-
-**File**: `src/pages/ChatPolicies.tsx` line 186.
-
-`typeof null === "object"`, so when `pickerOpen` is `null` the title computation tries to read `pickerOpen.blockedId` and throws "Cannot read properties of null (reading 'blockedId')". Replace:
-
-```ts
-: typeof pickerOpen === "object" ? `Allow these users …`
-```
-
-with an explicit non-null guard:
-
-```ts
-: (pickerOpen && typeof pickerOpen === "object" && pickerOpen.kind === "except")
-    ? `Allow these users to message ${userName(pickerOpen.blockedId)}`
-```
-
-(Also tighten `currentSelection` on lines 164-171 with the same guard for safety.)
+Same fix anywhere else that calls `jsPDF` to export per-audit rows (`ReviewHistory.tsx` if it has a PDF export). Audit `rg -n "jsPDF" src/pages` and apply the same fields.
 
 ## Out of scope
 
-- No changes to penalty/inbox layout/team-assignments work, the full checklist flow, or PDF/ZIP edge function parsing.
+- Activity timeline, upload-lock exemptions, team approvals, chat policies (already covered earlier).
+- Edge functions, RPC schema changes (none needed for the above).

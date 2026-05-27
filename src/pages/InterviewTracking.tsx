@@ -829,7 +829,28 @@ const InterviewTracking = () => {
       let y = 45;
 
       sortedInterviews.forEach((interview, i) => {
-        const entryHeight = 22;
+        const isFailed = interview.status === "Audit Failed" || interview.status === "Audit Passed - Pass with Failures";
+        const reviewComment = (interview as any).review_comment as string | null;
+        const actionPlanText = (interview as any).action_plan as string | null;
+        const overrideReason = (interview as any).pass_override_reason as string | null;
+        const overrideAction = (interview as any).pass_override_action_plan as string | null;
+
+        // Pre-split feedback / action plan to estimate row height
+        const reasonLines = isFailed && reviewComment
+          ? doc.splitTextToSize(`Failure Reason: ${reviewComment}`, maxLineWidth) as string[]
+          : [];
+        const planLines = isFailed && actionPlanText
+          ? doc.splitTextToSize(`Action Plan: ${actionPlanText}`, maxLineWidth) as string[]
+          : [];
+        const overrideReasonLines = overrideReason
+          ? doc.splitTextToSize(`Override Reason: ${overrideReason}`, maxLineWidth) as string[]
+          : [];
+        const overrideActionLines = overrideAction
+          ? doc.splitTextToSize(`Override Action Plan: ${overrideAction}`, maxLineWidth) as string[]
+          : [];
+
+        const extraLines = reasonLines.length + planLines.length + overrideReasonLines.length + overrideActionLines.length;
+        const entryHeight = 22 + extraLines * 4;
         if (y + entryHeight > 285) {
           doc.addPage();
           pageNum++;
@@ -845,6 +866,24 @@ const InterviewTracking = () => {
         y += 4.5;
         doc.text(`Interviewee: ${interview.interviewee_name || "-"} | Date: ${interview.interview_date || "-"} | PDF: ${interview.has_pdf ? "Yes" : "No"} | Meta: ${interview.has_metadata ? "Yes" : "No"}`, margin, y);
         y += 6;
+
+        const drawLines = (lines: string[]) => {
+          lines.forEach((line) => {
+            if (y > 285) {
+              doc.addPage();
+              pageNum++;
+              addPageHeader(false);
+              y = 22;
+            }
+            doc.text(line, margin, y);
+            y += 4;
+          });
+        };
+        if (reasonLines.length) { drawLines(reasonLines); y += 1; }
+        if (planLines.length) { drawLines(planLines); y += 1; }
+        if (overrideReasonLines.length) { drawLines(overrideReasonLines); y += 1; }
+        if (overrideActionLines.length) { drawLines(overrideActionLines); y += 1; }
+        if (extraLines > 0) y += 2;
       });
 
       doc.save(`interview-tracking-${format(new Date(), "yyyy-MM-dd")}.pdf`);

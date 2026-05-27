@@ -772,7 +772,25 @@ const AdminReviewHistory = () => {
             }
           });
         }
-        
+
+        // Always render raw failure reason text for failed audits (in case checklist parse misses it
+        // or the comment is free-form). This guarantees Failure Reason shows up in every PDF export.
+        if (a.status === "Audit Failed" && a.review_comment && a.review_comment.trim()) {
+          y += 2;
+          doc.setFont("helvetica", "bold");
+          const headerLine = "Failure Reason:";
+          if (y > 285) { doc.addPage(); pageNum++; addPageHeader(false); y = 22; }
+          doc.text(headerLine, margin, y);
+          y += 4;
+          doc.setFont("helvetica", "normal");
+          const reasonLines = doc.splitTextToSize(a.review_comment, maxLineWidth);
+          reasonLines.forEach((line: string) => {
+            if (y > 285) { doc.addPage(); pageNum++; addPageHeader(false); y = 22; }
+            doc.text(line, margin, y);
+            y += 3.5;
+          });
+        }
+
         // Render action plan if present
         if (a.status === "Audit Failed" && a.action_plan && a.action_plan.trim()) {
           y += 2;
