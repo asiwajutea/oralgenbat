@@ -371,6 +371,13 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
                   />
                   <Smartphone className="h-4 w-4" /> Mobile Metadata
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={sameArtifacts.includes("field_audit")}
+                    onCheckedChange={(c) => toggleSameArtifact("field_audit", !!c)}
+                  />
+                  <MapPin className="h-4 w-4" /> Field Audit
+                </label>
               </div>
             </div>
           </div>
@@ -428,6 +435,13 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
                     onCheckedChange={(c) => toggleArtifact("mobile_metadata", !!c)}
                   />
                   <Smartphone className="h-4 w-4" /> Mobile Metadata
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={artifacts.includes("field_audit")}
+                    onCheckedChange={(c) => toggleArtifact("field_audit", !!c)}
+                  />
+                  <MapPin className="h-4 w-4" /> Field Audit
                 </label>
               </div>
             </div>
