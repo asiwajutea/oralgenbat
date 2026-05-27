@@ -511,6 +511,54 @@ const UploadCenter = () => {
           <UploadHistoryTable />
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={showPreflight} onOpenChange={setShowPreflight}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ready to upload</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <div>Review what will happen when you start the upload:</div>
+                <ul className="space-y-1 text-foreground">
+                  {mode === "new" && preflightStats.paired > 0 && (
+                    <li>• <span className="font-medium">{preflightStats.paired}</span> paired (PDF + Metadata, uploaded together)</li>
+                  )}
+                  {mode === "new" && preflightStats.pdfOnly > 0 && (
+                    <li>• <span className="font-medium">{preflightStats.pdfOnly}</span> PDF only</li>
+                  )}
+                  {mode === "new" && preflightStats.zipPaired > 0 && (
+                    <li>• <span className="font-medium">{preflightStats.zipPaired}</span> metadata paired with existing PDF</li>
+                  )}
+                  {mode === "re_audit" && (
+                    <li>• <span className="font-medium">{preflightStats.total - preflightStats.skip}</span> interview(s) to replace</li>
+                  )}
+                  {preflightStats.skip > 0 && (
+                    <li className="text-amber-700 dark:text-amber-400">
+                      • <span className="font-medium">{preflightStats.skip}</span> will be skipped
+                    </li>
+                  )}
+                </ul>
+                {preflightStats.skip > 0 && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">Show skipped items</summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {groups.filter(g => g.willSkip).map(g => (
+                        <li key={g.baseName} className="font-mono">{g.baseName} — {g.skipReason}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runUpload} disabled={preflightStats.total - preflightStats.skip === 0}>
+              Confirm &amp; upload
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
