@@ -73,6 +73,7 @@ const UploadCenter = () => {
   const rowsRef = useRef<Row[]>([]);
   useEffect(() => { rowsRef.current = rows; }, [rows]);
   const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [showPreflight, setShowPreflight] = useState(false);
 
   // If "new" uploads are locked, default the mode to re-audit
   useEffect(() => {
