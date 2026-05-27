@@ -30,7 +30,28 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CheckCircle, XCircle, Zap, ChevronDown, Loader2, FileText, Smartphone, AlertTriangle, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { parseChecklistFeedback } from "@/lib/parseFailureReasons";
+
+// Lightweight local parser for "- Q1:\n  Comment: …" style review comments
+function parseChecklistFromComment(reviewComment: string): Array<{ questionId: number; additionalComment?: string }> {
+  const failures: Array<{ questionId: number; additionalComment?: string }> = [];
+  const lines = reviewComment.split("\n");
+  let current: number | null = null;
+  for (const line of lines) {
+    const m = line.match(/^-\s*Q(\d+):/);
+    if (m) {
+      if (current !== null) failures.push({ questionId: current });
+      current = parseInt(m[1]);
+    } else if (current !== null) {
+      const c = line.match(/^\s*Comment:\s*(.+)/i);
+      if (c && c[1].trim()) {
+        failures.push({ questionId: current, additionalComment: c[1].trim() });
+        current = null;
+      }
+    }
+  }
+  if (current !== null) failures.push({ questionId: current });
+  return failures;
+}
 
 interface Props {
   auditId: string;
@@ -88,27 +109,23 @@ export const QuickReAuditDecisionCard = ({ auditId, fileName, onCompleted }: Pro
       if (progress && Array.isArray((progress as any).items) && (progress as any).items.length > 0) {
         return { items: (progress as any).items as any[] };
       }
-      // 2. Fall back to the JSONB snapshot the trigger writes on each failure
+      // 2. Fall back to the latest failure snapshot's review_comment and parse the "Q#:" markers out
       const { data: snap } = await supabase
         .from("review_feedback_history")
-        .select("failed_checklist_items, review_comment, cycle_number")
+        .select("review_comment, cycle_number")
         .eq("audit_id", auditId)
         .order("cycle_number", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (snap && Array.isArray((snap as any).failed_checklist_items) && (snap as any).failed_checklist_items.length > 0) {
-        return { items: (snap as any).failed_checklist_items as any[] };
-      }
-      // 3. Last resort: derive items from the parsed failure-reason text
       if (snap?.review_comment) {
-        const parsed = parseChecklistFeedback(snap.review_comment);
+        const parsed = parseChecklistFromComment(snap.review_comment);
         if (parsed.length > 0) {
           return {
             items: parsed.map((p) => ({
               id: p.questionId,
               answer: "no",
               comment: p.additionalComment || "",
-              question: `Question ${p.questionId} (failed)`,
+              question: `Question Q${p.questionId} (failed in previous cycle)`,
             })),
           };
         }
