@@ -195,8 +195,8 @@ const TeamApprovals = () => {
       for (const row of auditRows || []) {
         const parts = (row.file_name || "").split("_");
         if (parts.length < 4) continue;
-        const contractor_id = parts[1];
-        const code = parts[2];
+        const contractor_id = parts[0];
+        const code = parts[1];
         if (!code) continue;
         if (!isSuperAdmin && isContractor && effectiveContractorId && contractor_id !== effectiveContractorId) continue;
         if (!interviewerMap.has(code)) {
