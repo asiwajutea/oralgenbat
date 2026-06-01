@@ -187,17 +187,19 @@ const TeamApprovals = () => {
         }
       }
 
-      // Also union with codes derived from audits.file_name (NGXX_<contractor>_<interviewer>_…),
+      // Also union with codes derived from audits.file_name (NGXX_<interviewer>_<date>_…),
       // so interviewers whose metadata has not been extracted yet still show up here.
       const { data: auditRows } = await supabase
         .from("audits")
         .select("file_name");
       for (const row of auditRows || []) {
         const parts = (row.file_name || "").split("_");
-        if (parts.length < 4) continue;
+        if (parts.length < 3) continue;
         const contractor_id = parts[0];
         const code = parts[1];
         if (!code) continue;
+        // Skip if the code looks like a date (8 digits in YYYYMMDD format)
+        if (/^\d{8}$/.test(code)) continue;
         if (!isSuperAdmin && isContractor && effectiveContractorId && contractor_id !== effectiveContractorId) continue;
         if (!interviewerMap.has(code)) {
           interviewerMap.set(code, {
