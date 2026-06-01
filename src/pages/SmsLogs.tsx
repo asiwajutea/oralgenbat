@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -53,7 +55,8 @@ import {
   ArrowUpDown,
   X,
   FileDown,
-  Loader2
+  Loader2,
+  BellOff
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AuditPagination } from "@/components/AuditPagination";
@@ -90,6 +93,7 @@ export default function SmsLogs() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isSmsDisabled, setIsSmsDisabled] = useState(false);
 
   // Reset page on filter change
   useEffect(() => {
@@ -114,6 +118,18 @@ export default function SmsLogs() {
     setDateFrom(undefined);
     setDateTo(undefined);
     setContractorFilter("");
+  };
+
+  // Handle SMS toggle functionality
+  const handleToggleDisableSms = (disabled: boolean) => {
+    setIsSmsDisabled(disabled);
+    if (disabled) {
+      toast.warning("SMS sending capability is temporarily disabled.");
+    } else {
+      toast.success("SMS sending capability is re-enabled.");
+    }
+    // TODO: Add your Supabase backend integration here to persist this state globally
+    // e.g., await supabase.from('app_settings').update({ sms_disabled: disabled }).eq('id', 1);
   };
 
   // Build filter function for reuse
@@ -411,12 +427,36 @@ export default function SmsLogs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">SMS Notification Logs</h1>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            SMS Notification Logs
+            {isSmsDisabled && (
+              <Badge variant="destructive" className="ml-2">
+                <BellOff className="w-3 h-3 mr-1" />
+                Sending Disabled
+              </Badge>
+            )}
+          </h1>
           <p className="text-muted-foreground">Track all SMS notifications sent for failed audits</p>
         </div>
-        <div className="flex gap-2">
+        
+        <div className="flex flex-wrap items-center gap-3">
+          {/* SMS Master Toggle */}
+          <div className="flex items-center space-x-2 bg-muted/30 px-3 py-1.5 rounded-md border">
+            <Switch
+              id="disable-sms"
+              checked={isSmsDisabled}
+              onCheckedChange={handleToggleDisableSms}
+            />
+            <Label 
+              htmlFor="disable-sms" 
+              className={`text-sm font-medium cursor-pointer ${isSmsDisabled ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              {isSmsDisabled ? "SMS Disabled" : "Disable SMS"}
+            </Label>
+          </div>
+
           <Button onClick={generatePdfReport} variant="outline" size="sm" disabled={isGeneratingPdf}>
             {isGeneratingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
             PDF Report
