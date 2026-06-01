@@ -53,7 +53,9 @@ import {
   ArrowUpDown,
   X,
   FileDown,
-  Loader2
+  Loader2,
+  ToggleLeft,
+  ToggleRight
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AuditPagination } from "@/components/AuditPagination";
@@ -90,11 +92,59 @@ export default function SmsLogs() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [smsSendingEnabled, setSmsSendingEnabled] = useState(true);
+  const [isTogglingSmsSending, setIsTogglingSmsSending] = useState(false);
 
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
   }, [statusFilter, searchQuery, dateFrom, dateTo, contractorFilter, sortField, sortOrder]);
+
+  // Load SMS sending status on mount
+  useEffect(() => {
+    const loadSmsSendingStatus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("app_settings")
+          .select("sms_sending_enabled")
+          .single();
+        
+        if (error && error.code !== "PGRST116") throw error;
+        if (data) {
+          setSmsSendingEnabled(data.sms_sending_enabled !== false);
+        }
+      } catch (err) {
+        console.error("Error loading SMS sending status:", err);
+      }
+    };
+
+    loadSmsSendingStatus();
+  }, []);
+
+  // Toggle SMS sending capability
+  const toggleSmsSending = async () => {
+    setIsTogglingSmsSending(true);
+    try {
+      const newStatus = !smsSendingEnabled;
+      
+      const { error } = await supabase
+        .from("app_settings")
+        .upsert(
+          { id: "sms_sending_config", sms_sending_enabled: newStatus },
+          { onConflict: "id" }
+        );
+
+      if (error) throw error;
+      
+      setSmsSendingEnabled(newStatus);
+      toast.success(`SMS sending ${newStatus ? "enabled" : "disabled"}`);
+    } catch (err) {
+      console.error("Error toggling SMS sending:", err);
+      toast.error("Failed to update SMS sending status");
+    } finally {
+      setIsTogglingSmsSending(false);
+    }
+  };
 
   // Count active filters
   const activeFilterCount = useMemo(() => {
@@ -417,6 +467,22 @@ export default function SmsLogs() {
           <p className="text-muted-foreground">Track all SMS notifications sent for failed audits</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            onClick={toggleSmsSending}
+            variant={smsSendingEnabled ? "default" : "destructive"}
+            size="sm"
+            disabled={isTogglingSmsSending}
+            className="gap-2"
+          >
+            {isTogglingSmsSending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : smsSendingEnabled ? (
+              <ToggleRight className="w-4 h-4" />
+            ) : (
+              <ToggleLeft className="w-4 h-4" />
+            )}
+            SMS {smsSendingEnabled ? "Enabled" : "Disabled"}
+          </Button>
           <Button onClick={generatePdfReport} variant="outline" size="sm" disabled={isGeneratingPdf}>
             {isGeneratingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
             PDF Report
@@ -427,6 +493,15 @@ export default function SmsLogs() {
           </Button>
         </div>
       </div>
+
+      {/* SMS Status Alert */}
+      {!smsSendingEnabled && (
+        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+          <p className="text-sm font-medium text-destructive">
+            ⚠️ SMS sending is currently disabled. No new SMS notifications will be sent until this is re-enabled.
+          </p>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
