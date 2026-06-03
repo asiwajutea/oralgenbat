@@ -45,7 +45,7 @@ export const PaymentTable = ({ records, isLoading, type, onRefresh }: PaymentTab
   const isMobile = useIsMobile();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_PAGE_SIZE);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("payment-table", DEFAULT_PAGE_SIZE);
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   // Pagination

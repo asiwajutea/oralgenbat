@@ -50,7 +50,7 @@ const PdfDiagnosticsTab = () => {
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("pdf-diagnostics", 25);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());

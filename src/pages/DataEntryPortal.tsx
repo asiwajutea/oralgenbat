@@ -65,7 +65,7 @@ const DataEntryPortal = () => {
   const [searchedId, setSearchedId] = useState("");
   const [dateFilter, setDateFilter] = useState<"today" | "week" | "month" | "all">("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("data-entry-portal", 10);
   
   // Flag for issue dialog
   const [showFlagDialog, setShowFlagDialog] = useState(false);

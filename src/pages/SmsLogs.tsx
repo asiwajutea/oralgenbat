@@ -88,7 +88,7 @@ export default function SmsLogs() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [contractorFilter, setContractorFilter] = useState<string>("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("sms-logs", 25);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Reset page on filter change

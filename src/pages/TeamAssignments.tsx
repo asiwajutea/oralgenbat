@@ -85,7 +85,7 @@ const TeamAssignments = () => {
   const [sortBy, setSortBy] = useState<"names" | "date">("names");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("team-assignments", 25);
   const [selectedInterviews, setSelectedInterviews] = useState<Set<string>>(new Set());
   const [bulkAssignTeamId, setBulkAssignTeamId] = useState<string>("");
   
@@ -100,7 +100,10 @@ const TeamAssignments = () => {
   
   // Export history pagination
   const [exportHistoryPage, setExportHistoryPage] = useState(1);
-  const [exportHistoryItemsPerPage, setExportHistoryItemsPerPage] = useState(10);
+  const [exportHistoryItemsPerPage, setExportHistoryItemsPerPage] = usePersistentPageSize(
+    "team-assignments-export-history",
+    10,
+  );
   
   // Expanded team sections for By Team view
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());

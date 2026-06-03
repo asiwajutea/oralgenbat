@@ -60,7 +60,7 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("home-audits", 10);
   const [pdfUploadOpen, setPdfUploadOpen] = useState(false);
   const [bulkZipOpen, setBulkZipOpen] = useState(false);
   const [combinedUploadOpen, setCombinedUploadOpen] = useState(false);

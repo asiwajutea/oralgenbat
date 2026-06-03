@@ -36,7 +36,7 @@ const ReviewHistory = () => {
   const navigate = useNavigate();
   const isOnline = useOnlineStatus();
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("review-history", 25);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
 

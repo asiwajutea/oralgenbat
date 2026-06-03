@@ -143,7 +143,7 @@ const InterviewTracking = () => {
   const [sortField, setSortField] = useState<string>("last_modified");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("interview-tracking", 20);
   
   // Filters
   const [filters, setFilters] = useState({
