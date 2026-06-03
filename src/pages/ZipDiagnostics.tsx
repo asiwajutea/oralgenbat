@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAllRows } from "@/utils/paginatedFetch";
@@ -64,7 +65,7 @@ const ZipDiagnostics = () => {
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("zip-diagnostics", 25);
 
   // Bulk selection state
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -66,7 +67,7 @@ const BurnQueue = () => {
   const isAdmin = userRole === "admin" || userRole === "super_admin";
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("burn-queue", 25);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [fmFilter, setFmFilter] = useState<string>("all");

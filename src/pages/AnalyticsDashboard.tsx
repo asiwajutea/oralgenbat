@@ -25,6 +25,7 @@ import { useStorageUsage } from "@/hooks/useStorageUsage";
 import { StorageUsageCard } from "@/components/analytics/StorageUsageCard";
 import { StorageBreakdown } from "@/components/analytics/StorageBreakdown";
 import { CriticalAgentsCard } from "@/components/analytics/CriticalAgentsCard";
+import { AgeGroupChart } from "@/components/analytics/AgeGroupChart";
 import { BarChart3, Users, TrendingUp, Clock } from "lucide-react";
 
 const AnalyticsDashboard = () => {
@@ -126,7 +127,9 @@ const AnalyticsDashboard = () => {
               <AuditStatusChart data={statusChartData} />
               <TrendChart data={trendData} title="Audit Trends Over Time" />
             </div>
-            
+
+            <AgeGroupChart />
+
             <PerformanceBarChart data={agentData} title="Top 10 Performing Agents" />
           </TabsContent>
 

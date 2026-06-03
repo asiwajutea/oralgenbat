@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -65,7 +66,7 @@ const DataEntryPortal = () => {
   const [searchedId, setSearchedId] = useState("");
   const [dateFilter, setDateFilter] = useState<"today" | "week" | "month" | "all">("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("data-entry-portal", 10);
   
   // Flag for issue dialog
   const [showFlagDialog, setShowFlagDialog] = useState(false);

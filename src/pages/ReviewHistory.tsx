@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,7 +37,7 @@ const ReviewHistory = () => {
   const navigate = useNavigate();
   const isOnline = useOnlineStatus();
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("review-history", 25);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
 

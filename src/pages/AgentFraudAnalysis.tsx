@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useParams, useNavigate } from "react-router-dom";
 import { useFraudAnalytics, TimePeriod, getPeriodLabel } from "@/hooks/useFraudAnalytics";
 import { useQuery } from "@tanstack/react-query";
@@ -30,7 +31,10 @@ const AgentFraudAnalysis = () => {
   const { interviewerCode } = useParams<{ interviewerCode: string }>();
   const navigate = useNavigate();
   const [historyPage, setHistoryPage] = useState(1);
-  const [historyItemsPerPage, setHistoryItemsPerPage] = useState(10);
+  const [historyItemsPerPage, setHistoryItemsPerPage] = usePersistentPageSize(
+    "agent-fraud-history",
+    10,
+  );
   const [period, setPeriod] = useState<TimePeriod>('13weeks');
 
   const { data: fraudProfile, isLoading: profileLoading } = useFraudAnalytics(interviewerCode!, period);

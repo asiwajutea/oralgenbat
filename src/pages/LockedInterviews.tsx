@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -63,7 +64,7 @@ const LockedInterviews = () => {
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const [confirmUnlock, setConfirmUnlock] = useState<LockedInterview | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("locked-interviews", 25);
   
   // Tick state to force re-render every second for countdown
   const [, setTick] = useState(0);
