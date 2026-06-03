@@ -2536,6 +2536,14 @@ export type Database = {
           uploaded_by_name: string
         }[]
       }
+      get_interview_age_distribution: {
+        Args: { _contractor_ids?: string[]; _interviewer_codes?: string[] }
+        Returns: {
+          bucket: string
+          bucket_order: number
+          count: number
+        }[]
+      }
       get_penalty_summary: {
         Args: { _user_id: string }
         Returns: {
