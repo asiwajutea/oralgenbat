@@ -1,71 +1,108 @@
 # Plan
 
-## 1. Upload Center — pair PDF + metadata, preflight summary (IMPORTANT)
+## 1. Inbox scoping (failed-audit notifications)
 
-**File**: `src/pages/UploadCenter.tsx` (and reuse logic already in `BulkPdfUploadDialog`/`BulkMetadataUploadDialog` / `CombinedUploadDialog`).
+**Files**: `src/components/review/ReviewActions.tsx` (where `notify_pass_override` / failure notifications are dispatched), the existing `notify_pass_override` RPC, and the chat/notification side that posts the inbox conversation on audit fail.
 
-Currently each file is rendered as its own row and uploaded independently. Change the **new-interview** flow (re-audit flow stays per-file because users replace one artifact at a time) so files are grouped by base name into one logical row.
+Currently failure notifications go broadly. Add a server-side recipient resolver that, given an `audit_id`, returns the hierarchy:
 
-### Group model
+- **Field Manager** assigned to the interviewer (via `team_assignments` / `interview_fm_overrides`)
+- **Sub-contractor** assigned to that FM
+- **Contractor** assigned to that sub-contractor
+- **Admin(s)** assigned to that contractor (via `field_manager_admin_assignments` / contractor→admin mapping)
 
-Introduce `interface Group { baseName; pdf?: File; zip?: File; ... }` derived from `rows` whenever the file picker changes:
+Create RPC `resolve_audit_notification_recipients(_audit_id uuid)` returning `(user_id, role, level)`.
 
-- **Both PDF + ZIP present**: render one row labeled `NGXX_…  ·  Paired (PDF + Metadata)`. A single progress bar covers the whole pair. On run, upload PDF first, await success, then upload ZIP. If PDF fails, mark ZIP as `Skipped (PDF failed)`.
-- **PDF only**: label `PDF only` (blue badge).
-- **ZIP only**: do the existing `audits` lookup by `baseName`. If a matching PDF is found, label `Pair with existing PDF` and proceed. If not found, mark `Will skip — no PDF for this metadata` and exclude from the upload count.
-- **Already uploaded** (audits row exists with same `file_name` in `new` mode, or duplicate metadata when ZIP & `mobile_zip_url` set): mark `Will skip — already uploaded` before upload starts.
+Then update the audit-fail and override notification paths to:
 
-This is the same logic CombinedUploadDialog already uses when ZIP+metadata are picked together — extract it into a shared helper `src/lib/groupUploadFiles.ts` and call it from `UploadCenter` and the dashboard/interviews upload dialogs so behaviour is uniform.
+- Build one conversation/inbox thread per recipient (or a single thread with all participants — match existing pattern).
+- **FM payload**: full body (current behaviour — checklist failures, comment, action plan, links).
+- **Sub-contractor / Contractor / Admin payload**: short summary only — `"Audit failed: {file_name} · Agent {interviewer_code} · FM {fm_name}"` with one-line failure reason and a deep link to the review page. Use a new `metadata.summary_only = true` flag so the inbox renderer can collapse the body.
 
-### Preflight summary modal
+Update `src/pages/Inbox.tsx` / message rendering to honour `summary_only` (just truncate body + hide checklist block).
 
-When the user clicks **Start upload**, intercept and open an `AlertDialog` "Ready to upload" listing:
+## 2. Analytics dashboard — Age group chart (IMPORTANT)
 
-- `X paired (PDF + metadata)`
-- `Y PDF only`
-- `Z metadata paired with existing PDF`
-- `S will be skipped` with reasons (collapsible per file)
+**File**: `src/pages/AnalyticsDashboard.tsx` (Overview tab), new component `src/components/analytics/AgeGroupChart.tsx`.
 
-Buttons: **Cancel** / **Confirm & upload**. Only on confirm does the existing `start()` loop run, now driven by the grouped queue (sequential within a group, PDF first, then ZIP).
+Source: `interview_metadata.interviewee_age` (integer, already in DB).
 
-### Status label cleanup
+Buckets:
 
-Update the per-row badge logic in the file list to derive from the group (one row per group), not per file. Pending rows still removable via X.
+- `Under 40`
+- `40–54`
+- `55–64`
+- `65–74`
+- `75–84`
+- `85+`
+- `Unknown` (null/0)
 
-## 2. Quick Re-Audit (IMPORTANT)
+Implementation:
 
-**File**: `src/components/review/QuickReAuditDecisionCard.tsx`.
+- Add hook in `useAnalytics.ts` that fetches counts via an RPC `get_interview_age_distribution(_scope...)` (so we don't pull every row). Honour the same role scope used elsewhere (full access / contractor / FM / interviewer).
+- Render with Recharts: horizontal stacked bar OR a colourful donut + side legend showing count and %. Use existing semantic tokens (`--primary`, `--accent`, chart palette in `tailwind.config.ts`). Animated entry, hover tooltip with absolute + percentage.
+- Place in Overview tab alongside existing summary cards as a full-width card "Interviewee Age Distribution".
 
-- **Add Field Audit to artifact options** in both the same-reason and new-reason dialogs:
-  ```tsx
-  <Checkbox checked={artifacts.includes("field_audit")} … />
-  <MapPin className="h-4 w-4" /> Field Audit
-  ```
-  Same checkbox added to `sameArtifacts`. The `re_audit_quick_fail` RPC already stores `_artifact_correction` as `text[]`, so no migration is needed — just allow the third value.
-- **Previous checklist not showing**: the query `prevChecklist` reads `audit_checklist_progress`, but on quick re-audits the auditor never opens the full checklist so no progress row exists. Add a fallback chain identical to the one already wired into the standalone "Previous checklist" panel:
-  1. Try `audit_checklist_progress` (most recent row).
-  2. Fall back to `review_feedback_history.failed_checklist_items` (JSONB the trigger snapshots) for the latest cycle.
-  3. As a final fallback, build items from `lastFeedback.review_comment` parsed by `parseChecklistFeedback()` so the auditor at least sees which question IDs failed.
-  Render the union in the same `<Table>`. Keep the collapsible expanded by default when any items are found.
+## 3. Persistent pagination (IMPORTANT)
 
-## 3. PDF report download — restore failure reason + action plan
+**File**: `src/components/AuditPagination.tsx` + every page that renders it.
 
-The Tracking page PDF (`src/pages/InterviewTracking.tsx` lines 800-850) currently writes only `Status / FM / Names` and `Interviewee / Date / PDF / Meta`. Failure reason and action plan were dropped.
+Introduce a small hook `src/hooks/usePersistentPageSize.ts`:
 
-**InterviewTracking.tsx**: in the per-interview loop, when `interview.status === "Audit Failed"` (or `"Audit Passed - Pass with Failures"`), append:
-
-```
-Failure Reason: <review_comment>
-Action Plan:    <action_plan>
+```ts
+usePersistentPageSize(key: string, defaultSize = 10): [number, (n:number)=>void]
 ```
 
-Wrap with `doc.splitTextToSize(... , maxLineWidth)` and advance `y` accordingly with page-break handling matching the existing pattern.
+Backed by `localStorage` (key prefix `lovable:pageSize:`) with cross-tab sync via `storage` event and an in-memory fallback. The user's last chosen page size persists across sessions per-table.
 
-**AdminReviewHistory.tsx**: review the PDF builder (lines 597-790). The Feedback/Action Plan blocks exist but are only emitted when `parseChecklistFeedback` returns items. Fix by **always** writing `Failure Reason: <review_comment>` and `Action Plan: <action_plan>` whenever status is failed or override, regardless of whether the checklist parser finds question IDs.
+Refactor every consumer to use it instead of `useState(10)`:
 
-Same fix anywhere else that calls `jsPDF` to export per-audit rows (`ReviewHistory.tsx` if it has a PDF export). Audit `rg -n "jsPDF" src/pages` and apply the same fields.
+- `src/pages/InterviewTracking.tsx`
+- `src/pages/AdminReviewHistory.tsx`
+- `src/pages/BurnQueue.tsx`
+- `src/pages/SmsLogs.tsx`
+- `src/hooks/useUploadTracking.ts` consumers
+- `src/components/upload-tracking/InterviewBreakdownTable.tsx`
+- any other table I find via `rg "itemsPerPage|pageSize"`.
 
-## Out of scope
+Each call site passes a unique key (e.g. `"interview-tracking"`, `"admin-review-history"`). Current page number stays per-session (not persisted) — only page size persists, matching the spec ("once pagination is set, keep it").
 
-- Activity timeline, upload-lock exemptions, team approvals, chat policies (already covered earlier).
-- Edge functions, RPC schema changes (none needed for the above).
+## 4. Development gaps — OUT OF SCOPE, logged for next cycle
+
+I'll do a deeper audit on implementation and produce a written report only (no code). Expected gaps to flag for the next plan (not implemented here):
+
+- **No automated tests** (unit / integration / e2e). No CI gate, no Playwright/Vitest harness.
+- **Edge function observability**: no structured logging, no per-function error budget / alerting beyond raw logs.
+- **No retry / dead-letter** for `process-mobile-zip`, `analyze-pdf`, `send-failed-audit-sms` — failures are silent.
+- **Audit trail gaps**: timeline shows reviews and re-audits, but assignment changes, role changes, FM reassignments, and lock-exemption changes are not in one timeline.
+- **Granular role permissions**: roles are coarse — no per-feature permission matrix (e.g. "can override", "can manage burn queue", "can edit policy") separate from role enum.
+- **Bulk operations**: no bulk reassign, bulk delete, bulk re-audit, bulk burn from tracking page.
+- **Search**: no global search (Cmd-K) across interviews, users, file names, agents.
+- **Saved filters / views** on Interview Tracking and Analytics.
+- **Export limits**: PDF/CSV exports run on the client and choke on >5k rows; needs server-side export edge function with email-on-completion.
+- **Notification preferences**: users can't opt in/out per category (failed audit, override, announcement, chat) beyond push toggle.
+- **Internationalisation**: hard-coded English strings throughout.
+- **Accessibility**: no audit (focus order, ARIA, colour contrast in dark mode, keyboard navigation in dialogs).
+- **Mobile UX**: some tables still horizontally scroll on mobile despite accordion pattern; review wizard not yet fully mobile-first.
+- **Storage lifecycle**: no signed-URL TTLs on audit artefacts; reliance on RLS only.
+- **Background jobs**: cron jobs exist but no central job-health dashboard (last-run, failure count).
+- **Data validation**: filename regex enforced client-side but not via DB CHECK/trigger — bad uploads can still land via direct API.
+- **API rate limiting** on edge functions exposed via anon key.
+- **Versioning** of audit checklist schema — historical audits can break if questions are renumbered.
+- **Real-time presence** is partial — no "X is also reviewing this interview" indicator on the review page.
+- **Backup / restore** UX — no admin-facing point-in-time recovery view.
+- **Onboarding / help** — no in-app tour, no contextual tooltips for new roles.
+- **GDPR / data deletion**: no self-serve "delete my data" flow for ex-agents.
+
+I'll expand this list with file-level references in the closing message of the build phase.
+
+## Out of scope (this plan)
+
+- Implementing any "Development Gaps" item.
+- Re-styling the inbox shell or chat policies.
+- Touching upload/Quick Re-Audit/PDF report flows already completed in prior turns.
+
+&nbsp;
+
+ADD TO THIS DEVELOPMENT:  
+- Temporarily deactivate the SMS notification for now.
