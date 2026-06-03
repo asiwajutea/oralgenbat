@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";

@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

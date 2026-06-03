@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useParams, useNavigate } from "react-router-dom";
 import { useFraudAnalytics, TimePeriod, getPeriodLabel } from "@/hooks/useFraudAnalytics";
 import { useQuery } from "@tanstack/react-query";

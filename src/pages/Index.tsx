@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { usePersistentPageSize } from "@/hooks/usePersistentPageSize";
 import { useSearchParams } from "react-router-dom";
 import { Filter, Upload, ChevronDown, FileText, FileArchive, Files } from "lucide-react";
 import { FilterSidebar, FilterState } from "@/components/FilterSidebar";
