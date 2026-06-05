@@ -28,7 +28,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { CheckCircle, XCircle, Loader2, Users, UserPlus, Link2 } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Users, UserPlus, Link2, UserMinus } from "lucide-react";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -391,6 +391,34 @@ const TeamApprovals = () => {
     },
   });
 
+  const unassignAgentMutation = useMutation({
+    mutationFn: async ({ assignmentId }: { assignmentId: string }) => {
+      if (!session?.user.id) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("team_assignments")
+        .delete()
+        .eq("id", assignmentId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["approved-teams"] });
+      queryClient.invalidateQueries({ queryKey: ["unassigned-interviewers"] });
+      toast({
+        title: "Success",
+        description: "Agent unassigned successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unassign agent.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const assignAgentMutation = useMutation({
     mutationFn: async ({
       interviewerCode,
@@ -492,6 +520,34 @@ const TeamApprovals = () => {
     },
   });
 
+  const unassignFmFromAdminMutation = useMutation({
+    mutationFn: async ({ fieldManagerId }: { fieldManagerId: string }) => {
+      if (!session?.user.id) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("field_manager_admin_assignments")
+        .update({ is_active: false })
+        .eq("field_manager_id", fieldManagerId)
+        .eq("is_active", true);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fm-admin-assignments"] });
+      toast({
+        title: "Success",
+        description: "Field manager unassigned from admin.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unassign field manager.",
+        variant: "destructive",
+      });
+    },
+  });
+
   // FM-SubContractor assignment mutation
   const assignFmToSubContractorMutation = useMutation({
     mutationFn: async ({
@@ -545,6 +601,34 @@ const TeamApprovals = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to assign field manager.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const unassignFmFromSubContractorMutation = useMutation({
+    mutationFn: async ({ fieldManagerId }: { fieldManagerId: string }) => {
+      if (!session?.user.id) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("field_manager_subcontractor_assignments")
+        .update({ is_active: false })
+        .eq("field_manager_id", fieldManagerId)
+        .eq("is_active", true);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["fm-subcontractor-assignments"] });
+      toast({
+        title: "Success",
+        description: "Field manager unassigned from sub-contractor.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unassign field manager.",
         variant: "destructive",
       });
     },
@@ -790,7 +874,7 @@ const TeamApprovals = () => {
                                 • Assigned {format(new Date(member.approved_at), "MMM d, yyyy")}
                               </span>
                             </div>
-                            <div className="w-full sm:w-auto">
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
                               <Select
                                 value={member.field_manager_id}
                                 onValueChange={(newManagerId) => {
@@ -814,6 +898,16 @@ const TeamApprovals = () => {
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => unassignAgentMutation.mutate({ assignmentId: member.id })}
+                                disabled={unassignAgentMutation.isPending}
+                                title="Unassign agent"
+                              >
+                                <UserMinus className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -1035,28 +1129,42 @@ const TeamApprovals = () => {
                               </div>
                               <div>
                                 <span className="text-sm text-muted-foreground block mb-2">Assign to Admin:</span>
-                                <Select
-                                  value={currentAdmin?.id || ""}
-                                  onValueChange={(adminId) => {
-                                    if (adminId && adminId !== currentAdmin?.id) {
-                                      assignFmToAdminMutation.mutate({
-                                        fieldManagerId: fm.id,
-                                        adminId,
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger className="w-full h-9">
-                                    <SelectValue placeholder="Select admin..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {[...allAdmins].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(admin => (
-                                      <SelectItem key={admin.id} value={admin.id}>
-                                        {admin.full_name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    value={currentAdmin?.id || ""}
+                                    onValueChange={(adminId) => {
+                                      if (adminId && adminId !== currentAdmin?.id) {
+                                        assignFmToAdminMutation.mutate({
+                                          fieldManagerId: fm.id,
+                                          adminId,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full h-9">
+                                      <SelectValue placeholder="Select admin..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {[...allAdmins].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(admin => (
+                                        <SelectItem key={admin.id} value={admin.id}>
+                                          {admin.full_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  {currentAdmin && (
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-9 w-9 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => unassignFmFromAdminMutation.mutate({ fieldManagerId: fm.id })}
+                                      disabled={unassignFmFromAdminMutation.isPending}
+                                      title="Unassign admin"
+                                    >
+                                      <UserMinus className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             </AccordionContent>
                           </AccordionItem>
@@ -1096,28 +1204,42 @@ const TeamApprovals = () => {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Select
-                                    value={currentAdmin?.id || ""}
-                                    onValueChange={(adminId) => {
-                                      if (adminId && adminId !== currentAdmin?.id) {
-                                        assignFmToAdminMutation.mutate({
-                                          fieldManagerId: fm.id,
-                                          adminId,
-                                        });
-                                      }
-                                    }}
-                                  >
-                                    <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
-                                      <SelectValue placeholder="Select admin..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {[...allAdmins].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(admin => (
-                                        <SelectItem key={admin.id} value={admin.id}>
-                                          {admin.full_name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <div className="flex items-center gap-2">
+                                    <Select
+                                      value={currentAdmin?.id || ""}
+                                      onValueChange={(adminId) => {
+                                        if (adminId && adminId !== currentAdmin?.id) {
+                                          assignFmToAdminMutation.mutate({
+                                            fieldManagerId: fm.id,
+                                            adminId,
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                                        <SelectValue placeholder="Select admin..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {[...allAdmins].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(admin => (
+                                          <SelectItem key={admin.id} value={admin.id}>
+                                            {admin.full_name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {currentAdmin && (
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={() => unassignFmFromAdminMutation.mutate({ fieldManagerId: fm.id })}
+                                        disabled={unassignFmFromAdminMutation.isPending}
+                                        title="Unassign admin"
+                                      >
+                                        <UserMinus className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -1133,7 +1255,7 @@ const TeamApprovals = () => {
                     <p className="text-sm">No approved field managers found.</p>
                   </div>
                 )}
-            </AccordionContent>
+              </AccordionContent>
             </AccordionItem>
           )}
 
@@ -1198,28 +1320,42 @@ const TeamApprovals = () => {
                               </div>
                               <div>
                                 <span className="text-sm text-muted-foreground block mb-2">Assign to Sub-Contractor:</span>
-                                <Select
-                                  value={currentSubContractor?.id || ""}
-                                  onValueChange={(subContractorId) => {
-                                    if (subContractorId && subContractorId !== currentSubContractor?.id) {
-                                      assignFmToSubContractorMutation.mutate({
-                                        fieldManagerId: fm.id,
-                                        subContractorId,
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger className="w-full h-9">
-                                    <SelectValue placeholder="Select sub-contractor..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {[...allSubContractors].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(sc => (
-                                      <SelectItem key={sc.id} value={sc.id}>
-                                        {sc.full_name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    value={currentSubContractor?.id || ""}
+                                    onValueChange={(subContractorId) => {
+                                      if (subContractorId && subContractorId !== currentSubContractor?.id) {
+                                        assignFmToSubContractorMutation.mutate({
+                                          fieldManagerId: fm.id,
+                                          subContractorId,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full h-9">
+                                      <SelectValue placeholder="Select sub-contractor..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {[...allSubContractors].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(sc => (
+                                        <SelectItem key={sc.id} value={sc.id}>
+                                          {sc.full_name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  {currentSubContractor && (
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-9 w-9 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => unassignFmFromSubContractorMutation.mutate({ fieldManagerId: fm.id })}
+                                      disabled={unassignFmFromSubContractorMutation.isPending}
+                                      title="Unassign sub-contractor"
+                                    >
+                                      <UserMinus className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             </AccordionContent>
                           </AccordionItem>
@@ -1259,28 +1395,42 @@ const TeamApprovals = () => {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Select
-                                    value={currentSubContractor?.id || ""}
-                                    onValueChange={(subContractorId) => {
-                                      if (subContractorId && subContractorId !== currentSubContractor?.id) {
-                                        assignFmToSubContractorMutation.mutate({
-                                          fieldManagerId: fm.id,
-                                          subContractorId,
-                                        });
-                                      }
-                                    }}
-                                  >
-                                    <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
-                                      <SelectValue placeholder="Select sub-contractor..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {[...allSubContractors].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(sc => (
-                                        <SelectItem key={sc.id} value={sc.id}>
-                                          {sc.full_name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <div className="flex items-center gap-2">
+                                    <Select
+                                      value={currentSubContractor?.id || ""}
+                                      onValueChange={(subContractorId) => {
+                                        if (subContractorId && subContractorId !== currentSubContractor?.id) {
+                                          assignFmToSubContractorMutation.mutate({
+                                            fieldManagerId: fm.id,
+                                            subContractorId,
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="w-full sm:w-[160px] h-8 text-xs">
+                                        <SelectValue placeholder="Select sub-contractor..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {[...allSubContractors].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(sc => (
+                                          <SelectItem key={sc.id} value={sc.id}>
+                                            {sc.full_name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {currentSubContractor && (
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={() => unassignFmFromSubContractorMutation.mutate({ fieldManagerId: fm.id })}
+                                        disabled={unassignFmFromSubContractorMutation.isPending}
+                                        title="Unassign sub-contractor"
+                                      >
+                                        <UserMinus className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
