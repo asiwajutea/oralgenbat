@@ -210,27 +210,6 @@ const TeamApprovals = () => {
         }
       }
 
-      // Safeguard: Also fetch from historical team_assignments so unassigned/removed agents keep visibility
-      let historicalQuery = supabase
-        .from("team_assignments")
-        .select("interviewer_code, contractor_id");
-
-      if (!isSuperAdmin && isContractor && effectiveContractorId) {
-        historicalQuery = historicalQuery.eq("contractor_id", effectiveContractorId);
-      }
-
-      const { data: historicalRows } = await historicalQuery;
-      for (const row of historicalRows || []) {
-        if (!row.interviewer_code) continue;
-        if (!interviewerMap.has(row.interviewer_code)) {
-          interviewerMap.set(row.interviewer_code, {
-            code: row.interviewer_code,
-            name: "Agent",
-            contractor_id: row.contractor_id,
-          });
-        }
-      }
-
       const uniqueInterviewers = Array.from(interviewerMap.values());
 
       let assignmentsQuery = supabase
@@ -416,13 +395,9 @@ const TeamApprovals = () => {
     mutationFn: async ({ assignmentId }: { assignmentId: string }) => {
       if (!session?.user.id) throw new Error("Not authenticated");
 
-      // Change status to rejected to remove from active team without losing row/contractor metadata
       const { error } = await supabase
         .from("team_assignments")
-        .update({
-          status: "rejected",
-          notes: "Unassigned from active team"
-        })
+        .delete()
         .eq("id", assignmentId);
 
       if (error) throw error;
@@ -1439,4 +1414,45 @@ const TeamApprovals = () => {
                                         {[...allSubContractors].sort((a, b) => a.full_name.localeCompare(b.full_name)).map(sc => (
                                           <SelectItem key={sc.id} value={sc.id}>
                                             {sc.full_name}
-                                          </SelectItem
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {currentSubContractor && (
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={() => unassignFmFromSubContractorMutation.mutate({ fieldManagerId: fm.id })}
+                                        disabled={unassignFmFromSubContractorMutation.isPending}
+                                        title="Unassign sub-contractor"
+                                      >
+                                        <UserMinus className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
+                ) : (
+                  <div className="text-center p-8 text-muted-foreground">
+                    <Link2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium">No Field Managers</p>
+                    <p className="text-sm">No approved field managers found.</p>
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          )}
+        </Accordion>
+      </div>
+    </Layout>
+  );
+};
+
+export default TeamApprovals;
