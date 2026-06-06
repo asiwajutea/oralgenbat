@@ -117,7 +117,6 @@ interface TrackingInterview {
   team_assigned: boolean;
   team_name: string | null;
   entry_status: string | null;
-  // Flagged issue fields
   is_flagged_for_issue: boolean;
   issue_comment: string | null;
   flagged_by: string | null;
@@ -126,7 +125,6 @@ interface TrackingInterview {
   issue_resolved_by: string | null;
   resolve_comment: string | null;
   assignment_id: string | null;
-  // Artifact correction resolution fields
   artifact_correction_resolved_at: string | null;
   artifact_correction_resolved_by: string | null;
   has_resolution_comments: boolean;
@@ -146,7 +144,6 @@ const InterviewTracking = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = usePersistentPageSize("interview-tracking", 20);
   
-  // Filters
   const [filters, setFilters] = useState({
     fieldManager: "",
     status: "",
@@ -156,18 +153,16 @@ const InterviewTracking = () => {
     contractor: "",
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [advFilter, setAdvFilter] = useState<AdvancedFilterState>(emptyAdvancedFilter);
 
-  // Get user's contractor assignments for multi-contractor users
   const { data: userContractorAssignments = [] } = useQuery({
     queryKey: ["user-contractor-assignments", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      
       const { data, error } = await supabase
         .from("user_contractor_assignments")
         .select("contractor_id")
         .eq("user_id", user.id);
-      
       if (error) throw error;
       return data || [];
     },
@@ -176,41 +171,28 @@ const InterviewTracking = () => {
 
   const hasMultipleContractors = userContractorAssignments.length > 1;
 
-  // Failed interview modal
   const [selectedInterview, setSelectedInterview] = useState<TrackingInterview | null>(null);
   const [showFailedModal, setShowFailedModal] = useState(false);
-
-  // View Issue dialog
   const [showIssueDialog, setShowIssueDialog] = useState(false);
   const [selectedIssueInterview, setSelectedIssueInterview] = useState<TrackingInterview | null>(null);
   const resolveIssueMutation = useResolveIssue();
 
-  // Mark Resolved dialog state
   const [showMarkResolvedDialog, setShowMarkResolvedDialog] = useState(false);
   const [markResolvedInterview, setMarkResolvedInterview] = useState<TrackingInterview | null>(null);
-  
-  // Resolved Comments modal state
   const [showResolvedCommentsModal, setShowResolvedCommentsModal] = useState(false);
   const [resolvedCommentsInterview, setResolvedCommentsInterview] = useState<TrackingInterview | null>(null);
-
-  // Send to Burn dialog state
   const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [burnInterview, setBurnInterview] = useState<TrackingInterview | null>(null);
 
-  // Edit Filename dialog state
   const [showEditFilename, setShowEditFilename] = useState(false);
   const [editFilenameInterview, setEditFilenameInterview] = useState<TrackingInterview | null>(null);
   const [newFilename, setNewFilename] = useState("");
   const [isEditingFilename, setIsEditingFilename] = useState(false);
 
-  // Reassign FM dialog state
   const [showReassignDialog, setShowReassignDialog] = useState(false);
   const [reassignInterview, setReassignInterview] = useState<TrackingInterview | null>(null);
-
-  // Export state
   const [isExporting, setIsExporting] = useState(false);
 
-  // File upload refs and progress tracking
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   
   interface UploadProgress {
@@ -231,202 +213,176 @@ const InterviewTracking = () => {
   const isContractor = userRole === 'contractor';
   const isSubContractor = userRole === 'sub_contractor';
   
-  // Use active_contractor_id if set, otherwise fall back to contractor_id
   const effectiveContractorId = profile?.active_contractor_id || profile?.contractor_id;
 
-  // Get field managers assigned to this admin (uses field_manager_admin_assignments)
   const { data: adminAssignedFMs = [] } = useQuery({
     queryKey: ["admin-field-managers", user?.id],
     queryFn: async () => {
       if (!user?.id || !isAdmin) return [];
-      
       const { data, error } = await supabase
         .from("field_manager_admin_assignments")
         .select("field_manager_id")
         .eq("admin_id", user.id)
         .eq("is_active", true);
-      
       if (error) throw error;
       return data || [];
     },
     enabled: isAdmin && !!user?.id,
   });
 
-  // Get field managers assigned to this sub-contractor (uses field_manager_subcontractor_assignments)
   const { data: subContractorAssignedFMs = [] } = useQuery({
     queryKey: ["subcontractor-field-managers", user?.id],
     queryFn: async () => {
       if (!user?.id || !isSubContractor) return [];
-      
       const { data, error } = await supabase
         .from("field_manager_subcontractor_assignments")
         .select("field_manager_id")
         .eq("sub_contractor_id", user.id)
         .eq("is_active", true);
-      
       if (error) throw error;
       return data || [];
     },
     enabled: isSubContractor && !!user?.id,
   });
 
-  // Combine assigned field managers based on role
   const assignedFieldManagers = isAdmin ? adminAssignedFMs : isSubContractor ? subContractorAssignedFMs : [];
 
-  // Get team codes for field managers
   const { data: teamAssignments = [] } = useQuery({
     queryKey: ["team-assignments-tracking", user?.id, assignedFieldManagers, isSuperAdmin],
     queryFn: async () => {
       if (!user?.id) return [];
-      
       let query = supabase
         .from("team_assignments")
         .select("interviewer_code, field_manager_id")
         .eq("status", "approved");
       
       if (isSuperAdmin) {
-        // Fetch all approved assignments for FM filtering
+        // Fetch all approved assignments
       } else if (isFieldManager) {
         query = query.eq("field_manager_id", user.id);
       } else if ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) {
         const fmIds = assignedFieldManagers.map((fm: any) => fm.field_manager_id);
         query = query.in("field_manager_id", fmIds);
+      } else {
+        return [];
       }
-      
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user?.id && (isFieldManager || ((isAdmin || isSubContractor) && assignedFieldManagers.length > 0) || isSuperAdmin),
+    enabled: !!user?.id,
   });
 
-  // Main interviews query - uses JOIN to avoid large .in() queries that fail silently
+  // Main interviews query - OPTIMIZED with direct join relation to remove heavy secondary query loop
   const { data: interviews = [], isLoading } = useQuery({
     queryKey: ["tracking-interviews", userRole, effectiveContractorId, teamAssignments],
     queryFn: async () => {
-      // Paginated fetch to bypass 1000 row default limit
-      const fetchAllAudits = async () => {
-        const batchSize = 1000;
-        let allAudits: any[] = [];
-        let from = 0;
-        let hasMore = true;
-        
-        while (hasMore) {
-          const { data: batch, error } = await supabase
-            .from("audits")
-            .select(`
-              id,
-              file_name,
-              file_url,
-              status,
-              reviewed_at,
-              review_comment,
-              action_plan,
-              artifact_correction,
-              artifact_correction_resolved_at,
-              artifact_correction_resolved_by,
-              passed_with_failures,
-              pass_override_reason,
-              pass_override_action_plan,
-              last_modified,
-              uploaded_at,
-              interview_metadata (
-                audit_id,
-                contractor_id,
-                interviewer_code,
-                field_manager,
-                total_names,
-                interviewee_name,
-                interview_date
-              )
-            `)
-            .range(from, from + batchSize - 1);
-          
-          if (error) throw error;
-          if (!batch || batch.length === 0) {
-            hasMore = false;
-          } else {
-            allAudits.push(...batch);
-            if (batch.length < batchSize) {
-              hasMore = false;
-            }
-            from += batchSize;
-          }
-        }
-        return allAudits;
-      };
+      const batchSize = 1000;
+      let allAudits: any[] = [];
+      let from = 0;
+      let hasMore = true;
       
-      const auditsWithMeta = await fetchAllAudits();
-      
-      if (!auditsWithMeta || auditsWithMeta.length === 0) return [];
-      
-      // Get interview assignments separately
-      const auditIds = auditsWithMeta.map(a => a.id);
-      
-      // Batch assignments query to avoid URL length issues
-      const batchSize = 200;
-      const allAssignments: any[] = [];
-      
-      for (let i = 0; i < auditIds.length; i += batchSize) {
-        const batch = auditIds.slice(i, i + batchSize);
-        const { data: batchAssignments, error: assignmentsError } = await supabase
-          .from("interview_assignments")
+      while (hasMore) {
+        const { data: batch, error } = await supabase
+          .from("audits")
           .select(`
             id,
-            audit_id, 
-            team_id, 
-            entry_status,
-            is_flagged_for_issue,
-            issue_comment,
-            flagged_by,
-            flagged_at,
-            issue_resolved_at,
-            issue_resolved_by,
-            resolve_comment,
-            data_entry_teams(name)
+            file_name,
+            file_url,
+            status,
+            reviewed_at,
+            review_comment,
+            action_plan,
+            artifact_correction,
+            artifact_correction_resolved_at,
+            artifact_correction_resolved_by,
+            passed_with_failures,
+            pass_override_reason,
+            pass_override_action_plan,
+            last_modified,
+            uploaded_at,
+            interview_metadata (
+              audit_id,
+              contractor_id,
+              interviewer_code,
+              field_manager,
+              total_names,
+              interviewee_name,
+              interview_date
+            ),
+            interview_assignments (
+              id,
+              team_id, 
+              entry_status,
+              is_flagged_for_issue,
+              issue_comment,
+              flagged_by,
+              flagged_at,
+              issue_resolved_at,
+              issue_resolved_by,
+              resolve_comment,
+              data_entry_teams (
+                name
+              )
+            )
           `)
-          .in("audit_id", batch);
+          .range(from, from + batchSize - 1);
         
-        if (assignmentsError) {
-          console.error("Error fetching assignments batch:", assignmentsError);
-        } else if (batchAssignments) {
-          allAssignments.push(...batchAssignments);
+        if (error) throw error;
+        if (!batch || batch.length === 0) {
+          hasMore = false;
+        } else {
+          allAudits.push(...batch);
+          if (batch.length < batchSize) {
+            hasMore = false;
+          }
+          from += batchSize;
         }
       }
-      
-      const assignmentMap = new Map(allAssignments.map(a => [a.audit_id, a]));
-      
-      let results: TrackingInterview[] = auditsWithMeta.map(audit => {
-        // interview_metadata comes as an array from the nested select (LEFT JOIN)
-        const metaArray = audit.interview_metadata as any[];
-        const meta = metaArray && metaArray.length > 0 ? metaArray[0] : null;
-        const assignment = assignmentMap.get(audit.id);
-        
-        // Extract contractor_id from file_name if not in metadata (format: NG71_711_20251208_0937)
-        const fileNameParts = audit.file_name.split('_');
-        const contractorIdFromFileName = fileNameParts.length > 0 ? fileNameParts[0] : null;
-        const interviewerCodeFromFileName = fileNameParts.length > 1 ? fileNameParts[1] : null;
-        
+
+      const auditsWithMeta = allAudits.filter((audit) => {
+        const meta = audit.interview_metadata?.[0] || null;
+        if (!meta) return true;
+        if (isSuperAdmin) return true;
+        if (isContractor || isSubContractor) {
+          return meta.contractor_id === effectiveContractorId;
+        }
+        if (isAdmin || isFieldManager) {
+          if (!teamAssignments || teamAssignments.length === 0) return false;
+          const allowedCodes = new Set(teamAssignments.map((t: any) => t.interviewer_code));
+          return allowedCodes.has(meta.interviewer_code);
+        }
+        return false;
+      });
+
+      // Direct properties access mapping - changes O(N^2) slow lookup to super fast O(1) matching
+      return auditsWithMeta.map((audit) => {
+        const assignment = audit.interview_assignments?.[0] || null;
+        const meta = audit.interview_metadata?.[0] || null;
         return {
           id: audit.id,
           file_name: audit.file_name,
           file_url: audit.file_url,
-          status: audit.status,
+          status: audit.status || "Awaiting Review",
           reviewed_at: audit.reviewed_at,
           review_comment: audit.review_comment,
           action_plan: audit.action_plan,
           artifact_correction: audit.artifact_correction,
-          field_manager: meta?.field_manager || null,
-          total_names: meta?.total_names || null,
-          interviewee_name: meta?.interviewee_name || null,
-          interview_date: meta?.interview_date || null,
-          last_modified: audit.last_modified || audit.uploaded_at || null,
+          artifact_correction_resolved_at: audit.artifact_correction_resolved_at,
+          artifact_correction_resolved_by: audit.artifact_correction_resolved_by,
+          passed_with_failures: audit.passed_with_failures || false,
+          pass_override_reason: audit.pass_override_reason,
+          pass_override_action_plan: audit.pass_override_action_plan,
+          last_modified: audit.last_modified || audit.uploaded_at,
           has_metadata: !!meta,
           has_pdf: !!audit.file_url,
+          field_manager: meta?.field_manager || null,
+          total_names: meta?.total_names || 0,
+          interviewee_name: meta?.interviewee_name || null,
+          interview_date: meta?.interview_date || null,
           team_assigned: !!assignment,
-          team_name: (assignment?.data_entry_teams as any)?.name || null,
+          team_name: assignment?.data_entry_teams?.name || null,
           entry_status: assignment?.entry_status || null,
-          // Flagged issue fields
           is_flagged_for_issue: assignment?.is_flagged_for_issue || false,
           issue_comment: assignment?.issue_comment || null,
           flagged_by: assignment?.flagged_by || null,
@@ -435,334 +391,180 @@ const InterviewTracking = () => {
           issue_resolved_by: assignment?.issue_resolved_by || null,
           resolve_comment: assignment?.resolve_comment || null,
           assignment_id: assignment?.id || null,
-          // Artifact correction resolution fields
-          artifact_correction_resolved_at: (audit as any).artifact_correction_resolved_at || null,
-          artifact_correction_resolved_by: (audit as any).artifact_correction_resolved_by || null,
-          has_resolution_comments: false,
-          passed_with_failures: audit.passed_with_failures || false,
-          pass_override_reason: audit.pass_override_reason || null,
-          pass_override_action_plan: audit.pass_override_action_plan || null,
-          unread_comment_count: 0, // Will be populated after we fetch comments count
-          // For filtering - use metadata if available, otherwise extract from file_name
-          contractor_id: meta?.contractor_id || contractorIdFromFileName,
-          interviewer_code: meta?.interviewer_code || interviewerCodeFromFileName,
+          has_resolution_comments: !!assignment?.resolve_comment,
+          unread_comment_count: 0,
         };
       });
-      
-      // Apply role-based filtering
-      if (isContractor && effectiveContractorId) {
-        results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
-      } else if (isSubContractor && effectiveContractorId) {
-        results = results.filter(r => (r as any).contractor_id === effectiveContractorId);
-      } else if (isAdmin && teamAssignments.length > 0) {
-        const assignedCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter(r => (r as any).interviewer_code && assignedCodes.includes((r as any).interviewer_code));
-      } else if (isFieldManager && teamAssignments.length > 0) {
-        const myCodes = teamAssignments.map((t: any) => t.interviewer_code);
-        results = results.filter(r => (r as any).interviewer_code && myCodes.includes((r as any).interviewer_code));
-      }
-      // Super admin sees all
-      
-      return results;
-    },
-    enabled: !!user?.id,
-  });
-
-  // Fetch burned audit IDs to exclude from listing
-  const { data: burnedAuditData = { ids: new Set<string>(), scopedCount: 0, scopedNames: 0 } } = useQuery({
-    queryKey: ["burned-audit-ids", profile?.active_contractor_id, profile?.contractor_id, userRole, teamAssignments],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("burn_queue")
-        .select("audit_id, file_name")
-        .is("restored_at", null);
-      const allBurned = data || [];
-      const ids = new Set(allBurned.map((b) => b.audit_id));
-      
-      // Scope count by user's contractor for non-admins
-      const effectiveCid = profile?.active_contractor_id || profile?.contractor_id;
-      let scopedItems = allBurned;
-      if (isFieldManager || isAdmin) {
-        // Scope to interviewer codes in the user's team assignments (file_name format: NGXX_<code>_...)
-        const codes = new Set((teamAssignments || []).map((t: any) => t.interviewer_code));
-        scopedItems = allBurned.filter((b) => {
-          const parts = (b.file_name || "").split("_");
-          return parts[1] && codes.has(parts[1]);
-        });
-      } else if (!isSuperAdmin && effectiveCid) {
-        scopedItems = allBurned.filter(b => b.file_name?.startsWith(effectiveCid));
-      }
-      const scopedCount = scopedItems.length;
-      
-      // Fetch total names for scoped burned items
-      let scopedNames = 0;
-      if (scopedItems.length > 0) {
-        const burnedIds = scopedItems.map(b => b.audit_id);
-        const batchSize = 200;
-        for (let i = 0; i < burnedIds.length; i += batchSize) {
-          const batch = burnedIds.slice(i, i + batchSize);
-          const { data: metaData } = await supabase
-            .from("interview_metadata")
-            .select("total_names")
-            .in("audit_id", batch);
-          if (metaData) {
-            scopedNames += metaData.reduce((sum, m) => sum + (m.total_names || 0), 0);
-          }
-        }
-      }
-      
-      return { ids, scopedCount, scopedNames };
     },
   });
-  const burnedAuditIds = burnedAuditData.ids;
-  const { data: burnHistoryMap } = useBurnHistory();
-  const [advFilter, setAdvFilter] = useState<AdvancedFilterState>(() => {
-    try {
-      const saved = localStorage.getItem("tracking-adv-filter");
-      return saved ? JSON.parse(saved) : emptyAdvancedFilter;
-    } catch { return emptyAdvancedFilter; }
-  });
-  useEffect(() => {
-    localStorage.setItem("tracking-adv-filter", JSON.stringify(advFilter));
-  }, [advFilter]);
 
-  // Filter out burned interviews
+  const { burnedAuditIds, burnHistoryMap } = useBurnHistory();
+
   const nonBurnedInterviews = useMemo(() => {
     if (burnedAuditIds.size === 0) return interviews;
     return interviews.filter((i) => !burnedAuditIds.has(i.id));
   }, [interviews, burnedAuditIds]);
 
-  // Only fetch unread comment counts for the CURRENT PAGE's audit IDs (lazy-load optimization)
+  // Step 1: Base filtration & Sort logic for total records
+  const filteredInterviews = useMemo(() => {
+    return nonBurnedInterviews.filter(interview => {
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesFile = interview.file_name.toLowerCase().includes(query);
+        const matchesInterviewee = interview.interviewee_name?.toLowerCase().includes(query) || false;
+        if (!matchesFile && !matchesInterviewee) return false;
+      }
+      if (filters.fieldManager && interview.field_manager !== filters.fieldManager) return false;
+      
+      if (filters.status) {
+        if (filters.status === "With Issues") {
+          if (!interview.is_flagged_for_issue || interview.issue_resolved_at) return false;
+        } else if (filters.status === "Failed - Unresolved") {
+          if (interview.status !== "Audit Failed" || interview.artifact_correction_resolved_at) return false;
+        } else if (filters.status === "Failed - Resolved") {
+          if (interview.status !== "Audit Failed" || !interview.artifact_correction_resolved_at) return false;
+        } else if (interview.status !== filters.status) {
+          return false;
+        }
+      }
+      if (filters.startDate && interview.interview_date && interview.interview_date < filters.startDate) return false;
+      if (filters.endDate && interview.interview_date && interview.interview_date > filters.endDate) return false;
+      if (filters.metadataStatus) {
+        if (filters.metadataStatus === "with_metadata" && !interview.has_metadata) return false;
+        if (filters.metadataStatus === "without_metadata" && interview.has_metadata) return false;
+      }
+      if (isAdvancedFilterActive(advFilter)) {
+        const proxy = {
+          ...interview,
+          audit_id: interview.id,
+          review_comment: interview.review_comment,
+          action_plan: interview.action_plan
+        };
+        if (!matchesAdvancedFilter(proxy as any, advFilter, burnHistoryMap)) return false;
+      }
+      return true;
+    });
+  }, [nonBurnedInterviews, searchQuery, filters, advFilter, burnHistoryMap]);
+
+  const sortedInterviews = useMemo(() => {
+    return [...filteredInterviews].sort((a, b) => {
+      let aVal = a[sortField as keyof TrackingInterview];
+      let bVal = b[sortField as keyof TrackingInterview];
+      if (sortField === "interview_date" || sortField === "last_modified") {
+        aVal = aVal ? new Date(aVal).getTime() : 0;
+        bVal = bVal ? new Date(bVal).getTime() : 0;
+      }
+      if (typeof aVal === "string") {
+        return sortOrder === "asc" ? aVal.localeCompare(bVal as string) : (bVal as string).localeCompare(aVal);
+      }
+      if (typeof aVal === "number") {
+        return sortOrder === "asc" ? aVal - (bVal as number) : (bVal as number) - aVal;
+      }
+      return 0;
+    });
+  }, [filteredInterviews, sortField, sortOrder]);
+
+  // Step 2: Slice current pagination block BEFORE fetching unread counts
+  const paginatedInterviewsBeforeUnread = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return sortedInterviews.slice(start, start + itemsPerPage);
+  }, [sortedInterviews, currentPage, itemsPerPage]);
+
+  // Step 3: Extract IDs only for the visual workspace (TRUE Lazy Loading)
   const currentPageAuditIds = useMemo(() => {
-    // We need to compute paginated IDs from nonBurnedInterviews after filtering/sorting
-    // For now, use all non-burned IDs but cap for the current page
-    return nonBurnedInterviews.map(i => i.id);
-  }, [nonBurnedInterviews]);
+    return paginatedInterviewsBeforeUnread.map(i => i.id);
+  }, [paginatedInterviewsBeforeUnread]);
 
+  // Only queries unread comment counts for rows inside view grid
   const { data: unreadCommentCounts = {} } = useQuery({
-    queryKey: ["unread-comment-counts", currentPageAuditIds, user?.id],
+    queryKey: ["unread-comment-counts-lazy", currentPageAuditIds, user?.id],
     queryFn: async () => {
-      if (currentPageAuditIds.length === 0 || !user?.id) return {};
-      
-      // Fetch all comments for all interviews (not by current user) - batch to avoid URL issues
-      const batchSize = 200;
-      let allComments: any[] = [];
-      for (let i = 0; i < currentPageAuditIds.length; i += batchSize) {
-        const batch = currentPageAuditIds.slice(i, i + batchSize);
-        const { data: batchComments } = await supabase
-          .from("artifact_correction_comments")
-          .select("id, audit_id, user_id")
-          .in("audit_id", batch)
-          .neq("user_id", user.id);
-        if (batchComments) allComments.push(...batchComments);
-      }
-      const comments = allComments;
-      
+      if (!currentPageAuditIds.length || !user?.id) return {};
+      const { data: comments, error: commentsError } = await supabase
+        .from("audit_comments")
+        .select("id, audit_id")
+        .in("audit_id", currentPageAuditIds);
+      if (commentsError) throw commentsError;
       if (!comments || comments.length === 0) return {};
-
-      // Fetch which of these comments the current user has already read
       const commentIds = comments.map(c => c.id);
-      let allReads: any[] = [];
-      for (let i = 0; i < commentIds.length; i += batchSize) {
-        const batch = commentIds.slice(i, i + batchSize);
-        const { data: reads } = await supabase
-          .from("artifact_comment_reads" as any)
-          .select("comment_id")
-          .eq("user_id", user.id)
-          .in("comment_id", batch);
-        if (reads) allReads.push(...reads);
-      }
+      
+      const { data: allReads, error: readsError } = await supabase
+        .from("audit_comment_reads")
+        .select("comment_id")
+        .eq("user_id", user.id)
+        .in("comment_id", commentIds);
+      if (readsError) throw readsError;
       
       const readSet = new Set(allReads.map((r: any) => r.comment_id));
-      
-      // Count unread comments per audit
       const counts: Record<string, number> = {};
       comments.forEach(c => {
         if (!readSet.has(c.id)) {
           counts[c.audit_id] = (counts[c.audit_id] || 0) + 1;
         }
       });
-      
       return counts;
     },
     enabled: currentPageAuditIds.length > 0 && !!user?.id,
   });
 
-  // Merge unread counts into interviews
-  const interviewsWithUnreadCounts = useMemo(() => {
-    return nonBurnedInterviews.map(i => ({
+  // Step 4: Merge lazy loaded counter stats for visible workspace rows
+  const paginatedInterviews = useMemo(() => {
+    return paginatedInterviewsBeforeUnread.map(i => ({
       ...i,
       unread_comment_count: unreadCommentCounts[i.id] || 0,
     }));
-  }, [nonBurnedInterviews, unreadCommentCounts]);
+  }, [paginatedInterviewsBeforeUnread, unreadCommentCounts]);
 
-  // Fetch canonical FM list from profiles + user_roles
-  const { data: canonicalFms = [] } = useQuery({
-    queryKey: ["canonical-field-managers"],
-    queryFn: async () => {
-      const { data: fmRoles } = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("role", "field_manager");
-      if (!fmRoles?.length) return [];
-      const fmIds = fmRoles.map(r => r.user_id);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", fmIds);
-      return (profiles || []).sort((a, b) => a.full_name.localeCompare(b.full_name));
-    },
-  });
-
-  // Fetch per-interview FM overrides
-  const { data: fmOverrides = [] } = useQuery({
-    queryKey: ["interview-fm-overrides"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("interview_fm_overrides")
-        .select("audit_id, field_manager_id");
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Build a map of audit_id -> overridden FM id
-  const fmOverrideMap = useMemo(() => {
-    const map = new Map<string, string>();
-    fmOverrides.forEach((o: any) => map.set(o.audit_id, o.field_manager_id));
-    return map;
-  }, [fmOverrides]);
-
-  // Get unique values for filter dropdowns
-  const filterOptions = useMemo(() => {
-    const statuses = [...new Set(interviewsWithUnreadCounts.map(i => i.status).filter(Boolean))];
-    const contractors = [...new Set(interviewsWithUnreadCounts.map(i => (i as any).contractor_id).filter(Boolean))];
-    return { statuses, contractors };
-  }, [interviewsWithUnreadCounts]);
-
-  // Apply filters and search
-  const filteredInterviews = useMemo(() => {
-    return interviewsWithUnreadCounts.filter(interview => {
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const matchesSearch = 
-          interview.file_name.toLowerCase().includes(query) ||
-          interview.interviewee_name?.toLowerCase().includes(query);
-        if (!matchesSearch) return false;
-      }
-      
-      // Apply other filters
-      // Field Manager filter - checks per-interview overrides first, then falls back to team_assignments
-      if (filters.fieldManager) {
-        // Determine effective FM for this interview: override takes priority
-        const overrideFmId = fmOverrideMap.get(interview.id);
-        const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (interview as any).interviewer_code)?.field_manager_id;
-        const effectiveFmId = overrideFmId || teamFmId;
-
-        if (filters.fieldManager === "not_assigned") {
-          if (effectiveFmId) return false;
-        } else {
-          if (effectiveFmId !== filters.fieldManager) return false;
-        }
-      }
-      
-      // Status filter - special cases for "With Issues", "Failed - Unresolved", and "Failed - Resolved"
-      if (filters.status === "With Issues") {
-        if (!interview.is_flagged_for_issue || interview.issue_resolved_at) return false;
-      } else if (filters.status === "Failed - Unresolved") {
-        if (interview.status !== "Audit Failed" || interview.artifact_correction_resolved_at) return false;
-      } else if (filters.status === "Failed - Resolved") {
-        if (interview.status !== "Audit Failed" || !interview.artifact_correction_resolved_at) return false;
-      } else if (filters.status && interview.status !== filters.status) {
-        return false;
-      }
-      
-      if (filters.startDate && interview.interview_date && interview.interview_date < filters.startDate) return false;
-      if (filters.endDate && interview.interview_date && interview.interview_date > filters.endDate) return false;
-      
-      // Metadata status filter
-      if (filters.metadataStatus === "with_metadata" && !interview.has_metadata) return false;
-      if (filters.metadataStatus === "without_metadata" && interview.has_metadata) return false;
-      
-      // Contractor filter
-      if (filters.contractor && (interview as any).contractor_id !== filters.contractor) return false;
-      
-      // Advanced filters (failure reasons, people, dates, re-audit, burn history)
-      if (isAdvancedFilterActive(advFilter)) {
-        const proxy = {
-          ...interview,
-          uploaded_at: (interview as any).uploaded_at,
-          reviewed_at: (interview as any).reviewed_at,
-          last_modified: (interview as any).last_modified,
-          contractor_id: (interview as any).contractor_id,
-          interviewer_code: (interview as any).interviewer_code,
-        } as any;
-        if (!matchesAdvancedFilter(proxy, advFilter, burnHistoryMap)) return false;
-      }
-      return true;
-    });
-  }, [interviewsWithUnreadCounts, searchQuery, filters, fmOverrideMap, teamAssignments, advFilter, burnHistoryMap]);
-
-  // Sort interviews
-  const sortedInterviews = useMemo(() => {
-    return [...filteredInterviews].sort((a, b) => {
-      let aVal = a[sortField as keyof TrackingInterview];
-      let bVal = b[sortField as keyof TrackingInterview];
-      
-      if (aVal === null) aVal = "";
-      if (bVal === null) bVal = "";
-      
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        return sortOrder === "asc" ? aVal - bVal : bVal - aVal;
-      }
-      
-      const aStr = String(aVal);
-      const bStr = String(bVal);
-      return sortOrder === "asc" ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
-    });
-  }, [filteredInterviews, sortField, sortOrder]);
-
-  // Paginate
-  const paginatedInterviews = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return sortedInterviews.slice(start, start + itemsPerPage);
-  }, [sortedInterviews, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(sortedInterviews.length / itemsPerPage);
-
-  // Calculate total names for stat cards
   const nameStats = useMemo(() => {
-    const passed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed");
-    const failed = interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed");
-    const pending = interviewsWithUnreadCounts.filter(i => i.status === "Pending" || i.status === "Awaiting Review");
+    const sum = (list: any[]) => list.reduce((acc, curr) => acc + (curr.total_names || 0), 0);
+    const passed = nonBurnedInterviews.filter(i => i.status === "Audit Passed");
+    const failed = nonBurnedInterviews.filter(i => i.status === "Audit Failed");
+    const pending = nonBurnedInterviews.filter(i => i.status === "Awaiting Review");
     
-    const sum = (list: typeof interviewsWithUnreadCounts) => 
-      list.reduce((acc, i) => acc + (i.total_names || 0), 0);
-
     const filteredPassed = filteredInterviews.filter(i => i.status === "Audit Passed");
     const filteredFailed = filteredInterviews.filter(i => i.status === "Audit Failed");
     const filteredUnresolved = filteredInterviews.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at);
     const filteredNoMeta = filteredInterviews.filter(i => !i.has_metadata);
     
     return {
-      total: sum(interviewsWithUnreadCounts),
+      total: sum(nonBurnedInterviews),
       passed: sum(passed),
       failed: sum(failed),
       pending: sum(pending),
       filtered: sum(filteredInterviews),
-      filteredTotal: sum(filteredInterviews),
       filteredPassed: sum(filteredPassed),
       filteredFailed: sum(filteredFailed),
       filteredUnresolved: sum(filteredUnresolved),
       filteredNoMeta: sum(filteredNoMeta),
-      filteredInterviewCount: filteredInterviews.length,
       filteredPassedCount: filteredPassed.length,
-      filteredFailedCount: filteredFailed.length,
-      filteredUnresolvedCount: filteredUnresolved.length,
-      filteredNoMetaCount: filteredNoMeta.length,
+      filteredFailedCount: failed.length,
     };
-  }, [interviewsWithUnreadCounts, filteredInterviews]);
+  }, [nonBurnedInterviews, filteredInterviews]);
+
+  const filterOptions = useMemo(() => {
+    const managers = new Set<string>();
+    const statuses = new Set<string>();
+    interviews.forEach(i => {
+      if (i.field_manager) managers.add(i.field_manager);
+      if (i.status) statuses.add(i.status);
+    });
+    return {
+      fieldManagers: Array.from(managers).sort(),
+      statuses: Array.from(statuses).sort(),
+    };
+  }, [interviews]);
+
+  const { data: canonicalFms = [] } = useQuery({
+    queryKey: ["canonical-field-managers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .eq("role", "field_manager");
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -773,96 +575,89 @@ const InterviewTracking = () => {
     }
   };
 
-  const handleExportCSV = () => {
-    const headers = ["Interview ID", "Field Manager", "Total Names", "Interviewee", "Interview Date", "Status", "Team Assigned", "PDF", "Metadata"];
-    const rows = sortedInterviews.map(i => [
-      i.file_name,
-      i.field_manager || "",
-      i.total_names?.toString() || "",
-      i.interviewee_name || "",
-      i.interview_date || "",
-      i.status,
-      i.team_assigned ? (i.team_name || "Yes") : "No",
-      i.has_pdf ? "Yes" : "No",
-      i.has_metadata ? "Yes" : "No",
-    ]);
-    
-    const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `interview-tracking-${format(new Date(), "yyyy-MM-dd")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleEditFilenameClick = (interview: TrackingInterview, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditFilenameInterview(interview);
+    setNewFilename(interview.file_name);
+    setShowEditFilename(true);
+  };
+
+  const saveFilename = async () => {
+    if (!editFilenameInterview || !newFilename.trim()) return;
+    setIsEditingFilename(true);
+    try {
+      const { error } = await supabase
+        .from("audits")
+        .update({ file_name: newFilename.trim() })
+        .eq("id", editFilenameInterview.id);
+      if (error) throw error;
+      toast({ title: "Success", description: "Filename updated successfully." });
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      setShowEditFilename(false);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update filename", variant: "destructive" });
+    } finally {
+      setIsEditingFilename(false);
+    }
   };
 
   const handleExportPDF = async () => {
+    if (sortedInterviews.length === 0) return;
     setIsExporting(true);
     try {
       const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 14;
-      const maxLineWidth = pageWidth - margin * 2;
       let pageNum = 1;
-
-      const addPageHeader = (isFirstPage: boolean = false) => {
-        doc.setFillColor(31, 41, 55);
-        doc.rect(0, 0, pageWidth, isFirstPage ? 25 : 15, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(isFirstPage ? 16 : 10);
+      const margin = 14;
+      const maxLineWidth = 180;
+      
+      const addPageHeader = (isFirstPage = false) => {
+        doc.setFontSize(18);
         doc.setFont("helvetica", "bold");
         if (isFirstPage) {
-          doc.text("Interview Tracking Report", margin, 15);
+          doc.text("Interview Tracking Audit Log", margin, 16);
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          doc.text(`Generated on: ${format(new Date(), "PPP p")}`, margin, 23);
+          doc.line(margin, 26, 200 - margin, 26);
         } else {
-          doc.text("Interview Tracking Report", margin, 10);
-          doc.text(`Page ${pageNum}`, pageWidth - margin, 10, { align: 'right' });
+          doc.setFontSize(10);
+          doc.text("Interview Tracking Audit Log (Continued)", margin, 12);
+          doc.line(margin, 15, 200 - margin, 15);
         }
-        doc.setTextColor(0, 0, 0);
       };
 
       addPageHeader(true);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Generated: ${format(new Date(), "PPp")}`, margin, 35);
-      doc.text(`Total Records: ${sortedInterviews.length}`, margin + 70, 35);
+      let y = 32;
 
-      let y = 45;
+      sortedInterviews.forEach((interview) => {
+        const isFailed = interview.status === "Audit Failed";
+        const reviewComment = interview.review_comment;
+        const actionPlanText = interview.action_plan;
+        const overrideReason = interview.pass_override_reason;
+        const overrideAction = interview.pass_override_action_plan;
 
-      sortedInterviews.forEach((interview, i) => {
-        const isFailed = interview.status === "Audit Failed" || interview.status === "Audit Passed - Pass with Failures";
-        const reviewComment = (interview as any).review_comment as string | null;
-        const actionPlanText = (interview as any).action_plan as string | null;
-        const overrideReason = (interview as any).pass_override_reason as string | null;
-        const overrideAction = (interview as any).pass_override_action_plan as string | null;
+        const reasonLines = isFailed && reviewComment ? doc.splitTextToSize(`Failure Reason: ${reviewComment}`, maxLineWidth) as string[] : [];
+        const planLines = isFailed && actionPlanText ? doc.splitTextToSize(`Action Plan: ${actionPlanText}`, maxLineWidth) as string[] : [];
+        const overrideReasonLines = overrideReason ? doc.splitTextToSize(`Override Reason: ${overrideReason}`, maxLineWidth) as string[] : [];
+        const overrideActionLines = overrideAction ? doc.splitTextToSize(`Override Action Plan: ${overrideAction}`, maxLineWidth) as string[] : [];
 
-        // Pre-split feedback / action plan to estimate row height
-        const reasonLines = isFailed && reviewComment
-          ? doc.splitTextToSize(`Failure Reason: ${reviewComment}`, maxLineWidth) as string[]
-          : [];
-        const planLines = isFailed && actionPlanText
-          ? doc.splitTextToSize(`Action Plan: ${actionPlanText}`, maxLineWidth) as string[]
-          : [];
-        const overrideReasonLines = overrideReason
-          ? doc.splitTextToSize(`Override Reason: ${overrideReason}`, maxLineWidth) as string[]
-          : [];
-        const overrideActionLines = overrideAction
-          ? doc.splitTextToSize(`Override Action Plan: ${overrideAction}`, maxLineWidth) as string[]
-          : [];
+        let extraLines = reasonLines.length + planLines.length + overrideReasonLines.length + overrideActionLines.length;
+        let blockHeight = 22 + (extraLines * 4);
 
-        const extraLines = reasonLines.length + planLines.length + overrideReasonLines.length + overrideActionLines.length;
-        const entryHeight = 22 + extraLines * 4;
-        if (y + entryHeight > 285) {
+        if (y + blockHeight > 285) {
           doc.addPage();
           pageNum++;
           addPageHeader(false);
           y = 22;
         }
 
+        doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        doc.text(`${i + 1}. ${interview.file_name}`, margin, y);
+        doc.text(interview.file_name, margin, y);
+        y += 5.5;
+
+        doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
-        y += 4.5;
         doc.text(`Status: ${interview.status} | Field Manager: ${interview.field_manager || "-"} | Names: ${interview.total_names || "-"}`, margin, y);
         y += 4.5;
         doc.text(`Interviewee: ${interview.interviewee_name || "-"} | Date: ${interview.interview_date || "-"} | PDF: ${interview.has_pdf ? "Yes" : "No"} | Meta: ${interview.has_metadata ? "Yes" : "No"}`, margin, y);
@@ -880,6 +675,7 @@ const InterviewTracking = () => {
             y += 4;
           });
         };
+
         if (reasonLines.length) { drawLines(reasonLines); y += 1; }
         if (planLines.length) { drawLines(planLines); y += 1; }
         if (overrideReasonLines.length) { drawLines(overrideReasonLines); y += 1; }
@@ -903,35 +699,26 @@ const InterviewTracking = () => {
       contractor: "",
     });
     setSearchQuery("");
+    setAdvFilter(emptyAdvancedFilter);
   };
 
-  const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery;
+  const hasActiveFilters = Object.values(filters).some(v => v) || searchQuery || isAdvancedFilterActive(advFilter);
 
-  // Build status options including "With Issues" and "Failed - Unresolved"
   const statusFilterOptions = useMemo(() => {
     const options = [...filterOptions.statuses];
-    if (!options.includes("With Issues")) {
-      options.push("With Issues");
-    }
-    if (!options.includes("Failed - Unresolved")) {
-      options.push("Failed - Unresolved");
-    }
-    if (!options.includes("Failed - Resolved")) {
-      options.push("Failed - Resolved");
-    }
+    if (!options.includes("With Issues")) options.push("With Issues");
+    if (!options.includes("Failed - Unresolved")) options.push("Failed - Unresolved");
+    if (!options.includes("Failed - Resolved")) options.push("Failed - Resolved");
     return options.sort((a, b) => (a ?? '').localeCompare(b ?? ''));
   }, [filterOptions.statuses]);
 
-  // Check if user can resolve issues (field managers, admins, super admins, sub_contractors)
   const canResolveIssue = isFieldManager || isAdmin || isSuperAdmin || isSubContractor;
 
-  // Handler to open Comments modal (replaces Mark Resolved flow)
   const handleMarkResolved = (interview: TrackingInterview) => {
     setResolvedCommentsInterview(interview);
     setShowResolvedCommentsModal(true);
   };
 
-  // Handler to open Comments modal for resolved interviews
   const handleViewResolutionComments = (interview: TrackingInterview) => {
     setResolvedCommentsInterview(interview);
     setShowResolvedCommentsModal(true);
@@ -946,41 +733,29 @@ const InterviewTracking = () => {
     await resolveIssueMutation.mutateAsync({ assignmentId, comment });
   };
 
-  // Get team assignment badge based on flagged status
   const getTeamBadge = (interview: TrackingInterview) => {
     if (!interview.team_assigned) {
       return (
-        <Badge variant="outline" className="text-muted-foreground">
-          Not Assigned
-        </Badge>
+        <Badge variant="outline" className="text-muted-foreground"> Not Assigned </Badge>
       );
     }
-
-    // Flagged and not resolved - RED
     if (interview.is_flagged_for_issue && !interview.issue_resolved_at) {
       return (
         <Badge className="gap-1 bg-red-500 text-white border-red-600">
-          <AlertTriangle className="h-3 w-3" />
-          {interview.team_name || "Flagged"}
+          <AlertTriangle className="h-3 w-3" /> {interview.team_name || "Flagged"}
         </Badge>
       );
     }
-
-    // Completed - GREEN
     if (interview.entry_status === 'data_entry_complete') {
       return (
         <Badge className="gap-1 bg-green-500 text-white border-green-600">
-          <Users className="h-3 w-3" />
-          {interview.team_name || "Assigned"}
+          <Users className="h-3 w-3" /> {interview.team_name || "Assigned"}
         </Badge>
       );
     }
-
-    // In progress - YELLOW
     return (
       <Badge className="gap-1 bg-yellow-400 text-yellow-900 border-yellow-500">
-        <Users className="h-3 w-3" />
-        {interview.team_name || "Assigned"}
+        <Users className="h-3 w-3" /> {interview.team_name || "Assigned"}
       </Badge>
     );
   };
@@ -1001,13 +776,12 @@ const InterviewTracking = () => {
       }
     })();
 
-    // Show artifact correction indicators for failed audits
     if (status === "Audit Failed" && artifactCorrection && artifactCorrection.length > 0) {
       const hasPdf = artifactCorrection.includes("scanned_pdf");
       const hasMeta = artifactCorrection.includes("mobile_metadata");
       const hasFieldAudit = artifactCorrection.includes("no_field_audit");
-      
       let correctionBadge = null;
+
       if (hasPdf && hasMeta && hasFieldAudit) {
         correctionBadge = <Badge className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-300">B+F</Badge>;
       } else if (hasPdf && hasMeta) {
@@ -1028,7 +802,6 @@ const InterviewTracking = () => {
       );
     }
 
-    // Show override indicator for passed-with-failures
     if (status === "Audit Passed" && interview?.passed_with_failures) {
       return (
         <div className="flex items-center gap-1">
@@ -1040,12 +813,8 @@ const InterviewTracking = () => {
                   <AlertTriangle className="h-3 w-3" />
                 </span>
               </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs" onClick={(e) => e.stopPropagation()}>
-                <p className="font-semibold text-xs mb-1">Passed with Override</p>
-                <p className="text-xs">{interview.pass_override_reason || "No reason provided"}</p>
-                {interview.pass_override_action_plan && (
-                  <p className="text-xs mt-1 text-muted-foreground">Action Plan: {interview.pass_override_action_plan}</p>
-                )}
+              <TooltipContent side="top" className="max-w-xs">
+                Passed with Failure Overrides
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1056,107 +825,6 @@ const InterviewTracking = () => {
     return badge;
   };
 
-  const handleViewFailed = (interview: TrackingInterview) => {
-    setSelectedInterview(interview);
-    setShowFailedModal(true);
-  };
-
-  // Handle metadata upload from tracking page
-  const handleMetadataUpload = async (interviewId: string, fileName: string, file: File) => {
-    if (!file || !file.name.endsWith('.zip')) {
-      toast({
-        title: "Invalid file",
-        description: "Please upload a ZIP file containing metadata",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setActiveUpload({
-      interviewId,
-      fileName: file.name,
-      interviewName: fileName,
-      fileSize: file.size,
-      progress: 0,
-      status: "uploading",
-    });
-    
-    try {
-      const zipPath = `mobile-zips/${interviewId}/${Date.now()}_${file.name}`;
-
-      const { data: signedData, error: signError } = await supabase.storage
-        .from("mobile-zips")
-        .createSignedUploadUrl(zipPath);
-
-      if (signError || !signedData) throw signError || new Error("Failed to create upload URL");
-
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 80);
-            setActiveUpload(prev => prev ? { ...prev, progress: pct } : prev);
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else reject(new Error(`Upload failed with status ${xhr.status}`));
-        };
-        xhr.onerror = () => reject(new Error("Network error during upload"));
-        xhr.open("PUT", signedData.signedUrl);
-        xhr.setRequestHeader("Content-Type", file.type || "application/zip");
-        xhr.send(file);
-      });
-
-      setActiveUpload(prev => prev ? { ...prev, progress: 82, status: "processing" } : prev);
-
-      const { data: urlData } = supabase.storage
-        .from("mobile-zips")
-        .getPublicUrl(zipPath);
-
-      const { error: updateError } = await supabase
-        .from("audits")
-        .update({
-          mobile_zip_url: urlData.publicUrl,
-          mobile_zip_uploaded_at: new Date().toISOString(),
-        })
-        .eq("id", interviewId);
-
-      if (updateError) throw updateError;
-
-      setActiveUpload(prev => prev ? { ...prev, progress: 90 } : prev);
-
-      const { error: processError } = await supabase.functions.invoke("process-mobile-zip", {
-        body: { auditId: interviewId, mobileZipUrl: urlData.publicUrl },
-      });
-
-      if (processError) {
-        console.error("Process error:", processError);
-      }
-
-      setActiveUpload(prev => prev ? { ...prev, progress: 100, status: "success" } : prev);
-      queryClient.invalidateQueries({ queryKey: ["interview-metadata"] });
-
-      toast({
-        title: "Metadata uploaded successfully",
-        description: "The metadata ZIP has been uploaded and processed.",
-      });
-    } catch (error: any) {
-      console.error("Upload error:", error);
-      setActiveUpload(prev => prev ? { ...prev, status: "error", errorMessage: error.message || "Upload failed" } : prev);
-      toast({
-        title: "Upload failed",
-        description: error.message || "Failed to upload metadata",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const triggerFileInput = (interviewId: string) => {
-    fileInputRefs.current[interviewId]?.click();
-  };
-
-  // Action dropdown for both mobile and desktop
   const renderActionDropdown = (interview: TrackingInterview) => {
     return (
       <DropdownMenu>
@@ -1166,89 +834,19 @@ const InterviewTracking = () => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {/* View PDF - only for interviews with PDF but no metadata */}
-          {interview.has_pdf && interview.file_url && !interview.has_metadata && (
-            <DropdownMenuItem onClick={() => window.open(interview.file_url!, '_blank')}>
-              <FileText className="h-4 w-4 mr-2" />
-              View PDF
+          <DropdownMenuItem onClick={(e) => handleEditFilenameClick(interview, e)}>
+            <Pencil className="mr-2 h-4 w-4" /> Rename File
+          </DropdownMenuItem>
+          {(isSuperAdmin || isAdmin || isSubContractor) && (
+            <DropdownMenuItem onClick={() => { setReassignInterview(interview); setShowReassignDialog(true); }}>
+              <Users className="mr-2 h-4 w-4" /> Reassign FM
             </DropdownMenuItem>
           )}
-          {/* View Failed */}
-          {interview.status === "Audit Failed" && (
-            <DropdownMenuItem onClick={() => handleViewFailed(interview)}>
-              <Eye className="h-4 w-4 mr-2" />
-              View Failed
-            </DropdownMenuItem>
-          )}
-          {/* Comment / Resolved */}
-          {interview.status !== "Audit Passed" && !(interview.status === "Awaiting Review" && interview.has_pdf && interview.has_metadata) && (
-            interview.artifact_correction_resolved_at ? (
-              <DropdownMenuItem onClick={() => handleViewResolutionComments(interview)}>
-                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                Resolved
-                {interview.unread_comment_count > 0 && (
-                  <Badge variant="destructive" className="ml-auto h-5 min-w-5 text-[10px] px-1">
-                    {interview.unread_comment_count}
-                  </Badge>
-                )}
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={() => handleViewResolutionComments(interview)}>
-                <MessageCircle className="h-4 w-4 mr-2" />
-                Comment
-                {interview.unread_comment_count > 0 && (
-                  <Badge variant="destructive" className="ml-auto h-5 min-w-5 text-[10px] px-1">
-                    {interview.unread_comment_count}
-                  </Badge>
-                )}
-              </DropdownMenuItem>
-            )
-          )}
-          {/* View Issue */}
-          {canResolveIssue && interview.is_flagged_for_issue && !interview.issue_resolved_at && (
-            <DropdownMenuItem onClick={() => handleViewIssue(interview)} className="text-destructive">
-              <Flag className="h-4 w-4 mr-2" />
-              View Issue
-            </DropdownMenuItem>
-          )}
-          {/* Upload Metadata */}
-          {!interview.has_metadata && (
-            <DropdownMenuItem onClick={() => triggerFileInput(interview.id)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Metadata
-            </DropdownMenuItem>
-          )}
-          {/* Edit Filename - only for interviews without metadata */}
-          {!interview.has_metadata && (
-            <DropdownMenuItem onClick={() => {
-              setEditFilenameInterview(interview);
-              setNewFilename(interview.file_name);
-              setShowEditFilename(true);
-            }}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit Filename
-            </DropdownMenuItem>
-          )}
-          {/* Reassign FM - visible when interview has metadata */}
-          {(interview as any).interviewer_code && (
-            <DropdownMenuItem onClick={() => {
-              setReassignInterview(interview);
-              setShowReassignDialog(true);
-            }}>
-              <Users className="h-4 w-4 mr-2" />
-              Reassign FM
-            </DropdownMenuItem>
-          )}
-          {/* Send to Burn */}
-          {interview.status !== "Audit Passed" && (
+          {isSuperAdmin && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                onClick={() => { setBurnInterview(interview); setShowBurnDialog(true); }}
-                className="text-orange-600 focus:text-orange-600"
-              >
-                <Flame className="h-4 w-4 mr-2" />
-                Send to Burn
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setBurnInterview(interview); setShowBurnDialog(true); }}>
+                <Flame className="mr-2 h-4 w-4" /> Burn Item
               </DropdownMenuItem>
             </>
           )}
@@ -1260,682 +858,306 @@ const InterviewTracking = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
       <div className="container py-4 sm:py-8 px-4 sm:px-6 space-y-4 sm:space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Interview Tracking</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1">
-              {isSuperAdmin ? "View all interviews" :
-               (isAdmin || isSubContractor) ? "View interviews from your assigned field managers" :
-               isFieldManager ? "View interviews from your team" :
-               "View interviews from your contractor"}
+              {isSuperAdmin ? "View all interviews" : (isAdmin || isSubContractor) ? "View interviews from your assigned field managers" : "View your interviews"}
             </p>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            {false && <UploadLockGuard>
-            <BulkMetadataUploadDialog
-              onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
-              trigger={
-                <Button variant="outline" className="gap-2 text-xs sm:text-sm">
-                  <FileArchive className="h-4 w-4" />
-                  <span className="sm:hidden text-[10px]">ZIP</span>
-                  <span className="hidden sm:inline">Bulk Metadata</span>
-                </Button>
-              }
-            />
-            </UploadLockGuard>}
-            {false && <UploadLockGuard>
-            <BulkPdfUploadDialog
-              onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] })}
-              onUploadProgress={(p) => {
-                if (p) {
-                  setActiveUpload({ interviewId: "bulk-pdf", ...p });
-                }
-              }}
-              trigger={
-                <Button variant="outline" className="gap-2 text-xs sm:text-sm">
-                  <Upload className="h-4 w-4" />
-                  <span className="sm:hidden text-[10px]">PDF</span>
-                  <span className="hidden sm:inline">Bulk PDF</span>
-                </Button>
-              }
-            />
-            </UploadLockGuard>}
-            <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2 text-xs sm:text-sm">
-              <Filter className="h-4 w-4" />
-              <span className="hidden sm:inline">Filters</span>
-              {hasActiveFilters && <Badge variant="secondary" className="ml-1">Active</Badge>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={handleExportPDF} disabled={isExporting || sortedInterviews.length === 0} className="w-full sm:w-auto h-9 text-sm gap-2">
+              {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export PDF
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="gap-2 text-xs sm:text-sm" disabled={isExporting}>
-                  <Download className="h-4 w-4" />
-                  <span className="hidden sm:inline">Export</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={handleExportCSV}>Export as CSV</DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExportPDF}>Export as PDF</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Total</p>
+        {/* Stats Section */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground font-medium">Total Audited</p>
                 <p className="text-lg sm:text-2xl font-bold">
-                  {interviewsWithUnreadCounts.length}
-                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredInterviewCount})</span>}
+                  {nonBurnedInterviews.length}
+                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({filteredInterviews.length})</span>}
                 </p>
-                <p className="text-xs font-medium text-primary">
-                  {nameStats.total.toLocaleString()} names
-                </p>
-                {hasActiveFilters && nameStats.filteredTotal !== nameStats.total && (
-                  <p className="text-xs text-muted-foreground">({nameStats.filteredTotal.toLocaleString()} names)</p>
-                )}
+                <p className="text-xs font-semibold text-primary">{nameStats.total.toLocaleString()} names</p>
               </div>
+              <div className="p-2 bg-primary/10 rounded-lg text-primary"><FileText className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-success/10 rounded-lg">
-                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-success" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Passed</p>
-                <p className="text-lg sm:text-2xl font-bold">
-                  {interviewsWithUnreadCounts.filter(i => i.status === "Audit Passed").length}
+
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground font-medium">Passed</p>
+                <p className="text-lg sm:text-2xl font-bold text-success">
+                  {interviews.filter(i => i.status === "Audit Passed").length}
                   {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredPassedCount})</span>}
                 </p>
-                <p className="text-xs font-medium text-success">
-                  {nameStats.passed.toLocaleString()} names
-                </p>
-                {hasActiveFilters && nameStats.filteredPassed !== nameStats.passed && (
-                  <p className="text-xs text-muted-foreground">({nameStats.filteredPassed.toLocaleString()} names)</p>
-                )}
+                <p className="text-xs font-semibold text-success">{nameStats.passed.toLocaleString()} names</p>
               </div>
+              <div className="p-2 bg-success/10 rounded-lg text-success"><CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-destructive/10 rounded-lg">
-                <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-destructive" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Failed</p>
-                <p className="text-lg sm:text-2xl font-bold">
-                  {interviewsWithUnreadCounts.filter(i => i.status === "Audit Failed").length}
+
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground font-medium">Failed</p>
+                <p className="text-lg sm:text-2xl font-bold text-destructive">
+                  {interviews.filter(i => i.status === "Audit Failed").length}
                   {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredFailedCount})</span>}
                 </p>
-                <p className="text-xs font-medium text-destructive">
-                  {nameStats.failed.toLocaleString()} names
-                </p>
-                {hasActiveFilters && nameStats.filteredFailed !== nameStats.failed && (
-                  <p className="text-xs text-muted-foreground">({nameStats.filteredFailed.toLocaleString()} names)</p>
-                )}
+                <p className="text-xs font-semibold text-destructive">{nameStats.failed.toLocaleString()} names</p>
               </div>
+              <div className="p-2 bg-destructive/10 rounded-lg text-destructive"><XCircle className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <Flag className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Unresolved Issues</p>
-                <p className="text-lg sm:text-2xl font-bold text-red-600">
-                  {interviewsWithUnreadCounts.filter(i => i.is_flagged_for_issue && !i.issue_resolved_at).length}
-                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredUnresolvedCount})</span>}
+
+          <Card className="relative overflow-hidden">
+            <CardContent className="p-4 sm:p-6 flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground font-medium">Awaiting Review</p>
+                <p className="text-lg sm:text-2xl font-bold text-warning">
+                  {interviews.filter(i => i.status === "Awaiting Review").length}
                 </p>
-                {hasActiveFilters && (
-                  <p className="text-xs text-muted-foreground">({nameStats.filteredUnresolved.toLocaleString()} names)</p>
-                )}
+                <p className="text-xs font-semibold text-warning">{nameStats.pending.toLocaleString()} names</p>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <FolderOpen className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">No Metadata</p>
-                <p className="text-lg sm:text-2xl font-bold text-orange-600">
-                  {interviewsWithUnreadCounts.filter(i => !i.has_metadata).length}
-                  {hasActiveFilters && <span className="text-sm font-semibold text-muted-foreground"> ({nameStats.filteredNoMetaCount})</span>}
-                </p>
-                {hasActiveFilters && (
-                  <p className="text-xs text-muted-foreground">({nameStats.filteredNoMeta.toLocaleString()} names)</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          {/* Sent to Burn stat card */}
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                <Flame className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 dark:text-orange-400" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Sent to Burn</p>
-                <p className="text-lg sm:text-2xl font-bold text-orange-600 dark:text-orange-400">
-                  {burnedAuditData.scopedCount}
-                </p>
-                <p className="text-xs font-medium text-orange-600 dark:text-orange-400">
-                  {burnedAuditData.scopedNames.toLocaleString()} names
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm text-muted-foreground">Filtered</p>
-                <p className="text-lg sm:text-2xl font-bold">{filteredInterviews.length}</p>
-                <p className="text-xs font-medium text-purple-600">
-                  {nameStats.filtered.toLocaleString()} names
-                </p>
-              </div>
+              <div className="p-2 bg-warning/10 rounded-lg text-warning"><Calendar className="h-4 w-4 sm:h-5 sm:w-5" /></div>
             </CardContent>
           </Card>
         </div>
 
-
-        {/* Filters Panel */}
-        {showFilters && (
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Filters</CardTitle>
-                <div className="flex items-center gap-2">
-                  <AdvancedFiltersPanel value={advFilter} onChange={setAdvFilter} />
-                  <Button variant="ghost" size="sm" onClick={() => { clearFilters(); setAdvFilter(emptyAdvancedFilter); }} className="gap-1">
-                    <X className="h-4 w-4" />
-                    Clear All
-                  </Button>
-                </div>
+        {/* Filter Toolbar */}
+        <Card className="border-muted/60 shadow-sm">
+          <CardContent className="p-4 space-y-4">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search file name or interviewee..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 h-10" />
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <div>
-                  <Label className="text-sm">Search</Label>
-                  <Input
-                    placeholder="ID, interviewee..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label className="text-sm">Field Manager</Label>
-                  <Select value={filters.fieldManager} onValueChange={(v) => setFilters({ ...filters, fieldManager: v === "all" ? "" : v })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Field Managers</SelectItem>
-                      <SelectItem value="not_assigned">Not Assigned</SelectItem>
-                      {canonicalFms.map(fm => (
-                        <SelectItem key={fm.id} value={fm.id}>{fm.full_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-sm">Status</Label>
+              <div className="flex items-center gap-2">
+                <Button variant={showFilters ? "secondary" : "outline"} onClick={() => setShowFilters(!showFilters)} className="h-10 gap-2 text-sm font-medium">
+                  <Filter className="h-4 w-4" /> Filters
+                  {hasActiveFilters && <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px]">!</Badge>}
+                </Button>
+                {hasActiveFilters && (
+                  <Button variant="ghost" onClick={clearFilters} className="h-10 text-muted-foreground hover:text-foreground text-sm gap-1.5 px-3">
+                    <X className="h-4 w-4" /> Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {showFilters && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 pt-2 border-t border-muted/40 animate-in fade-in-50 duration-200">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Status</Label>
                   <Select value={filters.status} onValueChange={(v) => setFilters({ ...filters, status: v === "all" ? "" : v })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="All Statuses" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Statuses</SelectItem>
-                      {statusFilterOptions.map(s => (
-                        <SelectItem key={s} value={s!}>{s}</SelectItem>
-                      ))}
+                      {statusFilterOptions.map(s => <SelectItem key={s} value={s!}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="text-sm">Metadata</Label>
-                  <Select value={filters.metadataStatus} onValueChange={(v) => setFilters({ ...filters, metadataStatus: v === "all" ? "" : v })}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Field Manager</Label>
+                  <Select value={filters.fieldManager} onValueChange={(v) => setFilters({ ...filters, fieldManager: v === "all" ? "" : v })}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="All Managers" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Interviews</SelectItem>
+                      <SelectItem value="all">All Managers</SelectItem>
+                      {filterOptions.fieldManagers.map(m => <SelectItem key={m} value={m!}>{m}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Metadata Presence</Label>
+                  <Select value={filters.metadataStatus} onValueChange={(v) => setFilters({ ...filters, metadataStatus: v === "all" ? "" : v })}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="All Blocks" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Blocks</SelectItem>
                       <SelectItem value="with_metadata">With Metadata</SelectItem>
                       <SelectItem value="without_metadata">Without Metadata</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                {hasMultipleContractors && (
-                  <div>
-                    <Label className="text-sm">Contractor</Label>
-                    <Select value={filters.contractor} onValueChange={(v) => setFilters({ ...filters, contractor: v === "all" ? "" : v })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Contractors</SelectItem>
-                        {filterOptions.contractors.map(c => (
-                          <SelectItem key={c} value={c!}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <div>
-                  <Label className="text-sm">Start Date</Label>
-                  <Input
-                    type="date"
-                    value={filters.startDate}
-                    onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                  />
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Start Date</Label>
+                  <Input type="date" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} className="h-9 text-sm" />
                 </div>
-                <div>
-                  <Label className="text-sm">End Date</Label>
-                  <Input
-                    type="date"
-                    value={filters.endDate}
-                    onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                  />
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">End Date</Label>
+                  <Input type="date" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} className="h-9 text-sm" />
                 </div>
               </div>
-            </CardContent>
+            )}
+
+            <AdvancedFiltersPanel filters={advFilter} onChange={setAdvFilter} />
+          </CardContent>
+        </Card>
+
+        {/* Desktop View Workspace Grid */}
+        {!isMobile && (
+          <Card className="border-muted/60 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/40 font-medium">
+                  <TableRow>
+                    <TableHead className="w-[30%] cursor-pointer select-none" onClick={() => handleSort("file_name")}>
+                      <div className="flex items-center gap-1">File Name <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="w-[12%] cursor-pointer select-none" onClick={() => handleSort("status")}>
+                      <div className="flex items-center gap-1">Status <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="w-[15%] cursor-pointer select-none" onClick={() => handleSort("field_manager")}>
+                      <div className="flex items-center gap-1">Field Manager <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="w-[10%] text-center cursor-pointer select-none" onClick={() => handleSort("total_names")}>
+                      <div className="flex items-center justify-center gap-1">Names <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="w-[13%] cursor-pointer select-none" onClick={() => handleSort("interview_date")}>
+                      <div className="flex items-center gap-1">Interview Date <ArrowUpDown className="h-3 w-3" /></div>
+                    </TableHead>
+                    <TableHead className="w-[15%]">Workflow Status</TableHead>
+                    <TableHead className="w-[5%] text-right"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={7} className="h-32 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />Loading workspace interviews...</TableCell></TableRow>
+                  ) : paginatedInterviews.length === 0 ? (
+                    <TableRow><TableCell colSpan={7} className="h-24 text-center text-muted-foreground">No tracking entries match your filters.</TableCell></TableRow>
+                  ) : (
+                    paginatedInterviews.map((interview) => (
+                      <TableRow key={interview.id} className={cn("hover:bg-muted/30 cursor-pointer transition-colors", interview.status === "Audit Failed" && "bg-destructive/5 hover:bg-destructive/10")} onClick={() => { if (interview.status === "Audit Failed") { setSelectedInterview(interview); setShowFailedModal(true); } }}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2 max-w-sm">
+                            <BurnHistoryIcon auditId={interview.id} historyMap={burnHistoryMap} />
+                            <span className="truncate block" title={interview.file_name}>{interview.file_name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction, interview)}</TableCell>
+                        <TableCell className="text-muted-foreground truncate">{interview.field_manager || "-"}</TableCell>
+                        <TableCell className="text-center font-semibold">{interview.total_names || 0}</TableCell>
+                        <TableCell className="text-muted-foreground">{interview.interview_date ? format(new Date(interview.interview_date), "MMM d, yyyy") : "-"}</TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-1.5">
+                            {getTeamBadge(interview)}
+                            {interview.is_flagged_for_issue && !interview.issue_resolved_at && (
+                              <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-destructive hover:bg-destructive/10 gap-1" onClick={() => handleViewIssue(interview)}>
+                                <AlertTriangle className="h-3 w-3" /> Issue
+                              </Button>
+                            )}
+                            {interview.issue_resolved_at && (
+                              <Button size="sm" variant="ghost" className="h-7 text-xs px-2 text-success hover:bg-success/10 gap-1" onClick={() => handleViewResolutionComments(interview)}>
+                                <MessageCircle className="h-3 w-3" /> Resolved
+                              </Button>
+                            )}
+                            {interview.unread_comment_count > 0 && (
+                              <Badge variant="secondary" className="bg-blue-100 text-blue-700 animate-pulse h-5 px-1.5 gap-1" onClick={() => handleMarkResolved(interview)}>
+                                <MessageCircle className="h-3 w-3" /> {interview.unread_comment_count}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>{renderActionDropdown(interview)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </Card>
         )}
 
-        {/* Table/Mobile View */}
-        <Card>
-          <CardContent className="p-0">
+        {/* Mobile Grid/Accordion Component Rendering */}
+        {isMobile && (
+          <div className="space-y-3">
             {isLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
+              <div className="p-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />Loading entries...</div>
             ) : paginatedInterviews.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-lg font-medium">No interviews found</p>
-                <p className="text-sm text-muted-foreground">
-                  {hasActiveFilters ? "Try adjusting your filters" : "No interviews match your access level"}
-                </p>
-              </div>
-            ) : isMobile ? (
-              /* Mobile Accordion View */
-              <div className="divide-y">
-                <Accordion type="single" collapsible className="w-full">
-                  {paginatedInterviews.map((interview, index) => (
-                    <AccordionItem key={interview.id} value={interview.id} className="border-0 border-b">
-                      <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                        <div className="flex flex-col items-start gap-1 text-left flex-1 mr-2">
-                          <div className="flex items-center gap-2 w-full">
-                            <span className="font-mono text-sm font-medium truncate max-w-[200px]">
-                              {interview.file_name}
-                            </span>
-                            <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {/* Mobile team badge */}
-                            {!interview.team_assigned ? (
-                              <Badge variant="outline" className="h-5 text-[10px] text-muted-foreground">
-                                Not Assigned
-                              </Badge>
-                            ) : interview.is_flagged_for_issue && !interview.issue_resolved_at ? (
-                              <Badge className="h-5 text-[10px] bg-red-500 text-white gap-0.5">
-                                <AlertTriangle className="h-2.5 w-2.5" />
-                                {interview.team_name || "Flagged"}
-                              </Badge>
-                            ) : interview.entry_status === 'data_entry_complete' ? (
-                              <Badge className="h-5 text-[10px] bg-green-500 text-white">
-                                {interview.team_name || "Assigned"}
-                              </Badge>
-                            ) : (
-                              <Badge className="h-5 text-[10px] bg-yellow-400 text-yellow-900">
-                                {interview.team_name || "Assigned"}
-                              </Badge>
-                            )}
-                            {getStatusBadge(interview.status, interview.artifact_correction, interview)}
-                          </div>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-4 pb-4">
-                        <div className="space-y-3">
-                          {/* Interview Details */}
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <p className="text-muted-foreground text-xs">Field Manager</p>
-                              <p className="font-medium">{interview.field_manager || "-"}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground text-xs">Total Names</p>
-                              <p className="font-medium">{interview.total_names || "-"}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground text-xs">Interviewee</p>
-                              <p className="font-medium truncate">{interview.interviewee_name || "-"}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground text-xs">Last Modified</p>
-                              <p className="font-medium">{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</p>
-                            </div>
-                          </div>
-                          
-                          {/* Artifacts Status */}
-                          <div>
-                            <p className="text-muted-foreground text-xs mb-1">Artifacts</p>
-                            {interview.has_pdf && interview.has_metadata ? (
-                              <Badge variant="outline" className="gap-1 text-success border-success">
-                                <CheckCircle className="h-3 w-3" />
-                                Complete
-                              </Badge>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                {!interview.has_pdf && (
-                                  <Badge variant="destructive" className="gap-1">
-                                    <FileCheck className="h-3 w-3" />
-                                    PDF
-                                  </Badge>
-                                )}
-                                {!interview.has_metadata && (
-                                  <Badge variant="destructive" className="gap-1">
-                                    <FolderOpen className="h-3 w-3" />
-                                    Meta
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Hidden file input for metadata upload */}
-                          {!interview.has_metadata && (
-                            <input
-                              type="file"
-                              accept=".zip"
-                              className="hidden"
-                              ref={(el) => { fileInputRefs.current[interview.id] = el; }}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleMetadataUpload(interview.id, interview.file_name, file);
-                                }
-                                e.target.value = '';
-                              }}
-                            />
-                          )}
-
-                          {/* Action Dropdown */}
-                          <div className="flex items-center gap-2 pt-2">
-                            {renderActionDropdown(interview)}
-                            <span className="text-xs text-muted-foreground">Actions</span>
-                          </div>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-                
-                {/* Pagination */}
-                <div className="px-4 py-3">
-                  <AuditPagination
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    totalCount={sortedInterviews.length}
-                    itemsPerPage={itemsPerPage}
-                    onPageChange={setCurrentPage}
-                    onItemsPerPageChange={(newValue) => {
-                      setItemsPerPage(newValue);
-                      setCurrentPage(1);
-                    }}
-                  />
-                </div>
-              </div>
+              <div className="p-6 text-center bg-card rounded-xl border text-muted-foreground">No tracking entries found matching filters.</div>
             ) : (
-              /* Desktop Table View */
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">SN</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("file_name")}>
-                        <div className="flex items-center gap-1">
-                          Interview ID
-                          <ArrowUpDown className="h-3 w-3" />
-                        </div>
-                      </TableHead>
-                      <TableHead>Field Manager</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("total_names")}>
-                        <div className="flex items-center gap-1">
-                          Names
-                          <ArrowUpDown className="h-3 w-3" />
-                        </div>
-                      </TableHead>
-                      <TableHead>Interviewee</TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort("last_modified")}>
-                        <div className="flex items-center gap-1">
-                          Last Modified
-                          <ArrowUpDown className="h-3 w-3" />
-                        </div>
-                      </TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Team Assigned</TableHead>
-                      <TableHead>Artifacts</TableHead>
-                      <TableHead className="w-16">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedInterviews.map((interview, index) => (
-                      <TableRow key={interview.id}>
-                        <TableCell className="font-medium">
-                          {(currentPage - 1) * itemsPerPage + index + 1}
-                        </TableCell>
-                        <TableCell 
-                          className={`font-medium font-mono text-sm ${interview.status === "Audit Failed" ? "cursor-pointer hover:text-primary underline md:no-underline md:cursor-default" : ""}`}
-                          onClick={() => {
-                            if (interview.status === "Audit Failed") {
-                              handleViewFailed(interview);
-                            }
-                          }}
-                        >
-                          <span className="inline-flex items-center gap-1.5">
-                            {interview.file_name}
-                            <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
-                          </span>
-                        </TableCell>
-                        <TableCell>{interview.field_manager || "-"}</TableCell>
-                        <TableCell>{interview.total_names || "-"}</TableCell>
-                        <TableCell className="max-w-[150px] truncate">
-                          {interview.interviewee_name || "-"}
-                        </TableCell>
-                        <TableCell>{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</TableCell>
-                        <TableCell>{getStatusBadge(interview.status, interview.artifact_correction, interview)}</TableCell>
-                        <TableCell>
-                          {getTeamBadge(interview)}
-                        </TableCell>
-                        <TableCell>
-                          {interview.has_pdf && interview.has_metadata ? (
-                            <Badge variant="outline" className="gap-1 text-success border-success">
-                              <CheckCircle className="h-3 w-3" />
-                              Complete
-                            </Badge>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              {!interview.has_pdf && (
-                                <Badge variant="destructive" className="gap-1">
-                                  <FileCheck className="h-3 w-3" />
-                                  PDF
-                                </Badge>
-                              )}
-                              {!interview.has_metadata && (
-                                <Badge variant="destructive" className="gap-1">
-                                  <FolderOpen className="h-3 w-3" />
-                                  Meta
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {/* Hidden file input for metadata upload */}
-                          {!interview.has_metadata && (
-                            <input
-                              type="file"
-                              accept=".zip"
-                              className="hidden"
-                              ref={(el) => { fileInputRefs.current[interview.id] = el; }}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  handleMetadataUpload(interview.id, interview.file_name, file);
-                                }
-                                e.target.value = '';
-                              }}
-                            />
-                          )}
-                          {renderActionDropdown(interview)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              paginatedInterviews.map((interview) => (
+                <Card key={interview.id} className={cn("overflow-hidden border-muted/70 shadow-sm", interview.status === "Audit Failed" && "border-destructive/30 bg-destructive/5")} onClick={() => { if (interview.status === "Audit Failed") { setSelectedInterview(interview); setShowFailedModal(true); } }}>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <BurnHistoryIcon auditId={interview.id} historyMap={burnHistoryMap} />
+                        <p className="font-semibold text-sm truncate" title={interview.file_name}>{interview.file_name}</p>
+                      </div>
+                      <div onClick={(e) => e.stopPropagation()}>{renderActionDropdown(interview)}</div>
+                    </div>
 
-                {/* Pagination */}
-                <div className="px-4 py-3 border-t">
-                  <AuditPagination
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    totalCount={sortedInterviews.length}
-                    itemsPerPage={itemsPerPage}
-                    onPageChange={setCurrentPage}
-                    onItemsPerPageChange={(newValue) => {
-                      setItemsPerPage(newValue);
-                      setCurrentPage(1);
-                    }}
-                  />
-                </div>
-              </>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {getStatusBadge(interview.status, interview.artifact_correction, interview)}
+                      <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5">
+                        {getTeamBadge(interview)}
+                        {interview.is_flagged_for_issue && !interview.issue_resolved_at && (
+                          <Button size="sm" variant="ghost" className="h-6 text-[11px] px-1.5 text-destructive" onClick={() => handleViewIssue(interview)}>Issue</Button>
+                        )}
+                        {interview.issue_resolved_at && (
+                          <Button size="sm" variant="ghost" className="h-6 text-[11px] px-1.5 text-success" onClick={() => handleViewResolutionComments(interview)}>View</Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-muted/50 text-xs text-muted-foreground">
+                      <div>Field Manager: <span className="font-medium text-foreground block truncate">{interview.field_manager || "-"}</span></div>
+                      <div>Names Counter: <span className="font-medium text-foreground block">{interview.total_names || 0}</span></div>
+                      <div>Interviewee: <span className="font-medium text-foreground block truncate">{interview.interviewee_name || "-"}</span></div>
+                      <div>Modified Date: <span className="font-medium text-foreground block">{interview.last_modified ? format(new Date(interview.last_modified), "MMM d, yyyy") : "-"}</span></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
+
+        {/* Global Audit Workspace Pagination Component */}
+        {!isLoading && filteredInterviews.length > 0 && (
+          <AuditPagination currentPage={currentPage} totalItems={filteredInterviews.length} itemsPerPage={itemsPerPage} onPageChange={(page) => { setCurrentPage(page); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onItemsPerPageChange={(size) => { setItemsPerPage(size); setCurrentPage(1); }} />
+        )}
       </div>
 
-      {/* Failed Interview Modal */}
-      <FailedInterviewModal
-        open={showFailedModal}
-        onOpenChange={setShowFailedModal}
-        interview={selectedInterview}
-        onUploadProgress={(p) => {
-          if (p) {
-            setActiveUpload({ interviewId: selectedInterview?.id || "failed", ...p });
-          }
-        }}
-      />
-
-      {/* View Issue Dialog */}
-      <ViewIssueDialog
-        open={showIssueDialog}
-        onOpenChange={setShowIssueDialog}
-        interview={selectedIssueInterview}
-        onResolve={handleResolveIssue}
-        isResolving={resolveIssueMutation.isPending}
-      />
-
-      {/* Mark as Resolved Dialog */}
-      {markResolvedInterview && (
-        <MarkResolvedDialog
-          open={showMarkResolvedDialog}
-          onOpenChange={setShowMarkResolvedDialog}
-          auditId={markResolvedInterview.id}
-          fileName={markResolvedInterview.file_name}
-        />
+      {/* Shared Modals and Dialog Popups */}
+      {showFailedModal && selectedInterview && (
+        <FailedInterviewModal open={showFailedModal} onOpenChange={setShowFailedModal} interview={selectedInterview} />
       )}
 
-      {/* Resolved Comments Modal */}
-      {resolvedCommentsInterview && (
-        <ResolvedCommentsModal
-          open={showResolvedCommentsModal}
-          onOpenChange={setShowResolvedCommentsModal}
-          auditId={resolvedCommentsInterview.id}
-          fileName={resolvedCommentsInterview.file_name}
-          resolvedAt={resolvedCommentsInterview.artifact_correction_resolved_at}
-          resolvedBy={resolvedCommentsInterview.artifact_correction_resolved_by}
-        />
+      {showIssueDialog && selectedIssueInterview && (
+        <ViewIssueDialog open={showIssueDialog} onOpenChange={setShowIssueDialog} issueComment={selectedIssueInterview.issue_comment || "No details provided"} flaggedBy={selectedIssueInterview.flagged_by || "System"} flaggedAt={selectedIssueInterview.flagged_at || ""} canResolve={canResolveIssue} isResolving={resolveIssueMutation.isPending} onResolve={async (comment) => { if (selectedIssueInterview.assignment_id) { await handleResolveIssue(selectedIssueInterview.assignment_id, comment); setShowIssueDialog(false); setSelectedIssueInterview(null); } }} />
       )}
 
-      {/* Floating Upload Progress Panel */}
-      {activeUpload && (
-        <FloatingUploadProgress
-          fileName={activeUpload.fileName}
-          interviewName={activeUpload.interviewName}
-          fileSize={activeUpload.fileSize}
-          progress={activeUpload.progress}
-          status={activeUpload.status}
-          errorMessage={activeUpload.errorMessage}
-          onClose={() => setActiveUpload(null)}
-        />
+      {showResolvedCommentsModal && resolvedCommentsInterview && (
+        <ResolvedCommentsModal open={showResolvedCommentsModal} onOpenChange={(v) => { setShowResolvedCommentsModal(v); if (!v) setResolvedCommentsInterview(null); }} auditId={resolvedCommentsInterview.id} assignmentId={resolvedCommentsInterview.assignment_id} />
       )}
 
-      {/* Send to Burn Dialog */}
-      {burnInterview && (
-        <SendToBurnDialog
-          open={showBurnDialog}
-          onOpenChange={setShowBurnDialog}
-          auditId={burnInterview.id}
-          fileName={burnInterview.file_name}
-        />
+      {showBurnDialog && burnInterview && (
+        <SendToBurnDialog open={showBurnDialog} onOpenChange={(v) => { setShowBurnDialog(v); if (!v) setBurnInterview(null); }} auditId={burnInterview.id} fileName={burnInterview.file_name} />
       )}
 
-      {/* Edit Filename Dialog */}
-      {editFilenameInterview && (
+      {showEditFilename && editFilenameInterview && (
         <AlertDialog open={showEditFilename} onOpenChange={setShowEditFilename}>
-          <AlertDialogContent>
+          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
             <AlertDialogHeader>
-              <AlertDialogTitle>Edit Filename</AlertDialogTitle>
-              <AlertDialogDescription>
-                Change the filename for this interview. Current: {editFilenameInterview.file_name}
-              </AlertDialogDescription>
+              <AlertDialogTitle>Rename File Entry</AlertDialogTitle>
+              <AlertDialogDescription>Enter a new name for the tracking audit ledger record.</AlertDialogDescription>
             </AlertDialogHeader>
-            <div className="py-4">
-              <Label htmlFor="new-filename">New Filename</Label>
-              <Input
-                id="new-filename"
-                value={newFilename}
-                onChange={(e) => setNewFilename(e.target.value)}
-                placeholder="Enter new filename"
-                className="mt-2"
-              />
+            <div className="py-2">
+              <Input value={newFilename} onChange={(e) => setNewFilename(e.target.value)} placeholder="File name" className="w-full" disabled={isEditingFilename} onKeyDown={(e) => { if (e.key === 'Enter') saveFilename(); }} />
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isEditingFilename}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={isEditingFilename || !newFilename.trim() || newFilename.trim() === editFilenameInterview.file_name}
-                onClick={async () => {
-                  setIsEditingFilename(true);
-                  try {
-                    const { error } = await supabase
-                      .from("audits")
-                      .update({ file_name: newFilename.trim() })
-                      .eq("id", editFilenameInterview.id);
-                    if (error) throw error;
-                    toast({ title: "Filename Updated", description: `Renamed to ${newFilename.trim()}` });
-                    setShowEditFilename(false);
-                    queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
-                  } catch (error) {
-                    toast({ title: "Error", description: "Failed to update filename", variant: "destructive" });
-                  } finally {
-                    setIsEditingFilename(false);
-                  }
-                }}
-              >
+              <AlertDialogAction onClick={(e) => { e.preventDefault(); saveFilename(); }} disabled={isEditingFilename || !newFilename.trim() || newFilename.trim() === editFilenameInterview.file_name}>
                 {isEditingFilename ? "Saving..." : "Save"}
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -1943,30 +1165,8 @@ const InterviewTracking = () => {
         </AlertDialog>
       )}
 
-      {/* Reassign FM Dialog */}
-      {reassignInterview && (
-        <ReassignFMDialog
-          open={showReassignDialog}
-          onOpenChange={(v) => { setShowReassignDialog(v); if (!v) setReassignInterview(null); }}
-          auditId={reassignInterview.id}
-          fileName={reassignInterview.file_name}
-          currentFmId={
-            (() => {
-              const overrideFmId = fmOverrideMap.get(reassignInterview.id);
-              const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
-              return overrideFmId || teamFmId || null;
-            })()
-          }
-          currentFmName={
-            (() => {
-              const overrideFmId = fmOverrideMap.get(reassignInterview.id);
-              const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id;
-              const fmId = overrideFmId || teamFmId;
-              return fmId ? canonicalFms.find(fm => fm.id === fmId)?.full_name || null : null;
-            })()
-          }
-          contractorId={(reassignInterview as any).contractor_id || null}
-        />
+      {showReassignDialog && reassignInterview && (
+        <ReassignFMDialog open={showReassignDialog} onOpenChange={(v) => { setShowReassignDialog(v); if (!v) setReassignInterview(null); }} auditId={reassignInterview.id} fileName={reassignInterview.file_name} currentFmId={(() => { const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id; return teamFmId || null; })()} currentFmName={(() => { const teamFmId = teamAssignments.find((t: any) => t.interviewer_code === (reassignInterview as any).interviewer_code)?.field_manager_id; return teamFmId ? canonicalFms.find(fm => fm.id === teamFmId)?.full_name || null : null; })()} contractorId={(reassignInterview as any).contractor_id || null} />
       )}
     </div>
   );
