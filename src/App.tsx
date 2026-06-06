@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,50 +24,54 @@ import { TrackingRoute } from "@/components/TrackingRoute";
 import { SubContractorRoute } from "@/components/SubContractorRoute";
 import FraudAnalyticsRoute from "@/components/FraudAnalyticsRoute";
 import Layout from "@/components/Layout";
-import Index from "./pages/Index";
-import Home from "./pages/Home";
-import ReviewInterview from "./pages/ReviewInterview";
-import Auth from "./pages/Auth";
-import PendingApproval from "./pages/PendingApproval";
-import AdminDashboard from "./pages/AdminDashboard";
-import AnalyticsDashboard from "./pages/AnalyticsDashboard";
-import UserProfile from "./pages/UserProfile";
-import TeamManagement from "./pages/TeamManagement";
-import TeamApprovals from "./pages/TeamApprovals";
-import FieldManagerDashboard from "./pages/FieldManagerDashboard";
-import ContractorDashboard from "./pages/ContractorDashboard";
-import AgentFraudAnalysis from "./pages/AgentFraudAnalysis";
-import ReviewHistory from "./pages/ReviewHistory";
-import AdminReviewHistory from "./pages/AdminReviewHistory";
-import LockedInterviews from "./pages/LockedInterviews";
-import TeamAssignments from "./pages/TeamAssignments";
-import DataEntryPortal from "./pages/DataEntryPortal";
-import FlaggedIssuesHistory from "./pages/FlaggedIssuesHistory";
-import InterviewTracking from "./pages/InterviewTracking";
-import ZipDiagnostics from "./pages/ZipDiagnostics";
-import Achievements from "./pages/Achievements";
-import SubContractorTeamManagement from "./pages/SubContractorTeamManagement";
-import RoleAnalyticsDashboard from "./pages/RoleAnalyticsDashboard";
-import SmsLogs from "./pages/SmsLogs";
-import PaymentTracking from "./pages/PaymentTracking";
-import FraudAnalyticsDashboard from "./pages/FraudAnalyticsDashboard";
-import NoticeBoard from "./pages/NoticeBoard";
-import AccountSuspended from "./pages/AccountSuspended";
-import ResetPassword from "./pages/ResetPassword";
-import DuplicateInterviews from "./pages/DuplicateInterviews";
-import BurnQueue from "./pages/BurnQueue";
-import UploadTrackingDashboard from "./pages/UploadTrackingDashboard";
-import ErrorConsole from "./pages/ErrorConsole";
-import AISettings from "./pages/AISettings";
-import UserActivity from "./pages/UserActivity";
-import Inbox from "./pages/Inbox";
-import ChatPolicies from "./pages/ChatPolicies";
-import UploadControls from "./pages/UploadControls";
-import UploadCenter from "./pages/UploadCenter";
-import PenaltyAdmin from "./pages/PenaltyAdmin";
-import MyPenalties from "./pages/MyPenalties";
 import ErrorBoundary from "./components/ErrorBoundary";
-import NotFound from "./pages/NotFound";
+import { PageLoader } from "@/components/PageLoader";
+
+// Route-level code splitting: each page is loaded on demand so the initial
+// bundle only contains the app shell + the route the user actually visits.
+const Index = lazy(() => import("./pages/Index"));
+const Home = lazy(() => import("./pages/Home"));
+const ReviewInterview = lazy(() => import("./pages/ReviewInterview"));
+const Auth = lazy(() => import("./pages/Auth"));
+const PendingApproval = lazy(() => import("./pages/PendingApproval"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const AnalyticsDashboard = lazy(() => import("./pages/AnalyticsDashboard"));
+const UserProfile = lazy(() => import("./pages/UserProfile"));
+const TeamManagement = lazy(() => import("./pages/TeamManagement"));
+const TeamApprovals = lazy(() => import("./pages/TeamApprovals"));
+const FieldManagerDashboard = lazy(() => import("./pages/FieldManagerDashboard"));
+const ContractorDashboard = lazy(() => import("./pages/ContractorDashboard"));
+const AgentFraudAnalysis = lazy(() => import("./pages/AgentFraudAnalysis"));
+const ReviewHistory = lazy(() => import("./pages/ReviewHistory"));
+const AdminReviewHistory = lazy(() => import("./pages/AdminReviewHistory"));
+const LockedInterviews = lazy(() => import("./pages/LockedInterviews"));
+const TeamAssignments = lazy(() => import("./pages/TeamAssignments"));
+const DataEntryPortal = lazy(() => import("./pages/DataEntryPortal"));
+const FlaggedIssuesHistory = lazy(() => import("./pages/FlaggedIssuesHistory"));
+const InterviewTracking = lazy(() => import("./pages/InterviewTracking"));
+const ZipDiagnostics = lazy(() => import("./pages/ZipDiagnostics"));
+const Achievements = lazy(() => import("./pages/Achievements"));
+const SubContractorTeamManagement = lazy(() => import("./pages/SubContractorTeamManagement"));
+const RoleAnalyticsDashboard = lazy(() => import("./pages/RoleAnalyticsDashboard"));
+const SmsLogs = lazy(() => import("./pages/SmsLogs"));
+const PaymentTracking = lazy(() => import("./pages/PaymentTracking"));
+const FraudAnalyticsDashboard = lazy(() => import("./pages/FraudAnalyticsDashboard"));
+const NoticeBoard = lazy(() => import("./pages/NoticeBoard"));
+const AccountSuspended = lazy(() => import("./pages/AccountSuspended"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const DuplicateInterviews = lazy(() => import("./pages/DuplicateInterviews"));
+const BurnQueue = lazy(() => import("./pages/BurnQueue"));
+const UploadTrackingDashboard = lazy(() => import("./pages/UploadTrackingDashboard"));
+const ErrorConsole = lazy(() => import("./pages/ErrorConsole"));
+const AISettings = lazy(() => import("./pages/AISettings"));
+const UserActivity = lazy(() => import("./pages/UserActivity"));
+const Inbox = lazy(() => import("./pages/Inbox"));
+const ChatPolicies = lazy(() => import("./pages/ChatPolicies"));
+const UploadControls = lazy(() => import("./pages/UploadControls"));
+const UploadCenter = lazy(() => import("./pages/UploadCenter"));
+const PenaltyAdmin = lazy(() => import("./pages/PenaltyAdmin"));
+const MyPenalties = lazy(() => import("./pages/MyPenalties"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -95,6 +100,7 @@ const App = () => (
             <PresenceProvider>
             <FloatingChatProvider>
             <ChatToastListener />
+            <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/auth" element={<Auth />} />
             <Route path="/pending-approval" element={<PendingApproval />} />
@@ -505,6 +511,7 @@ const App = () => (
             />
             <Route path="*" element={<NotFound />} />
           </Routes>
+            </Suspense>
             <FloatingChats />
             </FloatingChatProvider>
             </PresenceProvider>
