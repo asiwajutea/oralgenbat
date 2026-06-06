@@ -67,4 +67,25 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split large, rarely-changing dependencies into their own chunks so
+        // browsers can cache them long-term. App code changes then no longer
+        // force users to re-download these vendor bundles.
+        manualChunks: {
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          "supabase": ["@supabase/supabase-js"],
+          "charts": ["recharts"],
+          "pdf": ["react-pdf", "pdfjs-dist"],
+          "pdf-export": ["jspdf"],
+          "zip": ["jszip"],
+          "query": ["@tanstack/react-query"],
+        },
+      },
+    },
+    // Charts/PDF chunks are legitimately large; raise the warning threshold so
+    // CI logs stay meaningful instead of warning on every build.
+    chunkSizeWarningLimit: 1200,
+  },
 }));
