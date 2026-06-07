@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
 type FloatingChatContextValue = {
   windows: string[];
@@ -35,8 +35,12 @@ export const FloatingChatProvider = ({ children }: { children: ReactNode }) => {
     setWindows((w) => w.filter((x) => x !== id));
   }, []);
 
+  // Memoize so consumers only re-render when the window list actually changes,
+  // not on every render of the provider's parents.
+  const value = useMemo(() => ({ windows, open, close }), [windows, open, close]);
+
   return (
-    <FloatingChatContext.Provider value={{ windows, open, close }}>
+    <FloatingChatContext.Provider value={value}>
       {children}
     </FloatingChatContext.Provider>
   );

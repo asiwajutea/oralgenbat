@@ -1,16 +1,12 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  server: {
-    host: "::",
-    port: 8080,
-  },
-  plugins: [
+export default defineConfig(async ({ mode }) => {
+  const plugins: PluginOption[] = [
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
@@ -61,10 +57,40 @@ export default defineConfig(({ mode }) => ({
         ],
       },
     }),
-  ].filter(Boolean),
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+  ];
+
+  // Optional bundle analyzer. Run `ANALYZE=true npm run build` to emit
+  // dist/stats.html for tracking chunk sizes / catching regressions.
+  // Guarded behind a dynamic import + try/catch so normal builds (and `npm ci`)
+  // are unaffected even when rollup-plugin-visualizer is not installed.
+  if (process.env.ANALYZE === "true") {
+    try {
+      const { visualizer } = await import("rollup-plugin-visualizer");
+      plugins.push(
+        visualizer({
+          filename: "dist/stats.html",
+          gzipSize: true,
+          brotliSize: true,
+        }) as PluginOption
+      );
+    } catch {
+      console.warn(
+        "[vite] ANALYZE=true but 'rollup-plugin-visualizer' is not installed. " +
+          "Run `npm i -D rollup-plugin-visualizer` to enable the bundle report."
+      );
+    }
+  }
+
+  return {
+    server: {
+      host: "::",
+      port: 8080,
     },
-  },
-}));
+    plugins: plugins.filter(Boolean),
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
+  };
+});

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useRef } from "react";
+import { createContext, useContext, useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -37,14 +37,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isApproved, setIsApproved] = useState(false);
   const [accountStatus, setAccountStatus] = useState('active');
   const [loading, setLoading] = useState(true);
-  const [isFetchingProfile, setIsFetchingProfile] = useState(false);
+  // Guard against duplicate profile fetches. Kept in a ref (not state) because it
+  // is only used for control flow, never rendered — avoids an extra re-render of
+  // every context consumer each time a fetch starts/finishes.
+  const isFetchingProfileRef = useRef(false);
   const initialLoadDone = useRef(false);
   const navigate = useNavigate();
 
-  const fetchProfileAndRole = async (userId: string) => {
+  const fetchProfileAndRole = useCallback(async (userId: string) => {
     // Prevent duplicate fetches that cause rate limiting
-    if (isFetchingProfile) return;
-    setIsFetchingProfile(true);
+    if (isFetchingProfileRef.current) return;
+    isFetchingProfileRef.current = true;
     
     try {
       // Fetch profile
@@ -74,7 +77,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setIsApproved(false);
           setAccountStatus('active');
           setLoading(false);
-          setIsFetchingProfile(false);
+          isFetchingProfileRef.current = false;
           return;
         }
         throw profileError;
@@ -103,10 +106,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Auth-specific errors (corrupted token, 406, JWT) are already handled above
     } finally {
       setLoading(false);
-      setIsFetchingProfile(false);
+      isFetchingProfileRef.current = false;
       initialLoadDone.current = true;
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Set up auth state listener
@@ -178,7 +181,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async (reason?: string) => {
+  const signOut = useCallback(async (reason?: string) => {
     // Log activity BEFORE clearing the session so RLS still allows the insert.
     if (user?.id) {
       try {
@@ -242,28 +245,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsApproved(false);
     setAccountStatus('active');
     navigate("/auth");
-  };
+  }, [user, navigate]);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (user?.id) {
       await fetchProfileAndRole(user.id);
     }
-  };
+  }, [user, fetchProfileAndRole]);
+
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    session,
+    profile,
+    userRole,
+    isApproved,
+    accountStatus,
+    loading,
+    signOut,
+    refreshProfile,
+  }), [user, session, profile, userRole, isApproved, accountStatus, loading, signOut, refreshProfile]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        profile,
-        userRole,
-        isApproved,
-        accountStatus,
-        loading,
-        signOut,
-        refreshProfile,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
