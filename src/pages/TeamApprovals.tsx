@@ -93,16 +93,20 @@ const TeamApprovals = () => {
       if (!assignments || assignments.length === 0) return [];
 
       const managerIds = [...new Set(assignments.map(a => a.field_manager_id))];
-      const { data: managers } = await supabase
-        .from("profiles")
-        .select("id, full_name, email")
-        .in("id", managerIds);
-
       const interviewerCodes = [...new Set(assignments.map(a => a.interviewer_code))];
-      const { data: interviewers } = await supabase
-        .from("interview_metadata")
-        .select("interviewer_code, interviewer_name")
-        .in("interviewer_code", interviewerCodes);
+
+      // The manager and interviewer lookups only depend on `assignments`, not on
+      // each other, so run them concurrently to drop a network round-trip.
+      const [{ data: managers }, { data: interviewers }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", managerIds),
+        supabase
+          .from("interview_metadata")
+          .select("interviewer_code, interviewer_name")
+          .in("interviewer_code", interviewerCodes),
+      ]);
 
       const interviewerMap = new Map(
         interviewers?.map(i => [i.interviewer_code, i.interviewer_name])
@@ -171,8 +175,27 @@ const TeamApprovals = () => {
         metadataQuery = metadataQuery.eq("contractor_id", effectiveContractorId);
       }
 
-      const { data: allInterviewers, error: interviewersError } = await metadataQuery;
-      
+      let assignmentsQuery = supabase
+        .from("team_assignments")
+        .select("interviewer_code")
+        .eq("status", "approved");
+
+      if (!isSuperAdmin && isContractor && effectiveContractorId) {
+        assignmentsQuery = assignmentsQuery.eq("contractor_id", effectiveContractorId);
+      }
+
+      // These three reads are independent, so issue them concurrently instead
+      // of awaiting each in turn (was 3 serial round-trips, now 1).
+      const [
+        { data: allInterviewers, error: interviewersError },
+        { data: auditRows },
+        { data: approvedAssignments },
+      ] = await Promise.all([
+        metadataQuery,
+        supabase.from("audits").select("file_name"),
+        assignmentsQuery,
+      ]);
+
       if (interviewersError) throw interviewersError;
 
       const interviewerMap = new Map<string, { code: string; name: string | null; contractor_id: string | null }>();
@@ -189,9 +212,6 @@ const TeamApprovals = () => {
 
       // Also union with codes derived from audits.file_name (NGXX_<interviewer>_<date>_…),
       // so interviewers whose metadata has not been extracted yet still show up here.
-      const { data: auditRows } = await supabase
-        .from("audits")
-        .select("file_name");
       for (const row of auditRows || []) {
         const parts = (row.file_name || "").split("_");
         if (parts.length < 3) continue;
@@ -211,17 +231,6 @@ const TeamApprovals = () => {
       }
 
       const uniqueInterviewers = Array.from(interviewerMap.values());
-
-      let assignmentsQuery = supabase
-        .from("team_assignments")
-        .select("interviewer_code")
-        .eq("status", "approved");
-
-      if (!isSuperAdmin && isContractor && effectiveContractorId) {
-        assignmentsQuery = assignmentsQuery.eq("contractor_id", effectiveContractorId);
-      }
-
-      const { data: approvedAssignments } = await assignmentsQuery;
 
       const assignedCodes = approvedAssignments?.map(a => a.interviewer_code) || [];
       

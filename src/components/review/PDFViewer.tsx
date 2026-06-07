@@ -12,6 +12,123 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
+// Approximate rendered height (CSS px) of a US-Letter page at scale 1.0, used
+// to size off-screen placeholders so the scrollbar and jump-to-page stay
+// accurate before a page has actually rendered.
+const ESTIMATED_PAGE_HEIGHT = 850;
+
+interface LazyPdfPageProps {
+  pageNumber: number;
+  numPages: number;
+  scale: number;
+  hasError: boolean;
+  onLoadError: (pageNumber: number) => void;
+  setRef: (el: HTMLDivElement | null) => void;
+}
+
+/**
+ * Renders a single PDF page only while it is at (or near) the viewport.
+ * Off-screen pages collapse to a lightweight placeholder, so a document with
+ * hundreds of pages no longer mounts every page (plus its text/annotation
+ * layers) at once. The last measured height is retained so unmounting an
+ * off-screen page does not shift the scroll position.
+ */
+const LazyPdfPage = ({
+  pageNumber,
+  numPages,
+  scale,
+  hasError,
+  onLoadError,
+  setRef,
+}: LazyPdfPageProps) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  // Measured height + the scale it was measured at, so placeholders can be
+  // scaled to approximate the current zoom level.
+  const measuredRef = useRef<{ height: number; scale: number } | null>(null);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      // Pre-render pages ~1 viewport before they scroll into view for smooth
+      // scrolling without rendering the whole document.
+      { root: null, rootMargin: "800px 0px", threshold: 0.01 }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleRenderSuccess = useCallback(() => {
+    if (containerRef.current) {
+      measuredRef.current = {
+        height: containerRef.current.offsetHeight,
+        scale,
+      };
+    }
+  }, [scale]);
+
+  const placeholderHeight = measuredRef.current
+    ? measuredRef.current.height * (scale / measuredRef.current.scale)
+    : ESTIMATED_PAGE_HEIGHT * scale;
+
+  return (
+    <div
+      key={`page_${pageNumber}`}
+      className="mb-4 relative"
+      ref={(el) => {
+        containerRef.current = el;
+        setRef(el);
+      }}
+    >
+      <div className="absolute top-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm font-medium z-10">
+        Page {pageNumber} of {numPages}
+      </div>
+      <div className="overflow-hidden">
+        {hasError ? (
+          <div className="flex flex-col items-center justify-center h-96 bg-muted border border-border shadow-lg">
+            <AlertCircle className="h-12 w-12 text-destructive mb-2" />
+            <div className="text-sm text-muted-foreground">Failed to load page {pageNumber}</div>
+          </div>
+        ) : isVisible ? (
+          <Page
+            pageNumber={pageNumber}
+            scale={scale}
+            renderTextLayer={true}
+            renderAnnotationLayer={true}
+            className="shadow-lg border border-border"
+            onRenderSuccess={handleRenderSuccess}
+            loading={
+              <div
+                className="flex items-center justify-center bg-muted border border-border shadow-lg"
+                style={{ height: placeholderHeight }}
+              >
+                <div className="text-sm text-muted-foreground">Loading page {pageNumber}...</div>
+              </div>
+            }
+            error={
+              <div className="flex flex-col items-center justify-center h-96 bg-muted border border-border shadow-lg">
+                <AlertCircle className="h-12 w-12 text-destructive mb-2" />
+                <div className="text-sm text-muted-foreground">Error loading page {pageNumber}</div>
+              </div>
+            }
+            onLoadError={() => onLoadError(pageNumber)}
+          />
+        ) : (
+          // Off-screen placeholder keeps the document's total height stable.
+          <div
+            className="bg-muted/40 border border-border shadow-sm"
+            style={{ height: placeholderHeight }}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
 interface PDFViewerProps {
   pdfUrl: string;
 }
@@ -52,10 +169,10 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
     }
   }, []);
 
-  const onPageLoadError = (pageNumber: number) => {
+  const onPageLoadError = useCallback((pageNumber: number) => {
     console.error(`Failed to load page ${pageNumber}`);
     setPageErrors(prev => new Set(prev).add(pageNumber));
-  };
+  }, []);
 
   const zoomIn = () => setScale((prev) => Math.min(prev + 0.2, 2.0));
   const zoomOut = () => setScale((prev) => Math.max(prev - 0.2, 0.5));
@@ -144,43 +261,15 @@ export const PDFViewer = ({ pdfUrl }: PDFViewerProps) => {
             }
           >
             {isDocumentReady && Array.from(new Array(numPages), (el, index) => (
-              <div 
-                key={`page_${index + 1}`} 
-                className="mb-4 relative"
-                ref={(el) => pageRefs.current[index] = el}
-              >
-                <div className="absolute top-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-sm font-medium z-10">
-                  Page {index + 1} of {numPages}
-                </div>
-                <div className="overflow-hidden">
-                  {pageErrors.has(index + 1) ? (
-                    <div className="flex flex-col items-center justify-center h-96 bg-muted border border-border shadow-lg">
-                      <AlertCircle className="h-12 w-12 text-destructive mb-2" />
-                      <div className="text-sm text-muted-foreground">Failed to load page {index + 1}</div>
-                    </div>
-                  ) : (
-                    <Page
-                      pageNumber={index + 1}
-                      scale={scale}
-                      renderTextLayer={true}
-                      renderAnnotationLayer={true}
-                      className="shadow-lg border border-border"
-                      loading={
-                        <div className="flex items-center justify-center h-96 bg-muted border border-border shadow-lg">
-                          <div className="text-sm text-muted-foreground">Loading page {index + 1}...</div>
-                        </div>
-                      }
-                      error={
-                        <div className="flex flex-col items-center justify-center h-96 bg-muted border border-border shadow-lg">
-                          <AlertCircle className="h-12 w-12 text-destructive mb-2" />
-                          <div className="text-sm text-muted-foreground">Error loading page {index + 1}</div>
-                        </div>
-                      }
-                      onLoadError={() => onPageLoadError(index + 1)}
-                    />
-                  )}
-                </div>
-              </div>
+              <LazyPdfPage
+                key={`page_${index + 1}`}
+                pageNumber={index + 1}
+                numPages={numPages}
+                scale={scale}
+                hasError={pageErrors.has(index + 1)}
+                onLoadError={onPageLoadError}
+                setRef={(el) => (pageRefs.current[index] = el)}
+              />
             ))}
           </Document>
         </div>
