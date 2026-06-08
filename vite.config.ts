@@ -14,7 +14,12 @@ export default defineConfig(({ mode }) => ({
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
-      registerType: "prompt",
+      // autoUpdate: a newly deployed service worker takes control immediately
+      // (skipWaiting + clientsClaim) instead of waiting behind the old one.
+      // With the previous "prompt" mode the old SW kept serving stale, cached
+      // JS bundles, so deployed bug fixes never reached users until every tab
+      // was closed. autoUpdate guarantees clients pick up new builds on reload.
+      registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "robots.txt"],
       manifest: {
         name: "Backend Audit Tool",
@@ -46,6 +51,13 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10 MiB limit
+        // Take control of open clients as soon as the new SW activates and
+        // delete precaches created by previous versions. Combined with
+        // registerType "autoUpdate" this ensures users never get stuck on a
+        // stale bundle after a deploy.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*supabase.*\/rest\/v1\/.*/i,
