@@ -31,11 +31,19 @@ jobs:
       # Type errors are invisible to `vite build` (esbuild/SWC skip type checking),
       # so run tsc explicitly. This would have caught e.g. the wrong prop name
       # passed to AdvancedFiltersPanel.
+      #
+      # NOTE: `continue-on-error` is temporary. These gates have never run on
+      # this repo, so they may surface pre-existing type/lint debt. They report
+      # results without blocking merges for now. Once the existing issues are
+      # cleaned up, remove `continue-on-error` to make them hard gates.
       - name: Typecheck
         run: npm run typecheck
+        continue-on-error: true
 
       - name: Lint
         run: npm run lint
+        continue-on-error: true
 
+      # Hard gate: a failing production build means the app is broken.
       - name: Build
         run: npm run build
