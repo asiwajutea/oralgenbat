@@ -398,7 +398,20 @@ const InterviewTracking = () => {
     },
   });
 
-  const { burnedAuditIds, burnHistoryMap } = useBurnHistory();
+  const { data: burnHistoryMap } = useBurnHistory();
+
+  // Derive the set of currently-burned audit IDs from the burn history map.
+  // useBurnHistory returns a React Query result whose `data` is a Map<string, BurnHistoryEntry>,
+  // which can be undefined while the query is loading.
+  const burnedAuditIds = useMemo(() => {
+    const set = new Set<string>();
+    if (burnHistoryMap) {
+      for (const [auditId, entry] of burnHistoryMap.entries()) {
+        if (entry.currently_burned) set.add(auditId);
+      }
+    }
+    return set;
+  }, [burnHistoryMap]);
 
   const nonBurnedInterviews = useMemo(() => {
     if (burnedAuditIds.size === 0) return interviews;
@@ -1039,7 +1052,7 @@ const InterviewTracking = () => {
                       <TableRow key={interview.id} className={cn("hover:bg-muted/30 cursor-pointer transition-colors", interview.status === "Audit Failed" && "bg-destructive/5 hover:bg-destructive/10")} onClick={() => { if (interview.status === "Audit Failed") { setSelectedInterview(interview); setShowFailedModal(true); } }}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2 max-w-sm">
-                            <BurnHistoryIcon auditId={interview.id} historyMap={burnHistoryMap} />
+                            <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
                             <span className="truncate block" title={interview.file_name}>{interview.file_name}</span>
                           </div>
                         </TableCell>
@@ -1090,7 +1103,7 @@ const InterviewTracking = () => {
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <BurnHistoryIcon auditId={interview.id} historyMap={burnHistoryMap} />
+                        <BurnHistoryIcon entry={burnHistoryMap?.get(interview.id)} />
                         <p className="font-semibold text-sm truncate" title={interview.file_name}>{interview.file_name}</p>
                       </div>
                       <div onClick={(e) => e.stopPropagation()}>{renderActionDropdown(interview)}</div>
