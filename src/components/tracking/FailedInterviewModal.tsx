@@ -61,6 +61,10 @@ export function FailedInterviewModal({
   const [reauditNote, setReauditNote] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ label: string; progress: number } | null>(null);
+  // Secondary confirmation dialogs: the comment/note fields are hidden in the
+  // main modal and only surface in these dialogs after the user picks an action.
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
+  const [showCommentDialog, setShowCommentDialog] = useState(false);
 
   const needsPdf = interview?.artifact_correction?.includes("scanned_pdf") || interview?.artifact_correction?.includes("PDF");
   const needsMetadata = interview?.artifact_correction?.includes("mobile_metadata") || 
@@ -276,6 +280,43 @@ export function FailedInterviewModal({
     setComment("");
     setReauditNote("");
     setUploadStatus(null);
+    setShowNoteDialog(false);
+    setShowCommentDialog(false);
+  };
+
+  // Re-audit without any file correction. Optionally includes a special note
+  // for the reviewer, collected via the note confirmation dialog.
+  const submitNoCorrection = async () => {
+    if (!interview || !session?.user?.id || !userRole) return;
+    setIsUploading(true);
+    try {
+      const submissionComment = comment
+        ? `Manual re-audit request: no correction needed. ${comment}`
+        : "Manual re-audit request: no correction needed";
+      const { error } = await supabase.rpc("mark_audit_for_reaudit", {
+        _audit_id: interview.id,
+        _submitted_by: session.user.id,
+        _submitted_by_role: userRole as any,
+        _comment: submissionComment,
+        _re_audit_note: reauditNote.trim() || null,
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
+      toast({
+        title: "Re-Audit Requested",
+        description: "The interview has been resubmitted without corrections.",
+      });
+      onOpenChange(false);
+      resetForm();
+    } catch (err: any) {
+      toast({
+        title: "Request Failed",
+        description: err.message || "Failed to request re-audit.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSubmit = () => {
@@ -451,35 +492,9 @@ export function FailedInterviewModal({
                 <Progress value={uploadStatus.progress} className="h-2" />
               </div>
             )}
-
-            {/* Comment */}
-            <div className="space-y-2">
-              <Label htmlFor="comment">Submission Comment (Optional)</Label>
-              <Textarea
-                id="comment"
-                placeholder="Describe the corrections made..."
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
-              />
-            </div>
           </div>
 
           {/* Actions */}
-          <div className="space-y-2 pt-2">
-            <Label htmlFor="reaudit-note">Special note for the reviewer (optional)</Label>
-            <Textarea
-              id="reaudit-note"
-              placeholder="Leave a brief instruction for the next auditor (e.g. 'Please re-check section B carefully')."
-              value={reauditNote}
-              onChange={(e) => setReauditNote(e.target.value)}
-              maxLength={1000}
-              rows={2}
-            />
-            <p className="text-xs text-muted-foreground">
-              Shown to the reviewer as a closable banner. Includes your name.
-            </p>
-          </div>
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
               Cancel
@@ -488,37 +503,9 @@ export function FailedInterviewModal({
               <TooltipTrigger asChild>
                 <Button
                   variant="secondary"
-                  onClick={async () => {
+                  onClick={() => {
                     if (!interview || !session?.user?.id || !userRole) return;
-                    setIsUploading(true);
-                    try {
-                      const submissionComment = comment
-                        ? `Manual re-audit request: no correction needed. ${comment}`
-                        : "Manual re-audit request: no correction needed";
-                      const { error } = await supabase.rpc("mark_audit_for_reaudit", {
-                        _audit_id: interview.id,
-                        _submitted_by: session.user.id,
-                        _submitted_by_role: userRole as any,
-                        _comment: submissionComment,
-                        _re_audit_note: reauditNote.trim() || null,
-                      });
-                      if (error) throw error;
-                      queryClient.invalidateQueries({ queryKey: ["tracking-interviews"] });
-                      toast({
-                        title: "Re-Audit Requested",
-                        description: "The interview has been resubmitted without corrections.",
-                      });
-                      onOpenChange(false);
-                      resetForm();
-                    } catch (err: any) {
-                      toast({
-                        title: "Request Failed",
-                        description: err.message || "Failed to request re-audit.",
-                        variant: "destructive",
-                      });
-                    } finally {
-                      setIsUploading(false);
-                    }
+                    setShowNoteDialog(true);
                   }}
                   disabled={isUploading || submitMutation.isPending}
                   className="w-full sm:w-auto"
@@ -531,7 +518,17 @@ export function FailedInterviewModal({
               </TooltipContent>
             </Tooltip>
             <Button 
-              onClick={handleSubmit} 
+              onClick={() => {
+                if (!pdfFile && !zipFile) {
+                  toast({
+                    title: "No files selected",
+                    description: "Please upload at least one corrected file.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                setShowCommentDialog(true);
+              }}
               disabled={isUploading || submitMutation.isPending}
               className="w-full sm:w-auto"
             >
@@ -541,12 +538,114 @@ export function FailedInterviewModal({
                   Uploading...
                 </>
               ) : (
-                "Submit for Re-Audit"
+                "Submit Correction"
               )}
             </Button>
           </div>
         </div>
       </DialogContent>
+
+      {/* Special note dialog — shown after "Request Re-Audit (No Correction)" */}
+      <Dialog open={showNoteDialog} onOpenChange={(o) => !isUploading && setShowNoteDialog(o)}>
+        <DialogContent className="max-w-full sm:max-w-md mx-2 sm:mx-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle>Add a special note?</DialogTitle>
+            <DialogDescription>
+              Optionally leave a brief instruction for the next auditor before requesting the re-audit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="reaudit-note">Special note for the reviewer (optional)</Label>
+            <Textarea
+              id="reaudit-note"
+              placeholder="Leave a brief instruction for the next auditor (e.g. 'Please re-check section B carefully')."
+              value={reauditNote}
+              onChange={(e) => setReauditNote(e.target.value)}
+              maxLength={1000}
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              Shown to the reviewer as a closable banner. Includes your name.
+            </p>
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowNoteDialog(false)}
+              disabled={isUploading}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setShowNoteDialog(false);
+                submitNoCorrection();
+              }}
+              disabled={isUploading}
+              className="w-full sm:w-auto"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Request Re-Audit"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Submission comment dialog — shown after "Submit Correction" */}
+      <Dialog open={showCommentDialog} onOpenChange={(o) => !isUploading && !submitMutation.isPending && setShowCommentDialog(o)}>
+        <DialogContent className="max-w-full sm:max-w-md mx-2 sm:mx-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle>Add a submission comment?</DialogTitle>
+            <DialogDescription>
+              Optionally describe the corrections you made before submitting.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="comment">Submission Comment (Optional)</Label>
+            <Textarea
+              id="comment"
+              placeholder="Describe the corrections made..."
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowCommentDialog(false)}
+              disabled={isUploading || submitMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setShowCommentDialog(false);
+                handleSubmit();
+              }}
+              disabled={isUploading || submitMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              {isUploading || submitMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Correction"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
