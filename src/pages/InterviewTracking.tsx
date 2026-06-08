@@ -338,6 +338,20 @@ const InterviewTracking = () => {
                 total_names,
                 interviewee_name,
                 interview_date
+              ),
+              interview_assignments (
+                id,
+                audit_id,
+                team_id,
+                entry_status,
+                is_flagged_for_issue,
+                issue_comment,
+                flagged_by,
+                flagged_at,
+                issue_resolved_at,
+                issue_resolved_by,
+                resolve_comment,
+                data_entry_teams(name)
               )
             `)
             .range(from, from + batchSize - 1);
@@ -360,47 +374,13 @@ const InterviewTracking = () => {
       
       if (!auditsWithMeta || auditsWithMeta.length === 0) return [];
       
-      // Get interview assignments separately
-      const auditIds = auditsWithMeta.map(a => a.id);
-      
-      // Batch assignments query to avoid URL length issues
-      const batchSize = 200;
-      const allAssignments: any[] = [];
-      
-      for (let i = 0; i < auditIds.length; i += batchSize) {
-        const batch = auditIds.slice(i, i + batchSize);
-        const { data: batchAssignments, error: assignmentsError } = await supabase
-          .from("interview_assignments")
-          .select(`
-            id,
-            audit_id, 
-            team_id, 
-            entry_status,
-            is_flagged_for_issue,
-            issue_comment,
-            flagged_by,
-            flagged_at,
-            issue_resolved_at,
-            issue_resolved_by,
-            resolve_comment,
-            data_entry_teams(name)
-          `)
-          .in("audit_id", batch);
-        
-        if (assignmentsError) {
-          console.error("Error fetching assignments batch:", assignmentsError);
-        } else if (batchAssignments) {
-          allAssignments.push(...batchAssignments);
-        }
-      }
-      
-      const assignmentMap = new Map(allAssignments.map(a => [a.audit_id, a]));
-      
       let results: TrackingInterview[] = auditsWithMeta.map(audit => {
         // interview_metadata comes as an array from the nested select (LEFT JOIN)
         const metaArray = audit.interview_metadata as any[];
         const meta = metaArray && metaArray.length > 0 ? metaArray[0] : null;
-        const assignment = assignmentMap.get(audit.id);
+        // interview_assignments also comes as an array from the nested select
+        const assignmentArray = audit.interview_assignments as any[];
+        const assignment = assignmentArray && assignmentArray.length > 0 ? assignmentArray[0] : null;
         
         // Extract contractor_id from file_name if not in metadata (format: NG71_711_20251208_0937)
         const fileNameParts = audit.file_name.split('_');
@@ -532,69 +512,14 @@ const InterviewTracking = () => {
     return interviews.filter((i) => !burnedAuditIds.has(i.id));
   }, [interviews, burnedAuditIds]);
 
-  // Only fetch unread comment counts for the CURRENT PAGE's audit IDs (lazy-load optimization)
-  const currentPageAuditIds = useMemo(() => {
-    // We need to compute paginated IDs from nonBurnedInterviews after filtering/sorting
-    // For now, use all non-burned IDs but cap for the current page
-    return nonBurnedInterviews.map(i => i.id);
-  }, [nonBurnedInterviews]);
+  // Unread comment counts are loaded lazily for ONLY the current page's rows.
+  // The query + merge happen further down, after filtering/sorting/pagination,
+  // so we never fetch comments for interviews that aren't on screen.
 
-  const { data: unreadCommentCounts = {} } = useQuery({
-    queryKey: ["unread-comment-counts", currentPageAuditIds, user?.id],
-    queryFn: async () => {
-      if (currentPageAuditIds.length === 0 || !user?.id) return {};
-      
-      // Fetch all comments for all interviews (not by current user) - batch to avoid URL issues
-      const batchSize = 200;
-      let allComments: any[] = [];
-      for (let i = 0; i < currentPageAuditIds.length; i += batchSize) {
-        const batch = currentPageAuditIds.slice(i, i + batchSize);
-        const { data: batchComments } = await supabase
-          .from("artifact_correction_comments")
-          .select("id, audit_id, user_id")
-          .in("audit_id", batch)
-          .neq("user_id", user.id);
-        if (batchComments) allComments.push(...batchComments);
-      }
-      const comments = allComments;
-      
-      if (!comments || comments.length === 0) return {};
-
-      // Fetch which of these comments the current user has already read
-      const commentIds = comments.map(c => c.id);
-      let allReads: any[] = [];
-      for (let i = 0; i < commentIds.length; i += batchSize) {
-        const batch = commentIds.slice(i, i + batchSize);
-        const { data: reads } = await supabase
-          .from("artifact_comment_reads" as any)
-          .select("comment_id")
-          .eq("user_id", user.id)
-          .in("comment_id", batch);
-        if (reads) allReads.push(...reads);
-      }
-      
-      const readSet = new Set(allReads.map((r: any) => r.comment_id));
-      
-      // Count unread comments per audit
-      const counts: Record<string, number> = {};
-      comments.forEach(c => {
-        if (!readSet.has(c.id)) {
-          counts[c.audit_id] = (counts[c.audit_id] || 0) + 1;
-        }
-      });
-      
-      return counts;
-    },
-    enabled: currentPageAuditIds.length > 0 && !!user?.id,
-  });
-
-  // Merge unread counts into interviews
-  const interviewsWithUnreadCounts = useMemo(() => {
-    return nonBurnedInterviews.map(i => ({
-      ...i,
-      unread_comment_count: unreadCommentCounts[i.id] || 0,
-    }));
-  }, [nonBurnedInterviews, unreadCommentCounts]);
+  // Retained under its original name for the stat/filter consumers below. Unread
+  // badge counts are merged into the paginated rows (paginatedInterviews) instead,
+  // so this list intentionally does not carry per-row unread counts.
+  const interviewsWithUnreadCounts = nonBurnedInterviews;
 
   // Fetch canonical FM list from profiles + user_roles
   const { data: canonicalFms = [] } = useQuery({
@@ -723,11 +648,58 @@ const InterviewTracking = () => {
     });
   }, [filteredInterviews, sortField, sortOrder]);
 
-  // Paginate
-  const paginatedInterviews = useMemo(() => {
+  // Slice the current page FIRST, then fetch unread counts only for these rows.
+  const pagedSlice = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return sortedInterviews.slice(start, start + itemsPerPage);
   }, [sortedInterviews, currentPage, itemsPerPage]);
+
+  // Only the visible page's audit IDs (at most itemsPerPage), so a single
+  // non-batched query suffices.
+  const currentPageAuditIds = useMemo(() => pagedSlice.map(i => i.id), [pagedSlice]);
+
+  const { data: unreadCommentCounts = {} } = useQuery({
+    queryKey: ["unread-comment-counts", currentPageAuditIds, user?.id],
+    queryFn: async () => {
+      if (currentPageAuditIds.length === 0 || !user?.id) return {};
+
+      // Comments on the visible interviews not authored by the current user.
+      const { data: comments } = await supabase
+        .from("artifact_correction_comments")
+        .select("id, audit_id, user_id")
+        .in("audit_id", currentPageAuditIds)
+        .neq("user_id", user.id);
+
+      if (!comments || comments.length === 0) return {};
+
+      // Which of those comments the current user has already read.
+      const commentIds = comments.map(c => c.id);
+      const { data: reads } = await supabase
+        .from("artifact_comment_reads" as any)
+        .select("comment_id")
+        .eq("user_id", user.id)
+        .in("comment_id", commentIds);
+
+      const readSet = new Set((reads || []).map((r: any) => r.comment_id));
+
+      const counts: Record<string, number> = {};
+      comments.forEach(c => {
+        if (!readSet.has(c.id)) {
+          counts[c.audit_id] = (counts[c.audit_id] || 0) + 1;
+        }
+      });
+      return counts;
+    },
+    enabled: currentPageAuditIds.length > 0 && !!user?.id,
+  });
+
+  // Paginate: merge the lazily-loaded unread counts into the visible rows only.
+  const paginatedInterviews = useMemo(() => {
+    return pagedSlice.map(i => ({
+      ...i,
+      unread_comment_count: unreadCommentCounts[i.id] || 0,
+    }));
+  }, [pagedSlice, unreadCommentCounts]);
 
   const totalPages = Math.ceil(sortedInterviews.length / itemsPerPage);
 
