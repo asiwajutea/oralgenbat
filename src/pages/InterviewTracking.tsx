@@ -1012,7 +1012,7 @@ const InterviewTracking = () => {
               </div>
             )}
 
-            <AdvancedFiltersPanel filters={advFilter} onChange={setAdvFilter} />
+            <AdvancedFiltersPanel value={advFilter} onChange={setAdvFilter} />
           </CardContent>
         </Card>
 
