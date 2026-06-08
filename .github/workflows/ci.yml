@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Verify (typecheck, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Catches the pdfjs-dist / react-pdf version mismatch that breaks the
+      # PDF viewer ("Failed to load PDF document") at runtime.
+      - name: Check pdfjs-dist version
+        run: npm run check:pdfjs
+
+      # Type errors are invisible to `vite build` (esbuild/SWC skip type checking),
+      # so run tsc explicitly. This would have caught e.g. the wrong prop name
+      # passed to AdvancedFiltersPanel.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

@@ -1,5 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+// The worker version MUST match the API version that react-pdf uses, otherwise
+// PDF.js refuses to run and every document fails with "Failed to load PDF
+// document". This standalone import resolves to the same pdfjs-dist install the
+// worker bundle below comes from, so comparing it against react-pdf's API
+// version (pdfjs.version) detects a mismatch at runtime.
+import { version as workerPackageVersion } from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ZoomIn, ZoomOut, Download, AlertCircle } from "lucide-react";
@@ -11,6 +17,20 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url
 ).toString();
+
+// Runtime guard: if react-pdf's bundled pdf.js API version and the standalone
+// pdfjs-dist (which provides the worker) version diverge, PDFs will silently
+// fail to render. Surface a loud, actionable error instead of a cryptic
+// "Failed to load PDF document". Keep pdfjs-dist pinned to the exact version
+// react-pdf depends on (see package.json) to avoid this.
+if (pdfjs.version !== workerPackageVersion) {
+  // eslint-disable-next-line no-console
+  console.error(
+    `[PDFViewer] pdf.js version mismatch: react-pdf API is ${pdfjs.version} but ` +
+      `pdfjs-dist (worker) is ${workerPackageVersion}. PDFs will fail to load. ` +
+      `Pin "pdfjs-dist" in package.json to "${pdfjs.version}" so the worker matches the API.`
+  );
+}
 
 // Approximate rendered height (CSS px) of a US-Letter page at scale 1.0, used
 // to size off-screen placeholders so the scrollbar and jump-to-page stay
