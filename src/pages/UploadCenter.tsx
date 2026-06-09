@@ -231,10 +231,13 @@ const UploadCenter = () => {
             g.label = { text: "Will skip — no matching PDF", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
             g.willSkip = true;
             g.skipReason = "No paired PDF in this batch or in the system.";
-          } else if (existingHasMetadata) {
+          } else if (existingHasMetadata && !g.corrupted) {
             g.label = { text: "Duplicate metadata — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
             g.willSkip = true;
             g.skipReason = "Metadata is already attached to this interview.";
+          } else if (g.corrupted) {
+            g.label = { text: "Replace corrupt metadata", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+            g.uploadCount = 1;
           } else {
             g.label = { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
             g.uploadCount = 1;
