@@ -35,6 +35,7 @@ interface Row {
   outcome?: UploadOutcome;
   existingStatus?: string | null; // status of matching audit (for badge labelling)
   existingHasMetadata?: boolean | null;
+  existingZipCorrupted?: boolean | null; // matching audit has a ZIP but no extracted metadata/photos
   hasPairedPdfInBatch?: boolean;
   willSkipReason?: string | null;
   lookupDone?: boolean;
@@ -100,12 +101,33 @@ const UploadCenter = () => {
     if (baseNames.length === 0) return;
     const { data } = await supabase
       .from("audits")
-      .select("file_name, status, mobile_zip_url")
+      .select("id, file_name, status, mobile_zip_url")
       .in("file_name", baseNames);
-    const infoByName = new Map<string, { status: string; hasMetadata: boolean }>();
-    (data || []).forEach((a: any) =>
-      infoByName.set(a.file_name, { status: a.status, hasMetadata: !!a.mobile_zip_url }),
-    );
+
+    // Detect corrupted metadata: an audit that has an uploaded ZIP but nothing was
+    // extracted from it (no interview_metadata row AND no interview_photos). This mirrors
+    // the "Corrupted" status shown on the ZIP/PDF Diagnostics page so users can spot and
+    // replace bad metadata directly from the Upload Center.
+    const zipAuditIds = (data || []).filter((a: any) => !!a.mobile_zip_url).map((a: any) => a.id);
+    const extractedAuditIds = new Set<string>();
+    if (zipAuditIds.length > 0) {
+      const [metaRes, photoRes] = await Promise.all([
+        supabase.from("interview_metadata").select("audit_id").in("audit_id", zipAuditIds),
+        supabase.from("interview_photos").select("audit_id").in("audit_id", zipAuditIds),
+      ]);
+      (metaRes.data || []).forEach((m: any) => extractedAuditIds.add(m.audit_id));
+      (photoRes.data || []).forEach((p: any) => extractedAuditIds.add(p.audit_id));
+    }
+
+    const infoByName = new Map<string, { status: string; hasMetadata: boolean; zipCorrupted: boolean }>();
+    (data || []).forEach((a: any) => {
+      const hasZip = !!a.mobile_zip_url;
+      infoByName.set(a.file_name, {
+        status: a.status,
+        hasMetadata: hasZip,
+        zipCorrupted: hasZip && !extractedAuditIds.has(a.id),
+      });
+    });
     setRows(prev => {
       // Build a set of PDF base names across the WHOLE current queue (including pre-existing rows)
       const pdfBaseNamesInBatch = new Set(
@@ -140,6 +162,7 @@ const UploadCenter = () => {
           ...r,
           existingStatus: info?.status ?? null,
           existingHasMetadata: info?.hasMetadata ?? null,
+          existingZipCorrupted: info?.zipCorrupted ?? null,
           hasPairedPdfInBatch,
           willSkipReason,
           lookupDone: true,
@@ -157,6 +180,8 @@ const UploadCenter = () => {
     zip?: Row;
     /** computed per-mode label */
     label: { text: string; cls: string };
+    /** true if the matching existing audit has corrupted metadata (ZIP uploaded but nothing extracted) */
+    corrupted: boolean;
     /** true if BOTH files in the group will be skipped before upload */
     willSkip: boolean;
     skipReason?: string;
@@ -170,7 +195,7 @@ const UploadCenter = () => {
       const kind = detectKind(r.file);
       let g = map.get(base);
       if (!g) {
-        g = { baseName: base, label: { text: "", cls: "" }, willSkip: false, uploadCount: 0 };
+        g = { baseName: base, label: { text: "", cls: "" }, corrupted: false, willSkip: false, uploadCount: 0 };
         map.set(base, g);
       }
       if (kind === "pdf") g.pdf = r;
@@ -181,6 +206,7 @@ const UploadCenter = () => {
       const sample = g.pdf ?? g.zip!;
       const existingStatus = sample.existingStatus ?? null;
       const existingHasMetadata = sample.existingHasMetadata ?? null;
+      g.corrupted = !!sample.existingZipCorrupted;
       if (mode === "new") {
         if (g.pdf && g.zip) {
           if (existingStatus) {
@@ -205,10 +231,13 @@ const UploadCenter = () => {
             g.label = { text: "Will skip — no matching PDF", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
             g.willSkip = true;
             g.skipReason = "No paired PDF in this batch or in the system.";
-          } else if (existingHasMetadata) {
+          } else if (existingHasMetadata && !g.corrupted) {
             g.label = { text: "Duplicate metadata — will skip", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
             g.willSkip = true;
             g.skipReason = "Metadata is already attached to this interview.";
+          } else if (g.corrupted) {
+            g.label = { text: "Replace corrupt metadata", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
+            g.uploadCount = 1;
           } else {
             g.label = { text: "Pair with existing PDF", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" };
             g.uploadCount = 1;
@@ -466,6 +495,12 @@ const UploadCenter = () => {
                               <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                                 <span className="truncate font-mono text-xs sm:text-sm">{g.baseName}</span>
                                 <Badge variant="secondary" className={`${g.label.cls} text-[10px] px-1.5 py-0`}>{g.label.text}</Badge>
+                                {g.corrupted && (
+                                  <Badge variant="secondary" className="bg-red-500/15 text-red-700 dark:text-red-400 text-[10px] px-1.5 py-0 gap-1">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Corrupted metadata — replace
+                                  </Badge>
+                                )}
                               </div>
                               <div className="text-[11px] text-muted-foreground mt-0.5">
                                 {childRows.map(r => detectKind(r.file) === "pdf" ? "PDF" : "ZIP").join(" + ")}

@@ -106,9 +106,21 @@ export async function uploadInterviewFile(opts: {
   const { data: existing } = await supabase.from("audits").select("id, file_name, status, re_audit_count").eq("file_name", baseName).maybeSingle();
   // for ZIPs we also need to know whether metadata is already uploaded
   let existingHasMetadata = false;
+  let existingMetadataCorrupt = false;
   if (existing && kind === "metadata_zip") {
     const { data: a2 } = await supabase.from("audits").select("mobile_zip_url").eq("id", existing.id).maybeSingle();
     existingHasMetadata = !!a2?.mobile_zip_url;
+    // A ZIP that was uploaded but yielded no extracted data (no metadata row and no photos)
+    // is considered corrupt. We allow such metadata to be replaced even in "new" mode so the
+    // user does not have to switch to Replace files just to fix a bad upload.
+    if (existingHasMetadata) {
+      const [metaRes, photoRes] = await Promise.all([
+        supabase.from("interview_metadata").select("audit_id").eq("audit_id", existing.id).limit(1),
+        supabase.from("interview_photos").select("audit_id").eq("audit_id", existing.id).limit(1),
+      ]);
+      const extracted = (metaRes.data?.length ?? 0) > 0 || (photoRes.data?.length ?? 0) > 0;
+      existingMetadataCorrupt = !extracted;
+    }
   }
 
   try {
@@ -160,7 +172,7 @@ export async function uploadInterviewFile(opts: {
       await logAttempt({ user_id: userId, file_name: file.name, detected_kind: kind, mode, outcome: out });
       return out;
     }
-    if (mode === "new" && existingHasMetadata) {
+    if (mode === "new" && existingHasMetadata && !existingMetadataCorrupt) {
       const out: UploadOutcome = {
         status: "duplicate",
         message: "Metadata already uploaded for this interview. Use Replace files to overwrite.",
