@@ -965,7 +965,7 @@ const InterviewTracking = () => {
         case "Audit Failed":
           return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />Failed</Badge>;
         case "Awaiting Review":
-          return <Badge variant="outline" className="text-warning border-warning gap-1">Pending</Badge>;
+          return <Badge variant="outline" className="text-warning border-warning gap-1">Re-audit</Badge>;
         case "In Review":
           return <Badge variant="secondary" className="gap-1">In Review</Badge>;
         default:
